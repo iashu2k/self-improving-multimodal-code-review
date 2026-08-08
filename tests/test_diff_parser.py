@@ -32,3 +32,26 @@ def test_commentable_lines_excludes_context_and_deletions() -> None:
     }
 
     assert all_new == {10, 11, 12, 13}
+
+
+DIFF_WITH_NO_NEWLINE_MARKER = """diff --git a/calc.py b/calc.py
+--- a/calc.py
++++ b/calc.py
+@@ -1,2 +1,3 @@
+ def divide(a: float, b: float) -> float:
+-    return a / b
+\\ No newline at end of file
++    result = a / b
++    return int(result)
+"""
+
+
+def test_no_newline_marker_does_not_shift_line_numbers() -> None:
+    files = parse_unified_diff(DIFF_WITH_NO_NEWLINE_MARKER)
+
+    assert files[0].commentable_lines == {2, 3}
+
+    last_line = files[0].hunks[0].lines[-1]
+    assert last_line.kind == "add"
+    assert last_line.content == "    return int(result)"
+    assert last_line.new_lineno == 3

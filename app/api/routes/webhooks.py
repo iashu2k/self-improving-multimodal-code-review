@@ -1,16 +1,23 @@
-import structlog
-from fastapi import APIRouter, Header, HTTPException, Request
+from typing import Annotated
 
+import structlog
+from arq import ArqRedis
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+
+from app.api.dependencies import get_arq_pool
 from app.core.config import settings
 from app.github.webhook_verifier import WebhookVerificationError, verify_signature
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 logger = structlog.get_logger(__name__)
 
+REVIEWABLE_ACTIONS = {"opened", "synchronize", "reopened", "ready_for_review"}
+
 
 @router.post("/github", status_code=202)
 async def github_webhook(
     request: Request,
+    arq_pool: Annotated[ArqRedis, Depends(get_arq_pool)],
     x_github_event: str = Header(default=""),
     x_github_delivery: str = Header(default=""),
     x_hub_signature_256: str | None = Header(default=None),
@@ -39,7 +46,8 @@ async def github_webhook(
 
     action = payload.get("action")
     repository = payload.get("repository", {}).get("full_name")
-    pr_number = (payload.get("pull_request") or {}).get("number")
+    pr = payload.get("pull_request") or {}
+    pr_number = pr.get("number")
 
     logger.info(
         "webhook_received",
@@ -50,5 +58,37 @@ async def github_webhook(
         pr_number=pr_number,
     )
 
-    # Phase 2B: enqueue review job here
+    if x_github_event != "pull_request":
+        return {"status": "ignored", "reason": "not_a_pull_request_event"}
+
+    if action not in REVIEWABLE_ACTIONS:
+        return {"status": "ignored", "reason": f"action_{action}_not_reviewable"}
+
+    if pr.get("draft"):
+        return {"status": "ignored", "reason": "draft_pr"}
+
+    installation_id = (payload.get("installation") or {}).get("id")
+    if not installation_id:
+        raise HTTPException(status_code=400, detail="Missing installation ID")
+
+    owner, repo_name = repository.split("/", 1)
+
+    await arq_pool.enqueue_job(
+        "run_pr_review",
+        installation_id=installation_id,
+        repository_owner=owner,
+        repository_name=repo_name,
+        pr_number=pr_number,
+        pr_title=pr.get("title") or "",
+        pr_body=pr.get("body") or "",
+        head_sha=(pr.get("head") or {}).get("sha") or "",
+        _job_id=f"review-{repository}-{pr_number}-{x_github_delivery}",
+    )
+
+    logger.info(
+        "review_job_enqueued",
+        delivery_id=x_github_delivery,
+        repository=repository,
+        pr_number=pr_number,
+    )
     return {"status": "accepted", "delivery_id": x_github_delivery}

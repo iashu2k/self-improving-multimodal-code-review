@@ -1,3 +1,7 @@
+import json
+
+import structlog
+
 from app.agents.schemas import ReviewResult
 from app.agents.validator import validate_review_comments
 from app.github.diff_parser import ChangedFile
@@ -5,6 +9,8 @@ from app.llm.openrouter_client import OpenRouterClient
 from app.llm.prompts.review import SYSTEM_PROMPT
 
 MAX_DIFF_CHARS = 60_000
+
+logger = structlog.get_logger(__name__)
 
 
 def render_diff_for_prompt(files: list[ChangedFile]) -> str:
@@ -37,12 +43,17 @@ async def review_diff(
     if len(rendered) > MAX_DIFF_CHARS:
         rendered = rendered[:MAX_DIFF_CHARS] + "\n[DIFF TRUNCATED]"
 
+    commentable_lines = {f.path: sorted(f.commentable_lines) for f in files if f.commentable_lines}
+
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {
             "role": "user",
             "content": (
                 f"PR title: {pr_title}\nPR description: {pr_body}\n\n"
+                f"Commentable RIGHT-side line numbers per file "
+                f"(every comment's file_path and line MUST come from this map):\n"
+                f"{json.dumps(commentable_lines, indent=2)}\n\n"
                 f"Review this diff:\n\n{rendered}"
             ),
         },
@@ -60,6 +71,20 @@ async def review_diff(
         result=raw_result,
         files=files,
     )
+
+    if validation.suppressed_comments:
+        logger.warning(
+            "comments_suppressed",
+            suppressed=[
+                {
+                    "file_path": s.comment.file_path,
+                    "line": s.comment.line,
+                    "reason": s.reason,
+                    "title": s.comment.title,
+                }
+                for s in validation.suppressed_comments
+            ],
+        )
 
     if validation.accepted_comments:
         return ReviewResult(

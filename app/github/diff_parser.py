@@ -61,6 +61,10 @@ def parse_unified_diff(diff_text: str) -> list[ChangedFile]:
             current_file.old_path = raw.removeprefix("rename from ").strip()
             current_file.status = "renamed"
             continue
+        if raw.startswith("\\"):
+            # "\ No newline at end of file" marker: metadata, not a file line.
+            # Must not consume a line number on either side.
+            continue
 
         if raw.startswith("--- "):
             continue

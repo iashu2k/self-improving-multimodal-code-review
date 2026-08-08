@@ -20,7 +20,14 @@ def make_pr_payload(action: str = "opened") -> dict:
     return {
         "action": action,
         "repository": {"full_name": "owner/review-sandbox"},
-        "pull_request": {"number": 1},
+        "pull_request": {
+            "number": 1,
+            "title": "Test PR",
+            "body": "",
+            "draft": False,
+            "head": {"sha": "deadbeef"},
+        },
+        "installation": {"id": 42},
     }
 
 
@@ -165,3 +172,75 @@ async def test_non_pr_event_with_valid_signature_is_accepted(client: AsyncClient
         )
 
     assert response.status_code == 202
+
+
+class FakeArqPool:
+    def __init__(self) -> None:
+        self.jobs: list[dict] = []
+
+    async def enqueue_job(self, function: str, **kwargs) -> None:
+        self.jobs.append({"function": function, **kwargs})
+
+
+@pytest.fixture(autouse=True)
+def fake_arq_pool() -> FakeArqPool:
+    pool = FakeArqPool()
+    app.state.arq_pool = pool
+    yield pool
+    del app.state.arq_pool
+
+
+@pytest.mark.asyncio
+async def test_pr_opened_enqueues_review_job(
+    client: AsyncClient, fake_arq_pool: FakeArqPool
+) -> None:
+    payload = {
+        "action": "opened",
+        "repository": {"full_name": "owner/review-sandbox"},
+        "pull_request": {
+            "number": 1,
+            "title": "Risky change",
+            "body": "details",
+            "draft": False,
+            "head": {"sha": "abc123"},
+        },
+        "installation": {"id": 12345},
+    }
+    body = json.dumps(payload).encode()
+
+    async with client:
+        response = await client.post(
+            "/api/v1/webhooks/github",
+            content=body,
+            headers=make_headers(body),
+        )
+
+    assert response.status_code == 202
+    assert len(fake_arq_pool.jobs) == 1
+    job = fake_arq_pool.jobs[0]
+    assert job["function"] == "run_pr_review"
+    assert job["installation_id"] == 12345
+    assert job["repository_owner"] == "owner"
+    assert job["head_sha"] == "abc123"
+
+
+@pytest.mark.asyncio
+async def test_draft_pr_does_not_enqueue(client: AsyncClient, fake_arq_pool: FakeArqPool) -> None:
+    payload = {
+        "action": "opened",
+        "repository": {"full_name": "owner/review-sandbox"},
+        "pull_request": {"number": 1, "draft": True, "head": {"sha": "abc"}},
+        "installation": {"id": 1},
+    }
+    body = json.dumps(payload).encode()
+
+    async with client:
+        response = await client.post(
+            "/api/v1/webhooks/github",
+            content=body,
+            headers=make_headers(body),
+        )
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "ignored"
+    assert fake_arq_pool.jobs == []
