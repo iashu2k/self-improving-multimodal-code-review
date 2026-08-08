@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     openrouter_critic_model: str | None = None
     openrouter_vision_model: str | None = None
     openrouter_judge_model: str | None = None
+    openrouter_embedding_model: str | None = None
 
     database_url: PostgresDsn | None = None
     redis_url: RedisDsn | None = None

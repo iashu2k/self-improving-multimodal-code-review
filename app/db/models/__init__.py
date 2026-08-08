@@ -1,5 +1,7 @@
+# app/db/models/__init__.py
 from app.db.base import Base
+from app.db.models.repo_index import CodeChunk, RepoSnapshot
 from app.db.models.review import ReviewRun, StoredReviewComment
 from app.db.models.webhook import WebhookEvent
 
-__all__ = ["Base", "ReviewRun", "StoredReviewComment", "WebhookEvent"]
+__all__ = ["Base", "CodeChunk", "RepoSnapshot", "ReviewRun", "StoredReviewComment", "WebhookEvent"]

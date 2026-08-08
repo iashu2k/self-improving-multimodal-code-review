@@ -28,8 +28,8 @@ def validate_review_comments(
     result: ReviewResult,
     files: list[ChangedFile],
 ) -> ValidationResult:
-    commentable_lines_by_file = {
-        changed_file.path: changed_file.commentable_lines for changed_file in files
+    legal_lines_by_file = {
+        changed_file.path: changed_file.right_side_lines for changed_file in files
     }
 
     accepted: list[ReviewComment] = []
@@ -38,7 +38,7 @@ def validate_review_comments(
     comments_per_file: defaultdict[str, int] = defaultdict(int)
 
     for comment in result.comments:
-        valid_lines = commentable_lines_by_file.get(comment.file_path)
+        valid_lines = legal_lines_by_file.get(comment.file_path)
 
         if valid_lines is None:
             suppressed.append(
@@ -53,7 +53,7 @@ def validate_review_comments(
             suppressed.append(
                 SuppressedComment(
                     comment=comment,
-                    reason="line_not_an_added_diff_line",
+                    reason="line_not_in_diff",
                 )
             )
             continue

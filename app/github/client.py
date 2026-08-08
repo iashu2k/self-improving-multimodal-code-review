@@ -74,3 +74,13 @@ class GitHubClient:
             )
 
         return response.json()
+
+    async def get_repo_archive(self, owner: str, repo: str, sha: str) -> bytes:
+        """Download a tarball of the repo at a specific SHA."""
+        response = await self._client.get(
+            f"/repos/{owner}/{repo}/tarball/{sha}",
+            follow_redirects=True,
+            timeout=httpx.Timeout(60.0),
+        )
+        response.raise_for_status()
+        return response.content

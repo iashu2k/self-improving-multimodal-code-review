@@ -38,6 +38,21 @@ class ChangedFile:
             if line.kind == "add" and line.new_lineno is not None
         }
 
+    @property
+    def right_side_lines(self) -> set[int]:
+        """All new-side lines present in the diff (added + context).
+
+        GitHub allows review comments on any of these; added lines are the
+        preferred anchor, context lines are the legal fallback for findings
+        about deleted code (which has no added-line anchor).
+        """
+        return {
+            line.new_lineno
+            for hunk in self.hunks
+            for line in hunk.lines
+            if line.kind in ("add", "context") and line.new_lineno is not None
+        }
+
 
 def parse_unified_diff(diff_text: str) -> list[ChangedFile]:
     files: list[ChangedFile] = []

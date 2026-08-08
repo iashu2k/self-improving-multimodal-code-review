@@ -6,12 +6,14 @@ import structlog
 from app.agents.schemas import ReviewComment, ReviewResult
 from app.agents.validator import SuppressedComment, validate_review_comments
 from app.github.diff_parser import ChangedFile
+from app.ingestion.retriever import RetrievedContext
 from app.llm.openrouter_client import OpenRouterClient
 from app.llm.prompts.review import SYSTEM_PROMPT
 
 logger = structlog.get_logger(__name__)
 
 MAX_DIFF_CHARS = 60_000
+MAX_CONTEXT_CONTENT_CHARS = 1500
 
 
 @dataclass
@@ -39,6 +41,18 @@ def render_diff_for_prompt(files: list[ChangedFile]) -> str:
     return "\n\n".join(blocks)
 
 
+def render_contexts_for_prompt(contexts: list[RetrievedContext]) -> str:
+    blocks = []
+    for c in contexts:
+        symbol = c.symbol or "(module)"
+        content = c.content[:MAX_CONTEXT_CONTENT_CHARS]
+        blocks.append(
+            f"CONTEXT: {c.file_path}::{symbol} "
+            f"({c.chunk_type}, lines {c.start_line}-{c.end_line})\n{content}"
+        )
+    return "\n\n".join(blocks)
+
+
 async def review_diff(
     *,
     files: list[ChangedFile],
@@ -46,12 +60,23 @@ async def review_diff(
     pr_body: str,
     client: OpenRouterClient,
     model: str,
+    contexts: list[RetrievedContext] | None = None,
 ) -> GeneratedReview:
     rendered = render_diff_for_prompt(files)
     if len(rendered) > MAX_DIFF_CHARS:
         rendered = rendered[:MAX_DIFF_CHARS] + "\n[DIFF TRUNCATED]"
 
-    commentable_lines = {f.path: sorted(f.commentable_lines) for f in files if f.commentable_lines}
+    commentable_lines = {f.path: sorted(f.right_side_lines) for f in files if f.right_side_lines}
+
+    context_block = ""
+    if contexts:
+        context_block = (
+            "\n\nRelevant repository context retrieved for this PR "
+            "(use it as evidence and cite the file and symbol when it supports "
+            "a finding; do NOT comment on lines in context files — comments "
+            "must target the diff):\n"
+            f"{render_contexts_for_prompt(contexts)}"
+        )
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -63,6 +88,7 @@ async def review_diff(
                 f"(every comment's file_path and line MUST come from this map):\n"
                 f"{json.dumps(commentable_lines, indent=2)}\n\n"
                 f"Review this diff:\n\n{rendered}"
+                f"{context_block}"
             ),
         },
     ]

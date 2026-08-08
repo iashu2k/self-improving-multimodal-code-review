@@ -39,20 +39,32 @@ def test_validator_accepts_comment_on_added_line() -> None:
     assert validation.should_post_review is True
 
 
-def test_validator_rejects_comment_on_context_line() -> None:
+def test_validator_accepts_context_line_for_deletion_findings() -> None:
+    """Context lines are legal anchors for deletion-driven findings."""
     files = parse_unified_diff(SAMPLE_DIFF)
     result = ReviewResult(
         summary="Review summary",
-        comments=[make_comment(line=10)],
+        comments=[make_comment(line=10)],  # context line in SAMPLE_DIFF
+        should_post_review=True,
+    )
+
+    validation = validate_review_comments(result=result, files=files)
+
+    assert len(validation.accepted_comments) == 1
+
+
+def test_validator_rejects_line_not_in_diff() -> None:
+    files = parse_unified_diff(SAMPLE_DIFF)
+    result = ReviewResult(
+        summary="Review summary",
+        comments=[make_comment(line=99)],
         should_post_review=True,
     )
 
     validation = validate_review_comments(result=result, files=files)
 
     assert validation.accepted_comments == []
-    assert len(validation.suppressed_comments) == 1
-    assert validation.suppressed_comments[0].reason == "line_not_an_added_diff_line"
-    assert validation.should_post_review is False
+    assert validation.suppressed_comments[0].reason == "line_not_in_diff"
 
 
 def test_validator_rejects_unknown_file() -> None:

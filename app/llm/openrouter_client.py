@@ -131,3 +131,12 @@ class OpenRouterClient:
             usage=usage,
             model=data.get("model", model),
         )
+
+    async def embed(self, *, model: str, texts: list[str]) -> list[list[float]]:
+        response = await self._client.post(
+            "/embeddings",
+            json={"model": model, "input": texts},
+        )
+        response.raise_for_status()
+        data = response.json()
+        return [item["embedding"] for item in data["data"]]

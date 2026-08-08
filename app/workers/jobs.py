@@ -10,6 +10,8 @@ from app.github.app_auth import get_installation_token
 from app.github.client import GitHubClient
 from app.github.diff_parser import ChangedFile, parse_unified_diff
 from app.github.formatting import format_comment_body, format_review_summary
+from app.ingestion.indexer import get_or_create_snapshot, index_snapshot
+from app.ingestion.retriever import RetrievedContext, hybrid_retrieve
 from app.llm.openrouter_client import OpenRouterClient
 from app.llm.reviewer import review_diff
 
@@ -39,6 +41,9 @@ IGNORED_SUFFIXES = (
     ".gz",
 )
 
+MAX_CONTEXT_QUERY_FILES = 5
+MAX_CONTEXTS_FOR_PROMPT = 8
+
 
 def is_reviewable(changed_file: ChangedFile) -> bool:
     if changed_file.status == "deleted":
@@ -47,6 +52,14 @@ def is_reviewable(changed_file: ChangedFile) -> bool:
     if name in IGNORED_EXACT_NAMES:
         return False
     return not changed_file.path.endswith(IGNORED_SUFFIXES)
+
+
+def build_context_query(changed_file: ChangedFile) -> str:
+    added_lines = [
+        line.content for hunk in changed_file.hunks for line in hunk.lines if line.kind == "add"
+    ]
+    symbols = " ".join(added_lines)[:500]
+    return f"{changed_file.path} {symbols}"
 
 
 async def run_pr_review(
@@ -71,9 +84,7 @@ async def run_pr_review(
 
     async with session_maker() as session:
         # One run row per identity. PUBLISHED is terminal (skip); any other
-        # status (failed/abstained/stale-running) is reused and reset, so
-        # retries continue the same run's history instead of inserting
-        # duplicates that violate uq_review_run_identity.
+        # status is reused and reset so retries continue the same run.
         run = await session.scalar(
             select(ReviewRun).where(
                 ReviewRun.repo_owner == repository_owner,
@@ -111,6 +122,7 @@ async def run_pr_review(
         try:
             token = await get_installation_token(installation_id)
             github = GitHubClient(token)
+            llm = OpenRouterClient()
 
             try:
                 diff_text = await github.get_pr_diff(repository_owner, repository_name, pr_number)
@@ -133,19 +145,44 @@ async def run_pr_review(
                 if not settings.openrouter_review_model:
                     raise RuntimeError("OPENROUTER_REVIEW_MODEL is not configured")
 
-                llm = OpenRouterClient()
-                try:
-                    generated = await review_diff(
-                        files=reviewable,
-                        pr_title=pr_title,
-                        pr_body=pr_body,
-                        client=llm,
-                        model=settings.openrouter_review_model,
-                    )
-                finally:
-                    await llm.aclose()
+                # --- Phase 3B: index repo at head SHA, retrieve context ---
+                snapshot = await get_or_create_snapshot(
+                    session,
+                    owner=repository_owner,
+                    repo=repository_name,
+                    sha=head_sha,
+                )
+                await index_snapshot(session, snapshot=snapshot, github=github, llm=llm)
+                await session.commit()
 
-                # Persist suppressed comments — they are eval gold later.
+                contexts: list[RetrievedContext] = []
+                for changed_file in reviewable[:MAX_CONTEXT_QUERY_FILES]:
+                    file_contexts = await hybrid_retrieve(
+                        session,
+                        snapshot_id=snapshot.id,
+                        query_text=build_context_query(changed_file),
+                        llm=llm,
+                        embedding_model=settings.openrouter_embedding_model,
+                    )
+                    contexts.extend(file_contexts)
+
+                log.info(
+                    "context_retrieved",
+                    snapshot_id=snapshot.id,
+                    context_count=len(contexts),
+                    sources=[c.file_path for c in contexts[:MAX_CONTEXTS_FOR_PROMPT]],
+                )
+                # ------------------------------------------------------------
+
+                generated = await review_diff(
+                    files=reviewable,
+                    pr_title=pr_title,
+                    pr_body=pr_body,
+                    client=llm,
+                    model=settings.openrouter_review_model,
+                    contexts=contexts[:MAX_CONTEXTS_FOR_PROMPT],
+                )
+
                 for s in generated.suppressed:
                     session.add(
                         StoredReviewComment(
@@ -230,6 +267,7 @@ async def run_pr_review(
 
             finally:
                 await github.aclose()
+                await llm.aclose()
 
         except Exception as exc:
             run.status = RunStatus.FAILED

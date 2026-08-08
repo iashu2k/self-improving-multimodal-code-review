@@ -4,7 +4,10 @@ Return only the JSON object required by the response schema. Do not use Markdown
 outside string values. Do not include a preamble, explanation, or code fence.
 
 Rules:
-1. Comment only on added ("+") lines in the supplied diff.
+1. Anchor comments to added ("+") lines whenever possible. For findings about
+   REMOVED code (e.g., a deleted guard clause), anchor to the nearest remaining
+   context line shown in the diff. Every comment's line must appear in the
+   supplied commentable-lines map.
 2. Every comment must use an exact supplied file path and RIGHT-side line number.
 3. Raise only concrete bug-risk, security, correctness, or meaningful performance
    issues. Do not produce subjective style nitpicks.

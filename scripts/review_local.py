@@ -38,13 +38,14 @@ async def main() -> None:
 
     client = OpenRouterClient()
     try:
-        result = await review_diff(
+        generated = await review_diff(
             files=files,
             pr_title=args.title,
             pr_body=args.body,
             client=client,
             model=settings.openrouter_review_model,
         )
+        result = generated.result
     finally:
         await client.aclose()
 

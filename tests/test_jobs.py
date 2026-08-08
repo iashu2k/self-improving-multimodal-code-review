@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -65,7 +66,7 @@ def make_generated_review(*, should_post: bool = True) -> GeneratedReview:
         else [
             SuppressedComment(
                 comment=make_review_comment(),
-                reason="line_not_an_added_diff_line",
+                reason="line_not_in_diff",
             )
         ],
     )
@@ -78,7 +79,7 @@ def install_fakes(
     diff_text: str = SAMPLE_DIFF,
     generated: GeneratedReview | None = None,
 ) -> AsyncMock:
-    """Route all external boundaries (GitHub, OpenRouter, DB) to fakes."""
+    """Route all external boundaries (GitHub, OpenRouter, DB, RAG) to fakes."""
     monkeypatch.setattr(jobs, "get_installation_token", AsyncMock(return_value="tok"))
 
     fake_github = AsyncMock()
@@ -94,6 +95,12 @@ def install_fakes(
     )
     monkeypatch.setattr(jobs, "OpenRouterClient", lambda: AsyncMock())
     monkeypatch.setattr(jobs, "get_session_maker", lambda: session_maker)
+
+    # Phase 3B: stub indexing + retrieval — unit-tested separately
+    fake_snapshot = SimpleNamespace(id=1, status="indexed")
+    monkeypatch.setattr(jobs, "get_or_create_snapshot", AsyncMock(return_value=fake_snapshot))
+    monkeypatch.setattr(jobs, "index_snapshot", AsyncMock())
+    monkeypatch.setattr(jobs, "hybrid_retrieve", AsyncMock(return_value=[]))
 
     return fake_github
 
@@ -186,7 +193,7 @@ async def test_run_pr_review_abstains_and_persists_suppressions(
         comments = (await session.scalars(select(StoredReviewComment))).all()
         assert len(comments) == 1
         assert comments[0].status == CommentStatus.SUPPRESSED
-        assert comments[0].suppression_reason == "line_not_an_added_diff_line"
+        assert comments[0].suppression_reason == "line_not_in_diff"
 
 
 @pytest.mark.asyncio
