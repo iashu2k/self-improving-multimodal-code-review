@@ -36,7 +36,7 @@ async def test_review_diff_returns_validated_result() -> None:
         model="test-model",
     )
 
-    result = await review_diff(
+    generated = await review_diff(
         files=parse_unified_diff(SAMPLE_DIFF),
         pr_title="test",
         pr_body="",
@@ -44,5 +44,6 @@ async def test_review_diff_returns_validated_result() -> None:
         model="test-model",
     )
 
-    assert isinstance(result, ReviewResult)
-    assert result.comments[0].line == 12
+    assert isinstance(generated.result, ReviewResult)
+    assert generated.result.comments[0].line == 12
+    assert len(generated.accepted) == 1

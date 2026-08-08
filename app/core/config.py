@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
     api_prefix: str = "/api/v1"
+    config_version: str = "v1.0"
 
     secret_key: str = Field(min_length=32)
 

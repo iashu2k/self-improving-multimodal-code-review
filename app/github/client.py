@@ -36,6 +36,16 @@ class GitHubClient:
         response.raise_for_status()
         return response.text
 
+    async def get_pr_head_sha(self, owner: str, repo: str, pr_number: int) -> str:
+        """Fetch the CURRENT head SHA of the PR.
+
+        The webhook payload's head SHA can be stale (e.g., after a
+        force-push); always comment against the live head.
+        """
+        response = await self._client.get(f"/repos/{owner}/{repo}/pulls/{pr_number}")
+        response.raise_for_status()
+        return response.json()["head"]["sha"]
+
     async def create_review(
         self,
         owner: str,

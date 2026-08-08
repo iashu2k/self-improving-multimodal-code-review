@@ -6,6 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.config import settings
+from app.db.session import get_db
 from app.main import app
 
 TEST_SECRET = "test-webhook-secret-0123456789abcdef0123456789abcdef"
@@ -48,9 +49,35 @@ def make_headers(
     return headers
 
 
+class FakeArqPool:
+    def __init__(self) -> None:
+        self.jobs: list[dict] = []
+
+    async def enqueue_job(self, function: str, **kwargs) -> None:
+        self.jobs.append({"function": function, **kwargs})
+
+
 @pytest.fixture(autouse=True)
 def configure_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "github_webhook_secret", TEST_SECRET)
+
+
+@pytest.fixture(autouse=True)
+def fake_arq_pool() -> FakeArqPool:
+    pool = FakeArqPool()
+    app.state.arq_pool = pool
+    yield pool
+    del app.state.arq_pool
+
+
+@pytest.fixture(autouse=True)
+def override_db(db_session):
+    async def _override():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -59,13 +86,15 @@ def client() -> AsyncClient:
     return AsyncClient(transport=transport, base_url="http://test")
 
 
+# ---------------------------------------------------------------------------
+# Signature verification
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
 async def test_valid_signature_is_accepted(client: AsyncClient) -> None:
-    """A correctly signed pull_request event returns 202 and echoes the delivery ID.
-
-    This is the success-path regression test: it would have caught the structlog
-    'event' kwarg collision that produced a 500 after signature verification.
-    """
+    """Success-path regression test (would have caught the structlog
+    'event' kwarg collision that produced a 500 after verification)."""
     body = json.dumps(make_pr_payload()).encode()
 
     async with client:
@@ -158,7 +187,7 @@ async def test_tampered_body_is_rejected(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_non_pr_event_with_valid_signature_is_accepted(client: AsyncClient) -> None:
-    """Verification applies to all events; routing/filtering happens after verification."""
+    """Verification applies to all events; filtering happens after verification."""
     body = json.dumps({"action": "created", "repository": {"full_name": "owner/repo"}}).encode()
 
     async with client:
@@ -172,22 +201,12 @@ async def test_non_pr_event_with_valid_signature_is_accepted(client: AsyncClient
         )
 
     assert response.status_code == 202
+    assert response.json()["status"] == "ignored"
 
 
-class FakeArqPool:
-    def __init__(self) -> None:
-        self.jobs: list[dict] = []
-
-    async def enqueue_job(self, function: str, **kwargs) -> None:
-        self.jobs.append({"function": function, **kwargs})
-
-
-@pytest.fixture(autouse=True)
-def fake_arq_pool() -> FakeArqPool:
-    pool = FakeArqPool()
-    app.state.arq_pool = pool
-    yield pool
-    del app.state.arq_pool
+# ---------------------------------------------------------------------------
+# Job enqueue behavior
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -202,7 +221,7 @@ async def test_pr_opened_enqueues_review_job(
             "title": "Risky change",
             "body": "details",
             "draft": False,
-            "head": {"sha": "abc123"},
+            "head": {"sha": "abc123def456"},
         },
         "installation": {"id": 12345},
     }
@@ -212,7 +231,7 @@ async def test_pr_opened_enqueues_review_job(
         response = await client.post(
             "/api/v1/webhooks/github",
             content=body,
-            headers=make_headers(body),
+            headers=make_headers(body, delivery_id="enqueue-delivery-1"),
         )
 
     assert response.status_code == 202
@@ -221,7 +240,8 @@ async def test_pr_opened_enqueues_review_job(
     assert job["function"] == "run_pr_review"
     assert job["installation_id"] == 12345
     assert job["repository_owner"] == "owner"
-    assert job["head_sha"] == "abc123"
+    assert job["head_sha"] == "abc123def456"
+    assert job["_job_id"] == "review-owner/review-sandbox-1-abc123de"
 
 
 @pytest.mark.asyncio
@@ -238,9 +258,63 @@ async def test_draft_pr_does_not_enqueue(client: AsyncClient, fake_arq_pool: Fak
         response = await client.post(
             "/api/v1/webhooks/github",
             content=body,
-            headers=make_headers(body),
+            headers=make_headers(body, delivery_id="draft-delivery-1"),
         )
 
     assert response.status_code == 202
     assert response.json()["status"] == "ignored"
+    assert response.json()["reason"] == "draft_pr"
     assert fake_arq_pool.jobs == []
+
+
+# ---------------------------------------------------------------------------
+# Delivery deduplication (Phase 3A)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_redelivery_without_published_run_retries(
+    client: AsyncClient, fake_arq_pool: FakeArqPool
+) -> None:
+    """Redelivery with no published run = operator retry → re-enqueue."""
+    body = json.dumps(make_pr_payload()).encode()
+    headers = make_headers(body, delivery_id="dup-delivery-1")
+
+    async with client:
+        first = await client.post("/api/v1/webhooks/github", content=body, headers=headers)
+        second = await client.post("/api/v1/webhooks/github", content=body, headers=headers)
+
+    assert first.json()["status"] == "accepted"
+    assert second.json()["status"] == "retry_enqueued"
+    assert len(fake_arq_pool.jobs) == 2
+
+
+@pytest.mark.asyncio
+async def test_redelivery_after_publish_is_duplicate(
+    client: AsyncClient, fake_arq_pool: FakeArqPool, db_session
+) -> None:
+    """Redelivery after a published review = true duplicate → no re-enqueue."""
+    from app.db.models.review import ReviewRun, RunStatus
+
+    db_session.add(
+        ReviewRun(
+            repo_owner="owner",
+            repo_name="review-sandbox",
+            pr_number=1,
+            head_sha="deadbeef",
+            config_version=settings.config_version,
+            status=RunStatus.PUBLISHED,
+        )
+    )
+    await db_session.commit()
+
+    body = json.dumps(make_pr_payload()).encode()
+    headers = make_headers(body, delivery_id="dup-delivery-2")
+
+    async with client:
+        first = await client.post("/api/v1/webhooks/github", content=body, headers=headers)
+        second = await client.post("/api/v1/webhooks/github", content=body, headers=headers)
+
+    assert first.json()["status"] == "accepted"
+    assert second.json()["status"] == "duplicate"
+    assert len(fake_arq_pool.jobs) == 1

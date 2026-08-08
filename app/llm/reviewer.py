@@ -1,16 +1,24 @@
 import json
+from dataclasses import dataclass
 
 import structlog
 
-from app.agents.schemas import ReviewResult
-from app.agents.validator import validate_review_comments
+from app.agents.schemas import ReviewComment, ReviewResult
+from app.agents.validator import SuppressedComment, validate_review_comments
 from app.github.diff_parser import ChangedFile
 from app.llm.openrouter_client import OpenRouterClient
 from app.llm.prompts.review import SYSTEM_PROMPT
 
+logger = structlog.get_logger(__name__)
+
 MAX_DIFF_CHARS = 60_000
 
-logger = structlog.get_logger(__name__)
+
+@dataclass
+class GeneratedReview:
+    result: ReviewResult
+    accepted: list[ReviewComment]
+    suppressed: list[SuppressedComment]
 
 
 def render_diff_for_prompt(files: list[ChangedFile]) -> str:
@@ -38,7 +46,7 @@ async def review_diff(
     pr_body: str,
     client: OpenRouterClient,
     model: str,
-) -> ReviewResult:
+) -> GeneratedReview:
     rendered = render_diff_for_prompt(files)
     if len(rendered) > MAX_DIFF_CHARS:
         rendered = rendered[:MAX_DIFF_CHARS] + "\n[DIFF TRUNCATED]"
@@ -67,10 +75,7 @@ async def review_diff(
     )
     raw_result = ReviewResult.model_validate(response.content)
 
-    validation = validate_review_comments(
-        result=raw_result,
-        files=files,
-    )
+    validation = validate_review_comments(result=raw_result, files=files)
 
     if validation.suppressed_comments:
         logger.warning(
@@ -87,20 +92,25 @@ async def review_diff(
         )
 
     if validation.accepted_comments:
-        return ReviewResult(
+        result = ReviewResult(
             summary=raw_result.summary,
             comments=validation.accepted_comments,
             should_post_review=True,
             abstain_reason=None,
         )
+    else:
+        reason = raw_result.abstain_reason
+        if validation.suppressed_comments and reason is None:
+            reason = "All generated comments failed deterministic validation."
+        result = ReviewResult(
+            summary=raw_result.summary,
+            comments=[],
+            should_post_review=False,
+            abstain_reason=reason,
+        )
 
-    reason = raw_result.abstain_reason
-    if validation.suppressed_comments and reason is None:
-        reason = "All generated comments failed deterministic validation."
-
-    return ReviewResult(
-        summary=raw_result.summary,
-        comments=[],
-        should_post_review=False,
-        abstain_reason=reason,
+    return GeneratedReview(
+        result=result,
+        accepted=validation.accepted_comments,
+        suppressed=validation.suppressed_comments,
     )
