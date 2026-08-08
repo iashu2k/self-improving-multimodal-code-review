@@ -2,7 +2,11 @@
 
 A GitHub App that reviews pull requests with grounded, schema-validated inline comments — built as an evaluation-driven system that measures its own precision, groundedness, and reliability, then improves its prompts and policies through a controlled, human-gated feedback loop.
 
-**Status:** Phase 1 complete (Local Review MVP) — Phase 2 (GitHub App integration) in progress.
+**Status:** Phase 2 complete — the app now publishes real inline reviews on pull requests. Next: Phase 3 (PostgreSQL persistence + repository RAG).
+
+<p align="center">
+  <em>Live review published by the bot on a sandbox PR — anchored to the exact changed line, with severity, category, and a suggested fix.</em>
+</p>
 
 ---
 
@@ -19,10 +23,12 @@ A GitHub App that reviews pull requests with grounded, schema-validated inline c
 - [Development Log](#development-log)
   - [Phase 0 — Foundation](#phase-0--foundation)
   - [Phase 1 — Local Review MVP](#phase-1--local-review-mvp)
+  - [Phase 2A — GitHub App + Webhook Verification](#phase-2a--github-app--webhook-verification)
+  - [Phase 2B — End-to-End Inline Review Publishing](#phase-2b--end-to-end-inline-review-publishing)
 - [Engineering Decisions](#engineering-decisions)
 - [Testing](#testing)
 - [Model Configuration](#model-configuration)
-- [Roadmap](#roadmap)
+- [Known Limitations](#known-limitations)
 
 ---
 
@@ -40,60 +46,66 @@ Most AI code-review demos are a single prompt that dumps unverifiable text onto 
 
 | Typical demo | This project |
 |---|---|
-| One-shot LLM prompt | LangGraph state machine with router → RAG → generator → critic |
+| One-shot LLM prompt | Pipeline with parser → generator → deterministic gate → publisher |
 | Free-text output pasted as a comment | Strict JSON Schema structured output, Pydantic-validated |
-| Trusts the model's line numbers | Parser-derived commentable lines enforced deterministically |
-| No way to say "I don't know" | First-class abstention path with measured no-comment accuracy |
-| "Self-improving" = changes its prompt | Versioned configs promoted only by passing a promotion gate on a held-out benchmark |
-| Text only | Optional vision analysis of rendered UI for frontend PRs |
+| Trusts the model's line numbers | Parser-derived commentable lines enforced deterministically; model is given the legal line whitelist |
+| No way to say "I don't know" | First-class abstention path — validated in production when all candidate comments fail the gate |
+| Webhook handler does LLM calls inline | 202-ack + ARQ background jobs with commit-scoped dedup keys |
+| "Self-improving" = changes its prompt | Versioned configs promoted only by passing a promotion gate on a held-out benchmark (Phase 8) |
+| Text only | Optional vision analysis of rendered UI for frontend PRs (Phase 5) |
 
 ## Architecture (Current State)
 
-Phase 1 delivered the local core of the pipeline:
+End-to-end flow as of Phase 2:
 
 ```text
-git diff (base...head)
+PR opened / synchronized on an installed repository
       │
       ▼
-┌─────────────────────┐
-│  Unified diff parser │  app/github/diff_parser.py
-│  (RIGHT-side lines)  │
-└─────────┬───────────┘
-          │  List[ChangedFile] with commentable_lines
-          ▼
-┌─────────────────────┐
-│   Review generator   │  app/llm/reviewer.py
-│  (OpenRouter call)   │  JSON Schema structured output
-└─────────┬───────────┘
-          │  raw model JSON
-          ▼
-┌─────────────────────┐
-│  Pydantic validation │  app/agents/schemas.py (ReviewResult)
-└─────────┬───────────┘
-          ▼
-┌─────────────────────┐
-│ Deterministic gate   │  app/agents/validator.py
-│ • line must be added │  • file must be in diff
-│ • no duplicate lines │  • per-review / per-file caps
-└─────────┬───────────┘
-          ▼
-   review.json artifact
-   (Phase 2: GitHub inline review)
+GitHub webhook ──► POST /api/v1/webhooks/github        app/api/routes/webhooks.py
+      │            • HMAC-SHA256 verified against RAW body (constant-time compare)
+      │            • filters: event=pull_request, action ∈ {opened, synchronize,
+      │              reopened, ready_for_review}, not draft
+      │            • enqueue job with dedup key review-{repo}-{pr}-{head_sha[:8]}
+      │            • returns 202 immediately
+      ▼
+ARQ worker (Redis)                                     app/workers/jobs.py
+      │
+      ├─► GitHub App auth                              app/github/app_auth.py
+      │     RS256 JWT (10-min) → installation token (cached, 1-hour, 5-min buffer)
+      │
+      ├─► Fetch current PR head SHA + unified diff     app/github/client.py
+      │
+      ├─► Parse diff                                   app/github/diff_parser.py
+      │     RIGHT-side line tracking · "\ No newline" marker handling
+      │     file filters (lockfiles, binaries, minified assets skipped)
+      │
+      ├─► LLM review (OpenRouter)                      app/llm/reviewer.py
+      │     strict JSON Schema output · [line N] annotations
+      │     + explicit commentable-lines whitelist in prompt
+      │
+      ├─► Deterministic gate                           app/agents/validator.py
+      │     line must be an added diff line · no dupes · per-review/per-file caps
+      │     all-invalid ⇒ clean abstention (posts nothing)
+      │
+      └─► Publish pending review + inline comments     app/github/client.py
+            POST /repos/{o}/{r}/pulls/{n}/reviews  (event=COMMENT)
 ```
 
 ## Full System Roadmap
 
 ```text
-[done]      Phase 0  Foundation — FastAPI skeleton, config, logging, tests
-[done]      Phase 1  Local Review MVP — parser → OpenRouter → validated JSON
-[next]      Phase 2  GitHub App — HMAC webhook verification, async jobs, inline comments
-[planned]   Phase 3  Repository RAG — AST-aware chunking, pgvector + Postgres FTS hybrid search
-[planned]   Phase 4  LangGraph — router, retriever, generator, critic, max-2 repair loop
-[planned]   Phase 5  Multimodal — Playwright screenshots + vision model, code-grounded UI findings
-[planned]   Phase 6  Golden dataset — 100 curated PRs (seeded from public review corpora)
-[planned]   Phase 7  Evaluation harness — precision/recall, groundedness, pass@k, baselines
-[planned]   Phase 8  Closed loop — feedback, diagnoser, versioned configs, promotion gate
-[planned]   Phase 9  Observability/UI — Langfuse tracing, dashboard, deployment, demo
+[done]      Phase 0   Foundation — FastAPI skeleton, config, logging, tests
+[done]      Phase 1   Local Review MVP — parser → OpenRouter → validated JSON
+[done]      Phase 2   GitHub App — HMAC webhooks, async jobs, inline review publishing
+[next]      Phase 3   Persistence + Repository RAG — PostgreSQL, Alembic, pgvector,
+                      AST-aware chunking, hybrid retrieval, real idempotency
+[planned]   Phase 4   LangGraph — router, retriever, generator, critic, max-2 repair loop
+[planned]   Phase 5   Multimodal — Playwright screenshots + vision model, code-grounded UI findings
+[planned]   Phase 6   Golden dataset — 100 curated PRs (seeded from public review corpora)
+[planned]   Phase 7   Evaluation harness — precision/recall, groundedness, pass@k, baselines
+[planned]   Phase 8   Closed loop — feedback, diagnoser, versioned configs, promotion gate
+[planned]   Phase 9   Observability/UI — Langfuse tracing, dashboard, deployment, demo
 ```
 
 ## Tech Stack
@@ -103,13 +115,16 @@ git diff (base...head)
 | Language | Python 3.12 | Primary ML/LLM ecosystem |
 | API framework | FastAPI | Async, typed, OpenAPI docs; ideal for webhooks + admin API |
 | LLM access | OpenRouter | One endpoint, swappable models, JSON Schema structured outputs |
+| Review model | `qwen/qwen3-coder-next` | Coding-agent-optimized, ~$0.12/M in + $0.80/M out, 5/5 structured-output reliability |
 | Schemas | Pydantic v2 | One schema drives both API contract and model output contract |
-| Agent orchestration | LangGraph (Phase 4) | Conditional edges, bounded loops, persisted state |
+| Background jobs | ARQ + Redis | Lightweight async Python worker; job-ID dedup |
+| GitHub integration | GitHub App (JWT + installation tokens) | Least-privilege auth, bot identity on reviews |
+| Tunnel (dev) | ngrok reserved domain | Stable webhook URL across restarts |
 | Persistence | PostgreSQL + pgvector (Phase 3) | Review runs, feedback, embeddings, FTS in one store |
-| Background jobs | ARQ + Redis (Phase 2) | Lightweight async Python worker |
+| Agent orchestration | LangGraph (Phase 4) | Conditional edges, bounded loops, persisted state |
 | Observability | Langfuse (Phase 9) | Traces, prompt versions, cost/latency, evals |
-| Package management | uv | Fast, reproducible, editable-install project mode |
-| Quality gates | Ruff, mypy (strict), pytest, pre-commit | Enforced on every commit |
+| Package management | uv (package mode) | Fast, reproducible, editable-install imports everywhere |
+| Quality gates | Ruff, mypy strict, pytest, pre-commit | Enforced on every commit |
 
 ## Repository Structure
 
@@ -118,35 +133,43 @@ self-improving-multimodal-code-review/
 ├── app/
 │   ├── api/
 │   │   ├── router.py                 # API route aggregation
+│   │   ├── dependencies.py           # lazy ARQ pool on app.state (test-injectable)
 │   │   └── routes/
-│   │       └── health.py             # GET /api/v1/health
+│   │       ├── health.py             # GET /api/v1/health
+│   │       └── webhooks.py           # POST /api/v1/webhooks/github (HMAC + routing)
 │   ├── core/
 │   │   ├── config.py                 # pydantic-settings; env-driven, validated
 │   │   └── logging.py                # structlog JSON logging
 │   ├── github/
-│   │   └── diff_parser.py            # unified-diff parser (commentable RIGHT lines)
+│   │   ├── app_auth.py               # App JWT (RS256) + cached installation tokens
+│   │   ├── client.py                 # diff fetch, head-SHA fetch, review publishing
+│   │   ├── diff_parser.py            # unified-diff parser (commentable RIGHT lines)
+│   │   ├── formatting.py             # severity/category badges + review summary
+│   │   └── webhook_verifier.py       # HMAC-SHA256, constant-time comparison
 │   ├── agents/
 │   │   ├── schemas.py                # ReviewComment / ReviewResult contracts
 │   │   └── validator.py              # deterministic comment gate
 │   ├── llm/
-│   │   ├── openrouter_client.py      # async client, structured outputs, retries
-│   │   ├── reviewer.py               # one-shot review generator (pre-LangGraph)
+│   │   ├── openrouter_client.py      # async client, structured outputs, smart retries
+│   │   ├── reviewer.py               # review generator (pre-LangGraph)
 │   │   └── prompts/
 │   │       └── review.py             # system prompt with severity rubric
+│   ├── workers/
+│   │   ├── jobs.py                   # run_pr_review — the end-to-end pipeline
+│   │   └── settings.py               # ARQ WorkerSettings
 │   ├── db/                           # (Phase 3)
-│   ├── workers/                      # (Phase 2)
 │   └── main.py                       # FastAPI app factory
 ├── scripts/
 │   └── review_local.py               # CLI: git diff → review.json
-├── tests/                            # 11 tests, all passing
+├── tests/                            # 26 tests, all passing
 ├── data/
 │   ├── raw/                          # ignored
 │   ├── processed/                    # ignored review artifacts
 │   └── golden_prs/                   # (Phase 6)
-├── docs/
+├── docker-compose.yml                # Redis (Postgres added in Phase 3)
 ├── pyproject.toml                    # uv package mode, ruff/mypy/pytest config
 ├── .env.example
-└── docker-compose.yml                # (Phase 2)
+└── docs/
 ```
 
 ## Setup
@@ -156,33 +179,47 @@ git clone https://github.com/iashu2k/self-improving-multimodal-code-review.git
 cd self-improving-multimodal-code-review
 
 uv sync
+docker compose up -d redis
 
 cp .env.example .env
-# Edit .env:
-#   SECRET_KEY              -> python -c "import secrets; print(secrets.token_urlsafe(48))"
-#   OPENROUTER_API_KEY      -> your key
-#   OPENROUTER_REVIEW_MODEL -> qwen/qwen3-coder-next
+# Edit .env — see table below
 ```
 
-Quality tooling:
+### Environment variables
+
+| Variable | Purpose | Where to get it |
+|---|---|---|
+| `SECRET_KEY` | App secret | `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `OPENROUTER_API_KEY` | LLM access | openrouter.ai/keys |
+| `OPENROUTER_REVIEW_MODEL` | Review generator model | `qwen/qwen3-coder-next` |
+| `GITHUB_APP_ID` | Numeric App ID | GitHub → Developer settings → your App |
+| `GITHUB_PRIVATE_KEY_PATH` | Path to `.pem` (outside repo) | App page → Generate a private key |
+| `GITHUB_WEBHOOK_SECRET` | HMAC secret for webhook verification | You generate it; set on the App |
+| `REDIS_URL` | Job queue | `redis://localhost:6379/0` (docker-compose) |
+
+### GitHub App configuration
+
+- **Permissions:** Contents (read), Metadata (read), Pull requests (read & write)
+- **Events:** `pull_request`, `pull_request_review`, `pull_request_review_comment`
+- **Webhook URL:** `https://<your-ngrok-domain>/api/v1/webhooks/github`
+- Install the App on your test repositories only.
+
+### Run the full stack (4 processes)
 
 ```bash
-uv run pre-commit install
-uv run ruff check . && uv run ruff format --check . && uv run pytest
-```
-
-Run the API:
-
-```bash
-uv run uvicorn app.main:app --reload
-# http://localhost:8000/docs
+docker compose up -d redis                                  # 1. queue
+uv run uvicorn app.main:app --reload                        # 2. API
+uv run arq app.workers.settings.WorkerSettings              # 3. worker
+ngrok http --url=<your-reserved-domain>.ngrok-free.dev 8000 # 4. tunnel
 ```
 
 ## Usage
 
-### Local PR review (Phase 1 CLI)
+### Automatic PR review (primary flow)
 
-Review any local repo between two refs:
+Open or update a PR on any repository where the App is installed. Within ~10 seconds the bot posts a review: a summary plus inline comments anchored to changed lines — or nothing at all, if every candidate comment fails validation (abstention).
+
+### Local review CLI (no GitHub needed)
 
 ```bash
 uv run python scripts/review_local.py \
@@ -190,119 +227,83 @@ uv run python scripts/review_local.py \
   --base HEAD~1 \
   --head HEAD \
   --title "Refactor authentication" \
-  --body "Simplify the administrator authentication flow." \
   --out data/processed/review.json
 ```
 
-Example validated output on a seeded authentication-bypass fixture:
+### Example published comment
 
-```json
-{
-  "summary": "Authentication logic changed to bypass password check for admin user.",
-  "comments": [
-    {
-      "file_path": "auth.py",
-      "line": 4,
-      "side": "RIGHT",
-      "severity": "high",
-      "category": "security",
-      "title": "Authentication bypass for admin user",
-      "body": "The admin user is now authenticated without validating the password, allowing any password to grant admin access.",
-      "evidence": [
-        "    if username == \"admin\":",
-        "        return True"
-      ],
-      "suggested_fix": "Remove the special case for admin and require password validation for all users.",
-      "confidence": 0.95
-    }
-  ],
-  "should_post_review": true,
-  "abstain_reason": null
-}
-```
+> 🟡 **[MEDIUM · bug risk] Return type mismatch**
+>
+> The function signature declares a return type of float but now returns an int, which may break callers expecting float precision.
+>
+> **Suggested fix:** Update the return type annotation to `int` or remove the `int()` cast to preserve float semantics.
 
 ---
 
 ## Development Log
 
-This section records the actual engineering journey — including the failures and why specific decisions were made.
+The actual engineering journey — failures included, because that's where the design decisions came from.
 
 ### Phase 0 — Foundation
 
-**Goal:** a reproducible, testable skeleton that keeps secrets out of git and establishes contracts every later phase builds on.
+**Goal:** reproducible, testable skeleton; secrets out of git; contracts for every later phase.
 
-**Built:**
+**Built:** uv package-mode project (hatchling, `packages = ["app"]` so `app/` imports work from scripts/tests without `PYTHONPATH`); `pydantic-settings` config with env-driven model aliases; structlog JSON logging; health route; Ruff/mypy-strict/pytest/pre-commit gates.
 
-- `uv init --python 3.12`, converted to **uv package mode** (`[tool.uv] package = true`, hatchling backend, `packages = ["app"]`) so `app/` is importable from `scripts/` and `tests/` without `PYTHONPATH` hacks.
-- `app/core/config.py` — `pydantic-settings` loading everything from `.env`: app metadata, `SECRET_KEY`, OpenRouter credentials and model aliases, and placeholder slots for database, Redis, GitHub App, and Langfuse credentials (each lands in the phase that uses it).
-  - `secret_key` carries a safe default so the type checker and local dev both pass; a model validator rejects the placeholder outside `development`.
-- `app/core/logging.py` — structlog JSON logging (trace-friendly from day one).
-- `GET /` and `GET /api/v1/health` with tests.
-- Tooling: Ruff (E/F/I/UP/B/SIM), mypy strict, pytest + pytest-asyncio, pre-commit with ruff/ruff-format hooks.
-- `.gitignore` covering `.env`, generated review artifacts under `data/`, and the local scratch fixture.
+**Issues hit:**
 
-**Issues hit and fixed:**
-
-1. *Pylance `reportCallIssue`: "Argument missing for parameter secret_key".* Type checker only sees the class signature, not runtime `.env` loading — fixed with a default plus a production-safety validator.
-2. *Starlette TestClient deprecation warning* — switched tests to `httpx.ASGITransport` + `AsyncClient` (no new dependency).
-3. *First commit aborted by pre-commit* (`end-of-file-fixer` modified the test file) — established the re-stage-and-recommit loop.
-
-**Definition of done:** `uv run uvicorn app.main:app --reload` serving health checks; 2 tests green.
+1. *Pylance `reportCallIssue` on required `secret_key`* — type checker can't see runtime `.env` loading. Fixed with a default + a validator that rejects the placeholder outside development.
+2. *Starlette TestClient deprecation* — moved tests to `httpx.ASGITransport` + `AsyncClient`.
+3. *First commit aborted by pre-commit* (`end-of-file-fixer`) — established the re-stage loop.
 
 ### Phase 1 — Local Review MVP
 
-**Goal:** `git diff` in → parsed structured diff → OpenRouter structured output → schema-validated, deterministically gated review artifact. No GitHub App, no DB, no LangGraph yet.
+**Goal:** `git diff` → parsed structured diff → OpenRouter structured output → schema-validated, deterministically gated artifact.
 
-**Built (in order):**
+**Built:** domain schemas (`ReviewComment`/`ReviewResult` with evidence, severity rubric, abstention); hand-rolled unified-diff parser exposing `commentable_lines` (added RIGHT-side lines); async OpenRouter client with strict JSON Schema + `provider.require_parameters`; review generator with `[line N]` prompt annotations; deterministic validator (added-line-only, dedup, per-review/per-file caps); CLI.
 
-1. **Domain schemas** — `app/agents/schemas.py`
-   - `Severity` (critical/high/medium/low), `ReviewCategory` (bug_risk, security, performance, maintainability, style, ui_regression) as `StrEnum`s.
-   - `ReviewComment`: file path, RIGHT-side line, severity, category, title, body, **evidence (min 1)**, suggested fix, confidence.
-   - `ReviewResult`: summary, comments, `should_post_review`, `abstain_reason`.
-   - These contracts survive into the LangGraph phase unchanged.
+**The model-reliability journey:**
 
-2. **Unified-diff parser** — `app/github/diff_parser.py`
-   - Parses `diff --git`, `---`/`+++`, `@@` hunk headers, and add/del/context lines into `ChangedFile → DiffHunk → DiffLine`.
-   - Tracks old/new line numbers per line; exposes `commentable_lines` = the set of added RIGHT-side line numbers — the exact anchor GitHub's review-comment API needs.
-   - Handles added/deleted/renamed files.
+1. *Intermittent `JSONDecodeError` on `qwen/qwen3.6-35b-a3b`* — thinking-mode output consuming the token budget before final JSON. Hardened the client: retry malformed JSON/empty content (not just HTTP errors), preview raw content in errors.
+2. *Repeated empty `message.content` on the same model* — two full retry-cycle failures. Decision: treat the route as unreliable for this workload; switch models rather than fight it. Added diagnostic logging (`finish_reason`, `has_reasoning`, `usage`).
+3. *404 on `qwen/qwen3-coder`* — model ID didn't resolve. Taught the retry policy to **fail fast on permanent errors** (404) while still retrying 429/5xx/malformed output.
+4. *Final: `qwen/qwen3-coder-next`* — **5/5** consecutive valid structured runs on the seeded auth-bypass fixture; correct line anchor, concise evidence, ~$0.12/M input tokens.
 
-3. **OpenRouter client** — `app/llm/openrouter_client.py`
-   - Async httpx client hitting `/api/v1/chat/completions`.
-   - Strict JSON Schema structured output via `response_format: { type: "json_schema", strict: true }`.
-   - `"provider": { "require_parameters": true }` so OpenRouter only routes to providers that honor the schema.
-   - Tenacity retries (3 attempts, exponential backoff) for **transient** failures only: 429/5xx, empty content, malformed JSON, invalid usage objects. Permanent errors (404 model-not-found) fail fast.
+**Verified behavior:** correct abstention on a harmless scaffold diff (saved as golden-set negative case #1); correct detection of a seeded authentication bypass anchored to the added line; 11 tests passing.
 
-4. **Review generator** — `app/llm/reviewer.py` + `app/llm/prompts/review.py`
-   - `render_diff_for_prompt()` annotates every added line with `[line N]` — the single highest-leverage trick for line-number accuracy: the model copies the annotation instead of counting lines.
-   - System prompt enforces: comment only on added lines, ≤2-sentence bodies, remediation only in `suggested_fix`, exact-quote evidence, max 3 comments, abstain when nothing is found, mandatory severity rubric.
+### Phase 2A — GitHub App + Webhook Verification
 
-5. **Deterministic validator** — `app/agents/validator.py`
-   - Suppresses comments for: file not in diff, line not an added diff line, duplicate location, per-review cap (>5), per-file cap (>3).
-   - The reviewer post-processes through this gate before returning; a run whose every comment fails validation converts to a clean abstention.
+**Goal:** real GitHub `pull_request` events reaching local FastAPI over a tunnel, HMAC-verified.
 
-6. **CLI** — `scripts/review_local.py`
-   - `git diff base...head` → parse → review → write `review.json`.
+**Built:** GitHub App (least-privilege permissions, PR events); private key stored as a **file path** outside the repo (multiline PEM in env files is a classic silent-auth bug); `verify_signature()` — HMAC-SHA256 against the **raw request body** with `hmac.compare_digest` (re-serialized JSON breaks signatures); webhook route returning 401/202; ngrok reserved domain for a stable URL; sandbox repo (`review-sandbox`) with a seeded `int()`-truncation PR.
 
-**Verified behavior:**
+**Issues hit:**
 
-| Test | Result |
-|---|---|
-| Scaffold diff (no real issues) | Correct abstention: 0 comments, `should_post_review=false`, reasoned `abstain_reason` — saved as first golden-set negative case |
-| Seeded auth bypass fixture | Correct detection, anchored to added line, `security` category, concise evidence + fix |
-| Structured-output reliability | **5/5 consecutive valid runs** on `qwen/qwen3-coder-next` |
-| Line-number accuracy | Correct on all runs (parser-derived `[line N]` annotation) |
-| Unit tests | 11 passing (parser, validator, reviewer with mocked client, client error types) |
+1. *405 Method Not Allowed* — webhook URL was the bare ngrok domain; GitHub POSTed to `/`. Fixed with the full route path. (Confirmed tunnel/DNS/server healthy — 405 is a routing answer, not a connectivity failure.)
+2. *500 after verification passed* — structlog collision: `logger.info("webhook_received", event=...)` passes `event` twice (the positional arg IS the event name). Renamed kwarg to `github_event`; the success-path test `test_valid_signature_is_accepted` was written to catch exactly this class of regression.
 
-**Issues hit and fixed (the model-reliability journey):**
+### Phase 2B — End-to-End Inline Review Publishing
 
-1. *`ModuleNotFoundError: No module named 'app'` from scripts/* — fixed by uv package mode (above).
-2. *Ruff UP042* — migrated `class Severity(str, Enum)` to `StrEnum`.
-3. *Test expectations wrong, not the parser* — the sample hunk's added lines are {11, 12, 13}; the test incorrectly expected {12, 13, 14}. Fixed the test; parser was correct.
-4. *Intermittent `JSONDecodeError` on `qwen/qwen3.6-35b-a3b`* — root cause: reasoning/thinking output consuming the token budget before final JSON. Response: hardened the client (retry malformed JSON, not just HTTP errors; preview raw content in errors).
-5. *Repeated empty `message.content` on the same model* — two full retry-cycle failures. Decision: treat the route as unreliable for this workload and change models rather than fight it. Diagnostic logging added (`finish_reason`, `has_reasoning`, `usage`) to confirm.
-6. *404 on `qwen/qwen3-coder`* — model ID did not resolve on the current route. Fixed retry policy to **not** retry 404s (permanent).
-7. *Final choice: `qwen/qwen3-coder-next`* — purpose-built for coding agents, ~$0.12/M input + $0.80/M output tokens, **5/5** successful structured runs.
-8. *Ruff UP038 + misplaced function* — `is_retryable_exception` moved from an accidental class method to module level; `isinstance(x, A | B)` syntax applied.
+**Goal:** PR event → background job → App auth → diff fetch → Phase 1 pipeline → **real review on the PR**.
+
+**Built:**
+
+- **Two-legged GitHub App auth** — RS256 JWT (iat −60s skew, 10-min exp) exchanged for installation tokens, cached with a 5-minute expiry buffer.
+- **`GitHubClient`** — PR diff via the `application/vnd.github.v3.diff` media type, current-head-SHA fetch, single-call review creation with inline comment array (`{path, line, side: RIGHT, body}`).
+- **ARQ worker** — `run_pr_review` job: filter non-reviewable files (lockfiles, minified, binaries, deleted files) → review → validate → publish; 202-ack webhook keeps LLM latency out of GitHub's webhook timeout.
+- **Idempotency layer 1** — job dedup key `review-{repo}-{pr}-{head_sha[:8]}`: same-commit redeliveries can't double-post; new pushes get fresh reviews.
+- **Comment formatting** — severity emoji + category badge + concise body + suggested fix; branded review summary.
+
+**Issues hit (each one found by a layer of defense):**
+
+1. *Redeliveries silently not running* — first job-id scheme used the GitHub delivery ID; after a failure, ARQ's retained job record blocked re-enqueue for an hour. Fix: commit-scoped dedup keys (+ documented limitation: failed-job retry needs Phase 3's `review_runs` table for proper semantics).
+2. *422 "Line could not be resolved"* — GitHub's error body was being discarded by `raise_for_status()`. Added `GitHubAPIError` carrying the full response text **and** the outgoing payload — the single most useful debugging change of the phase.
+3. *Validator-caught abstention* — the model anchored a comment to a non-added line; the gate suppressed all candidates and the system abstained cleanly instead of posting garbage. Exactly what the gate is for.
+4. **Root cause of #2 and #3:** `\ No newline at end of file` markers in GitHub's API diff were parsed as *context lines*, shifting every subsequent line number by one. The model was right; our arithmetic was wrong. Fixed by skipping `\`-prefixed marker lines without touching counters, with a regression test using the real-world fixture. **Lesson:** test parsers against the actual API diff format, not only hand-written fixtures.
+5. *Prompt hardening from evidence* — after the suppression event, the model now receives an explicit commentable-lines whitelist map alongside inline `[line N]` annotations. Subsequent run: correct anchor (line 3), correct category (bug risk), correctly identified the float→int contract break.
+6. **Proactive correctness fix** — review comments now use the **current** head SHA fetched from the API at job time, not the webhook payload's (stale after force-pushes).
+
+**Result:** review published on `review-sandbox` PR #1 — `review_id=4889599633`, 1 inline comment, correctly anchored. 23 → 26 tests passing.
 
 ---
 
@@ -310,41 +311,51 @@ This section records the actual engineering journey — including the failures a
 
 1. **Modular monolith, not microservices.** All phases live in one deployable FastAPI app; complexity is earned, not assumed.
 2. **One Pydantic schema, two consumers.** The same `ReviewResult` schema drives both the OpenRouter JSON Schema request and response validation — no parallel contracts to drift.
-3. **Determinism around the model, freedom inside it.** The LLM may reason freely about *what* to flag, but *where* a comment may land is enforced by the parser, not trusted to the model.
-4. **Fail closed.** Empty, malformed, or schema-invalid output → retry → abstain. Nothing reaches a user (or, in Phase 2, a PR) without passing every gate.
-5. **Model as configuration, not commitment.** Models live in `.env` aliases (`OPENROUTER_REVIEW_MODEL`, `_CRITIC_MODEL`, `_VISION_MODEL`, `_JUDGE_MODEL`) so they can be benchmarked and swapped per role without code changes.
+3. **Determinism around the model, freedom inside it.** The LLM reasons freely about *what* to flag; *where* a comment may land is enforced by the parser, and the model is told the legal set explicitly.
+4. **Fail closed.** Empty, malformed, schema-invalid, or ungrounded output → retry → suppress → abstain. Nothing reaches a PR without passing every gate.
+5. **Model as configuration, not commitment.** Models live in `.env` aliases per role; adoption requires passing a consecutive-run structured-output check (≥9/10 valid with retry recovery).
 6. **Retry transient, fail fast on permanent.** 429/5xx/malformed-JSON retry; 404 and validation-fatal errors don't.
-7. **Document the journey.** Model reliability findings are recorded here as engineering decisions — this is production realism, not tutorial code.
+7. **Webhooks ack fast, work async.** 202 within milliseconds; LLM latency lives in the worker. Dedup keys make GitHub retries harmless.
+8. **Errors must carry evidence.** API errors include response bodies and outgoing payloads; suppressed comments are logged with reasons. Debugging from data, not guesses.
+9. **Document the journey.** Model reliability findings, parser bugs, and auth pitfalls are recorded here as decisions — production realism, not tutorial code.
 
 ## Testing
 
 ```bash
-uv run pytest
+uv run pytest    # 26 tests, all passing
 ```
 
-```text
-tests/test_diff_parser.py       hunk parsing, commentable-line sets, context/del exclusion
-tests/test_reviewer.py          reviewer with mocked client → validated ReviewResult
-tests/test_validator.py         accept on added line; reject context line / unknown file / duplicate
-tests/test_openrouter_client.py structured-output error semantics
-tests/test_health.py            API smoke tests
-```
-
-**11 tests, all passing.** mypy strict and Ruff enforced via pre-commit on every commit.
+| Suite | Coverage |
+|---|---|
+| `test_diff_parser.py` | Hunk parsing, commentable-line sets, `\ No newline` marker regression |
+| `test_reviewer.py` | Reviewer with mocked client → validated `ReviewResult` |
+| `test_validator.py` | Accept added line; reject context line / unknown file / duplicate / caps |
+| `test_openrouter_client.py` | Structured-output error semantics |
+| `test_webhooks.py` | Valid/invalid/missing/malformed signatures, tampered body, ping events, draft-PR skip, job enqueue args |
+| `test_formatting.py` | Severity badges, suggested-fix rendering |
+| `test_jobs.py` | End-to-end job with faked auth/GitHub/LLM → published review payload |
+| `test_health.py` | API smoke tests |
 
 ## Model Configuration
 
 | Role | Model | Phase |
 |---|---|---|
-| Review generator | `qwen/qwen3-coder-next` | 1 ✔ |
+| Review generator | `qwen/qwen3-coder-next` ✅ (5/5 structured runs) | 1–2 |
 | Critic / QA | TBD (benchmark vs. reviewer model) | 4 |
 | Vision analyzer | TBD (vision-capable, structured-output) | 5 |
 | Eval judge | TBD (lowest-cost structured-output model) | 7 |
 
-Reliability policy: a model is only adopted for a role after passing a consecutive-run structured-output check on representative fixtures (≥9/10 valid with automatic retry recovery).
+## Known Limitations
+
+Honest list — each has a phase assigned:
+
+- **Failed-job retry:** ARQ dedup keys block re-enqueue of a failed job for up to an hour. Proper retry semantics arrive with the `review_runs` table (Phase 3).
+- **No persistence yet:** runs, comments, and suppressions live only in logs (Phase 3).
+- **Diff-only context:** reviews don't yet use surrounding repository code/tests/docs — that's the RAG phase (Phase 3), and it should improve both precision and the quality of evidence.
+- **Single repo language tested:** Python so far; the parser is language-agnostic but review quality per language is unevaluated (Phase 6).
+- **Quality tuning is ad hoc:** severity calibration (e.g., contract-breaking changes scoring MEDIUM vs HIGH) awaits the golden dataset + critic loop rather than prompt whack-a-mole (Phases 4, 6, 7).
+- **Dev-only hosting:** ngrok + local worker; deployment topology comes in Phase 9.
 
 ## Roadmap
 
-**Phase 2 (next):** GitHub App registration, `X-Hub-Signature-256` verification, `pull_request` webhook intake with idempotency, ARQ background jobs, and inline review publishing via pending-review flow on a public test repository.
-
-Then: repository RAG (3) → LangGraph agent graph (4) → multimodal UI verification (5) → 100-PR golden dataset (6) → evaluation harness (7) → closed-loop promotion gate (8) → observability, dashboard, deployment, demo (9).
+**Phase 3 (next):** PostgreSQL + Alembic + pgvector. Persist webhook events, review runs, comments, and suppressions; real idempotency via a unique `(repo, pr, head_sha, config_version)` constraint; AST-aware repository chunking and hybrid (vector + FTS) retrieval so reviews can cite tests and call sites outside the diff.
