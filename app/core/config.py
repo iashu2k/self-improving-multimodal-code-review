@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     database_url: PostgresDsn | None = None
     redis_url: RedisDsn | None = None
 
-    github_app_id: str | None = None
-    github_private_key: str | None = None
+    github_app_id: int | None = None
+    github_private_key_path: str | None = None
     github_webhook_secret: str | None = None
 
     langfuse_public_key: str | None = None
