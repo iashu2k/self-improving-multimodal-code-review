@@ -1,4 +1,5 @@
 from app.agents.schemas import ReviewResult
+from app.agents.validator import validate_review_comments
 from app.github.diff_parser import ChangedFile
 from app.llm.openrouter_client import OpenRouterClient
 from app.llm.prompts.review import SYSTEM_PROMPT
@@ -53,4 +54,28 @@ async def review_diff(
         json_schema=ReviewResult.model_json_schema(),
         messages=messages,
     )
-    return ReviewResult.model_validate(response.content)
+    raw_result = ReviewResult.model_validate(response.content)
+
+    validation = validate_review_comments(
+        result=raw_result,
+        files=files,
+    )
+
+    if validation.accepted_comments:
+        return ReviewResult(
+            summary=raw_result.summary,
+            comments=validation.accepted_comments,
+            should_post_review=True,
+            abstain_reason=None,
+        )
+
+    reason = raw_result.abstain_reason
+    if validation.suppressed_comments and reason is None:
+        reason = "All generated comments failed deterministic validation."
+
+    return ReviewResult(
+        summary=raw_result.summary,
+        comments=[],
+        should_post_review=False,
+        abstain_reason=reason,
+    )

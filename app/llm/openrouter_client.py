@@ -1,5 +1,8 @@
+import json
+from typing import Any
+
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from app.core.config import settings
@@ -8,24 +11,32 @@ from app.core.config import settings
 class Usage(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    total_tokens: int | None = None
 
 
 class StructuredResponse(BaseModel):
-    content: dict
+    content: dict[str, Any]
     usage: Usage
     model: str
 
 
-def _is_retryable(exc: BaseException) -> bool:
-    return isinstance(exc, httpx.HTTPStatusError) and (
-        exc.response.status_code == 429 or exc.response.status_code >= 500
-    )
+class StructuredOutputError(RuntimeError):
+    """Raised when the model returns content that is not valid structured JSON."""
+
+
+def is_retryable_exception(exc: BaseException) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        status_code = exc.response.status_code
+        return status_code == 429 or status_code >= 500
+
+    return isinstance(exc, json.JSONDecodeError | ValidationError | StructuredOutputError)
 
 
 class OpenRouterClient:
     def __init__(self) -> None:
         if not settings.openrouter_api_key:
             raise RuntimeError("OPENROUTER_API_KEY is not configured")
+
         self._client = httpx.AsyncClient(
             base_url=settings.openrouter_base_url,
             headers={
@@ -41,9 +52,9 @@ class OpenRouterClient:
         await self._client.aclose()
 
     @retry(
-        retry=retry_if_exception(_is_retryable),
-        stop=stop_after_attempt(4),
-        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception(is_retryable_exception),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=15),
         reraise=True,
     )
     async def chat_structured(
@@ -51,16 +62,19 @@ class OpenRouterClient:
         *,
         model: str,
         schema_name: str,
-        json_schema: dict,
-        messages: list[dict],
+        json_schema: dict[str, Any],
+        messages: list[dict[str, Any]],
         temperature: float = 0.0,
-        max_tokens: int = 4096,
+        max_tokens: int = 1500,
     ) -> StructuredResponse:
         payload = {
             "model": model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
+            "provider": {
+                "require_parameters": True,
+            },
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
@@ -70,14 +84,50 @@ class OpenRouterClient:
                 },
             },
         }
+
         response = await self._client.post("/chat/completions", json=payload)
         response.raise_for_status()
-        data = response.json()
 
-        import json
+        data = response.json()
+        choices = data.get("choices", [])
+
+        if not choices:
+            raise StructuredOutputError(
+                f"OpenRouter returned no choices. Response keys: {list(data.keys())}"
+            )
+
+        raw_content = choices[0].get("message", {}).get("content")
+
+        if not isinstance(raw_content, str) or not raw_content.strip():
+            message = choices[0].get("message", {})
+            finish_reason = choices[0].get("finish_reason")
+            reasoning = message.get("reasoning")
+            raise StructuredOutputError(
+                "OpenRouter returned empty or non-string message content. "
+                f"model={model!r}, finish_reason={finish_reason!r}, "
+                f"has_reasoning={bool(reasoning)}, usage={data.get('usage', {})!r}"
+            )
+
+        try:
+            parsed_content = json.loads(raw_content)
+        except json.JSONDecodeError as exc:
+            preview = raw_content[:500].replace("\n", "\\n")
+            raise StructuredOutputError(
+                f"Invalid JSON from model={model}; content preview={preview!r}"
+            ) from exc
+
+        if not isinstance(parsed_content, dict):
+            raise StructuredOutputError(
+                f"Expected a JSON object from model={model}, got {type(parsed_content).__name__}."
+            )
+
+        try:
+            usage = Usage.model_validate(data.get("usage", {}))
+        except ValidationError as exc:
+            raise StructuredOutputError(f"Invalid usage object from model={model}.") from exc
 
         return StructuredResponse(
-            content=json.loads(data["choices"][0]["message"]["content"]),
-            usage=Usage(**data.get("usage", {})),
+            content=parsed_content,
+            usage=usage,
             model=data.get("model", model),
         )
