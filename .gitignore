@@ -37,6 +37,7 @@ data/processed/*
 # Node, added later for dashboard
 node_modules/
 dist/
+scratch-review-demo/
 
 # Playwright artifacts, added in Phase 5
 playwright-report/
