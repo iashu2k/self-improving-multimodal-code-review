@@ -2,7 +2,7 @@
 
 A GitHub App that reviews pull requests with grounded, schema-validated inline comments — built as an evaluation-driven system that measures its own precision, groundedness, and reliability, then improves its prompts and policies through a controlled, human-gated feedback loop.
 
-**Status:** Phase 4 complete — reviews now run through a LangGraph agent workflow: deterministic-first triage, RAG retrieval, generation, a semantic critic with deterministic QA, and a structurally bounded repair loop. Every node transition is persisted for audit. Next: Phase 5 (multimodal review of frontend PRs).
+**Status:** Phase 6A complete — the golden dataset candidate pool is built (467 PR-level examples: 391 enriched from public review corpora + 76 self-built verified negatives), plus a latent diff-parser bug found and fixed along the way. Next: Phase 5 (multimodal review of frontend PRs), then Phase 6B (annotation, split, dataset card).
 
 <p align="center">
   <em>Live RAG-grounded review: the bot retrieved <code>test_calc.py</code> — a file not in the diff — and cited its <code>test_divide_by_zero</code> expectation as evidence for a CRITICAL finding anchored to a deleted guard clause.</em>
@@ -33,6 +33,7 @@ A GitHub App that reviews pull requests with grounded, schema-validated inline c
   - [Phase 3A — PostgreSQL Persistence & Audit Trail](#phase-3a--postgresql-persistence--audit-trail)
   - [Phase 3B — AST Chunking + Hybrid Retrieval (RAG)](#phase-3b--ast-chunking--hybrid-retrieval-rag)
   - [Phase 4 — LangGraph Agent Workflow](#phase-4--langgraph-agent-workflow)
+  - [Phase 6A — Golden Dataset Candidate Pool](#phase-6a--golden-dataset-candidate-pool)
 - [Engineering Decisions](#engineering-decisions)
 - [Testing](#testing)
 - [Model Configuration](#model-configuration)
@@ -96,7 +97,8 @@ ARQ worker (Redis)                                     app/workers/jobs.py
       │
       ├─► Parse diff                                   app/github/diff_parser.py
       │     RIGHT-side line tracking · "\ No newline" marker handling
-      │     file filters (lockfiles, binaries, minified assets skipped)
+      │     status tracking: added/modified/deleted/renamed (fixed 6A)
+      │     file filters (lockfiles, binaries, minified, deleted skipped)
       │
       ├─► Index repo at head SHA (Phase 3B)            app/ingestion/
       │     tree fetch → AST-aware chunks (imports prepended, oversized splits)
@@ -161,7 +163,8 @@ graph TD;
 [done]      Phase 4   LangGraph agent workflow — triage router, RAG node, generator,
                       critic + deterministic QA, bounded repair (max 2), node-event audit
 [next]      Phase 5   Multimodal — Playwright screenshots + vision model, code-grounded UI findings
-[planned]   Phase 6   Golden dataset — 100 curated PRs (seeded from public review corpora)
+[in prog.]  Phase 6   Golden dataset — [done: 6A] candidate pool (467 PR-level examples);
+                      [planned: 6B] annotation, 60/20/20 split, dataset card
 [planned]   Phase 7   Evaluation harness — precision/recall, groundedness, pass@k, baselines
 [planned]   Phase 8   Closed loop — feedback, diagnoser, versioned configs, promotion gate
 [planned]   Phase 9   Observability/UI — Langfuse tracing, dashboard, deployment, demo
@@ -211,7 +214,7 @@ self-improving-multimodal-code-review/
 │   ├── github/
 │   │   ├── app_auth.py               # App JWT (RS256) + cached installation tokens
 │   │   ├── client.py                 # diff fetch, head-SHA fetch, tree fetch, review publishing
-│   │   ├── diff_parser.py            # unified-diff parser (commentable RIGHT lines)
+│   │   ├── diff_parser.py            # unified-diff parser (commentable RIGHT lines, status tracking)
 │   │   ├── formatting.py             # severity/category badges + feedback markers/prompts
 │   │   └── webhook_verifier.py       # HMAC-SHA256, constant-time comparison
 │   ├── ingestion/
@@ -227,6 +230,8 @@ self-improving-multimodal-code-review/
 │   │   ├── qa.py                     # deterministic content QA (pre-critic)
 │   │   ├── graph.py                  # the LangGraph workflow + run_review_graph entrypoint
 │   │   └── validator.py              # deterministic placement gate (hard, unchanged)
+│   ├── eval/
+│   │   └── golden_schemas.py         # GoldenExample / GoldComment contracts (Phase 6)
 │   ├── llm/
 │   │   ├── openrouter_client.py      # async client, structured outputs, smart retries
 │   │   ├── reviewer.py               # generate_comments + review_diff (legacy wrapper)
@@ -240,12 +245,17 @@ self-improving-multimodal-code-review/
 │   └── main.py                       # FastAPI app factory
 ├── alembic/                          # async migrations (see dev log: pgvector convention)
 ├── scripts/
-│   └── review_local.py               # CLI: git diff → review.json
-├── tests/                            # 82 tests, all passing
+│   ├── review_local.py               # CLI: git diff → review.json
+│   └── golden/                       # Phase 6A dataset tooling
+│       ├── harvest_candidates.py     # HF triplets → candidate pool (funnel-audited filters)
+│       ├── fetch_pr_context.py       # candidates → PR-level examples via GitHub API
+│       ├── fetch_negatives.py        # self-built NO_COMMENT negatives (merged, zero human feedback)
+│       └── pool_stats.py             # pool composition census
+├── tests/                            # 83 tests, all passing
 ├── data/
 │   ├── raw/                          # ignored
 │   ├── processed/                    # ignored review artifacts
-│   └── golden_prs/                   # (Phase 6)
+│   └── golden_prs/                   # pool/ + candidates/ ignored; curated 100 committed (6B)
 ├── docker-compose.yml                # Redis + Postgres (pgvector)
 ├── pyproject.toml                    # uv package mode, ruff/mypy/pytest config
 ├── .env.example
@@ -280,6 +290,7 @@ uv run alembic upgrade head
 | `GITHUB_APP_ID` | Numeric App ID | GitHub → Developer settings → your App |
 | `GITHUB_PRIVATE_KEY_PATH` | Path to `.pem` (outside repo) | App page → Generate a private key |
 | `GITHUB_WEBHOOK_SECRET` | HMAC secret for webhook verification | You generate it; set on the App |
+| `GITHUB_DATASET_TOKEN` | Read-only PAT for public repo data — Phase 6A scripts only, never used by the app | GitHub → Developer settings → Fine-grained tokens → Public repositories (read-only) |
 | `DATABASE_URL` | Async Postgres DSN | `postgresql+asyncpg://postgres:postgres@localhost:5432/code_review` |
 | `REDIS_URL` | Job queue | `redis://localhost:6379/0` (docker-compose) |
 
@@ -485,6 +496,27 @@ The actual engineering journey — failures included, because that's where the d
 
 **Result:** live on review-sandbox PR #5 (`run_id=8`): the generator flagged rounding in `total_with_tax` but overstated the claim; the critic repaired it (*"the comment doesn't acknowledge that round() is sometimes sufficient — it overstates the problem"*), the repaired comment was re-judged and published at reduced severity, and the division-by-zero finding was accepted unmodified. Trace: `triage_router → review_generator → critic_qa (1 accept, 1 repair) → repair_generator → critic_qa (accept) → publisher`. One observation logged for Phase 7: the repair was near-verbatim to the critic's instruction — high fidelity, but "repair sycophancy" is worth an eval dimension. 33 → 82 tests passing.
 
+### Phase 6A — Golden Dataset Candidate Pool
+
+**Goal:** a 300+ PR-level candidate pool for the 100-example golden set (Phase 6) — seeded from public review corpora, with negatives that genuinely mean "no human found anything worth saying."
+
+**Built:**
+
+- **Golden schemas** (`app/eval/golden_schemas.py`) — `GoldenExample` / `GoldComment` contracts with a consistency validator (`no_comment` ⇒ empty gold comments + documented rationale). The acceptance policy is executable, not prose.
+- **Candidate harvest** (`scripts/golden/harvest_candidates.py`) — HF `ronantakizawa/github-codereview` (334k triplets) → 510 candidates: Python-only, per-repo diversity cap, one candidate per PR, size caps, quality floor; **filter-funnel counters** on every gate; append-mode **security top-up** (seeded dedup, relaxed quality — annotation is the real filter for scarce categories).
+- **PR-level enrichment** (`scripts/golden/fetch_pr_context.py`) — full diff + metadata + review comments via GitHub API (fine-grained read-only PAT, separate from the App). **Line anchors computed by the PRODUCTION diff parser**: `commentable_lines` / `right_side_lines` are stored per example, so labels and the validator can never disagree about legal lines. Idempotent resume (verified live), repo-scoped example IDs, redirect following, rate-limit backoff, and a failure log where every skip carries a reason.
+- **Self-built negatives** (`scripts/golden/fetch_negatives.py`) — merged, human-authored, size-capped PRs with **zero human inline comments AND no human CHANGES_REQUESTED / COMMENTED-with-body review bodies**, sourced from pool repos (proven review cultures — a silent PR there means something).
+
+**Issues hit:**
+
+1. **Case-sensitive language filter kept 0 of 334,323 rows** — the dataset's `language` column is title-cased (`"Python"`). Fixed by normalization plus the funnel counters, so a kill-all gate can never again masquerade as "no matches" (same philosophy as persisted suppression reasons: unauditable gates can't be tuned).
+2. **Latent parser bug: `status`/`old_path` were dead code.** File-header lines (`new file mode`, `deleted file mode`, `rename from`) precede the `+++` line while `current_file` is `None`, so every file reported `modified` and the worker's deleted-file filter **never fired since Phase 2B** — deleted files flowed into prompts as empty-path noise (harmless: they have no RIGHT-side lines, so the validator suppressed any anchor). Fixed with a pending-metadata stash, `reviewable_files()` applied at all three prompt-render sites (worker *and* local CLI), and a regression test mirroring real git header ordering. 82 → 83 tests.
+3. **The dataset's negatives are chunk-level, not PR-level.** API verification culled 97/100: their PRs had human review feedback elsewhere. A 10-sample probe settled it: **36 human vs 1 bot comments** (deleted accounts serialize `"user": null` — treated as human, conservatively). Pivoted to self-built negatives; arguably better ground truth anyway.
+4. **Review bodies ≠ inline comments.** The review-body check caught 6 merged PRs the inline-comment check alone would have mislabeled as clean negatives.
+5. **CRLF normalization** — HF comments and API bodies normalize line endings differently; a whitespace-collapsing `normalize()` brought unresolved gold-comment URLs down to 7 of ~290.
+
+**Result:** **467 examples** (172 bug, 89 security, 71 refactor, 59 performance, 76 negatives), 87% multi-file. Attrition all in expected classes: 97 contaminated negatives, 18 candidate-file mismatches, 3 gone repos, 1 oversized. Pool is gitignored (regenerable from the API); only the curated 100 will be committed in 6B. **Sequencing note:** 6A → Phase 5 → 6B, because the 5 multimodal golden examples require the Phase 5 demo repo (`review-sandbox-ui`).
+
 ---
 
 ## Engineering Decisions
@@ -505,16 +537,17 @@ The actual engineering journey — failures included, because that's where the d
 14. **Side effects live at the edges.** Graph nodes are pure state transitions; the worker owns the GitHub POST and the DB commits. The whole agent graph is testable without a GitHub client, and worker retries can't double-post.
 15. **Deterministic layers reject the malformed; models judge the semantic.** Keyword-level checks never decide content quality (a hand-rolled rationale heuristic suppressed two real findings on its first live run). Cheap deterministic gates catch structural problems; semantic judgment goes to a model with full evidence in front of it.
 16. **Bounds are structural, not verbal.** The repair limit lives in the graph's routing function, not in a prompt — "max 2 attempts" can't be talked out of existence by a model.
+17. **Labels are derived through production code.** Golden-set line anchors are computed by the same diff parser the validator enforces with — labels and the gate can never disagree about what a legal line is. Dataset-provided line numbers (chunk-relative) are never trusted.
 
 ## Testing
 
 ```bash
-uv run pytest    # 82 tests, all passing
+uv run pytest    # 83 tests, all passing
 ```
 
 | Suite | Coverage |
 |---|---|
-| `test_diff_parser.py` | Hunk parsing, commentable-line sets, `\ No newline` marker regression |
+| `test_diff_parser.py` | Hunk parsing, commentable-line sets, `\ No newline` marker regression, file status/rename tracking (6A regression) |
 | `test_reviewer.py` | Reviewer with mocked client → validated `ReviewResult`; commentable-line map always bound |
 | `test_validator.py` | Accept added line / RIGHT context line for deletions; reject out-of-diff line / unknown file / duplicate / caps |
 | `test_openrouter_client.py` | Structured-output error semantics |
@@ -552,10 +585,11 @@ Honest list — each has a phase assigned:
 - **Feedback collection is passive:** markers and emoji prompts ship on every review, but nothing consumes reactions yet — that's the Phase 6/8 loop.
 - **Index freshness is SHA-scoped:** context is indexed at the PR head SHA and reused across redeliveries — correct by construction, but a first review of a big repo pays the full indexing cost. Incremental/background indexing is a later optimization.
 - **Retrieval seeding is heuristic:** queries come from diff paths + hunk keywords; triage's `review_focus` isn't yet wired into retrieval queries, and there's no query reformulation or multi-hop retrieval (a natural Phase 5/6 refinement).
-- **RAG path inside the graph is unexercised live:** the demo PR triaged `use_rag: false` (correctly), so retrieve→generate→critique with real context awaits a golden-set PR that forces it (Phase 6).
-- **QA heuristics are uncalibrated:** the word-count floor and Jaccard threshold are reasonable defaults, not measured values — the first live run already proved calibration matters (Phase 6).
+- **RAG path inside the graph is unexercised live (beyond the Phase 3B demo):** the golden pool is built; labeled RAG-slice examples (incl. banking review-sandbox PR #5) land in Phase 6B annotation.
+- **QA heuristics are uncalibrated:** the word-count floor and Jaccard threshold are reasonable defaults, not measured values — calibration happens on the golden development split (Phase 6B/7); the candidate pool is now built.
 - **Repair fidelity vs. sycophancy unevaluated:** repaired comments can parrot the critic's instruction verbatim; high fidelity now, but it's an eval dimension, not a guarantee (Phase 7).
 - **Single repo language tested:** Python so far; the parser is language-agnostic but chunking quality per language is unevaluated (Phase 6).
+- **Golden pool skews:** dataset-derived positives are Python-only and older (HF corpus era); self-built negatives skew recent (2024–2026). To be documented in the Phase 6B dataset card.
 - **Dev-only hosting:** ngrok + local worker; deployment topology comes in Phase 9.
 
 ## Roadmap
