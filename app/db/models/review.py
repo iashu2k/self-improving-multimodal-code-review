@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -69,3 +70,17 @@ class StoredReviewComment(Base):
     suppression_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     run: Mapped[ReviewRun] = relationship(back_populates="comments")
+
+
+class ReviewRunEvent(Base):
+    __tablename__ = "review_run_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("review_runs.id", ondelete="CASCADE"), index=True
+    )
+    node: Mapped[str] = mapped_column(String(32))
+    detail: Mapped[dict] = mapped_column(JSON().with_variant(JSONB(), "postgresql"), default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )

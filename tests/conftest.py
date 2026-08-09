@@ -5,6 +5,26 @@ from app.db.base import Base
 from app.db.models import ReviewRun, StoredReviewComment, WebhookEvent  # noqa: F401
 
 
+class FakeStructuredClient:
+    """Key results by schema_name: 'route_decision' | 'review_result' | 'qa_result'.
+    A list value pops one result per call (for repair-loop sequences)."""
+
+    def __init__(self, results: dict | None = None) -> None:
+        self.results = results or {}
+        self.calls: list[dict] = []
+
+    async def chat_structured(self, *, model, schema_name, json_schema, messages):
+        self.calls.append({"model": model, "schema_name": schema_name, "messages": messages})
+        result = self.results[schema_name]
+        if isinstance(result, list):
+            result = result.pop(0)
+
+        class _Response:
+            content = result.model_dump(mode="json")
+
+        return _Response()
+
+
 @pytest.fixture
 async def session_maker():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")

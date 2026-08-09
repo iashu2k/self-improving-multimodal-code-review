@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     openrouter_review_model: str | None = None
     openrouter_critic_model: str | None = None
+    openrouter_router_model: str | None = None
     openrouter_vision_model: str | None = None
     openrouter_judge_model: str | None = None
     openrouter_embedding_model: str | None = None
@@ -42,6 +43,9 @@ class Settings(BaseSettings):
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
     langfuse_host: str = "https://cloud.langfuse.com"
+
+    review_max_files: int = Field(default=30, alias="REVIEW_MAX_FILES")
+    review_max_added_lines: int = Field(default=1500, alias="REVIEW_MAX_ADDED_LINES")
 
 
 @lru_cache

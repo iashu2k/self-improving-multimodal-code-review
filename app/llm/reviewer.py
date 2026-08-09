@@ -1,3 +1,4 @@
+# app/llm/reviewer.py
 import json
 from dataclasses import dataclass
 
@@ -12,8 +13,23 @@ from app.llm.prompts.review import SYSTEM_PROMPT
 
 logger = structlog.get_logger(__name__)
 
+
 MAX_DIFF_CHARS = 60_000
 MAX_CONTEXT_CONTENT_CHARS = 1500
+
+
+GENERATOR_POLICY = """\
+Review policy (QA suppresses violations before anything is posted):
+1. Review ONLY the supplied changed lines; never comment on untouched code.
+2. Every comment must cite its exact changed line.
+3. Explain the concrete failure mode: what breaks, when, for whom.
+4. Use retrieved context only when the diff alone is insufficient — and cite it.
+5. Never invent runtime behavior not visible in the diff or context.
+6. No subjective style comments.
+7. Return an empty comment list when uncertain — silence is a success case.
+8. Do not repeat an observation already made about the same line.
+9. Apply the severity definitions exactly as given.
+10. One issue per comment; never bundle unrelated findings."""
 
 
 @dataclass
@@ -53,7 +69,7 @@ def render_contexts_for_prompt(contexts: list[RetrievedContext]) -> str:
     return "\n\n".join(blocks)
 
 
-async def review_diff(
+async def generate_comments(
     *,
     files: list[ChangedFile],
     pr_title: str,
@@ -61,7 +77,12 @@ async def review_diff(
     client: OpenRouterClient,
     model: str,
     contexts: list[RetrievedContext] | None = None,
-) -> GeneratedReview:
+    feedback: str | None = None,
+    review_focus: list[str] | None = None,
+) -> tuple[ReviewResult, list[ReviewComment]]:
+    """Prompt + LLM + schema validation. NO deterministic validation here —
+    in the graph, placement and content QA are the critic_qa node's job.
+    Returns the raw result and its unvalidated candidate comments."""
     rendered = render_diff_for_prompt(files)
     if len(rendered) > MAX_DIFF_CHARS:
         rendered = rendered[:MAX_DIFF_CHARS] + "\n[DIFF TRUNCATED]"
@@ -78,8 +99,20 @@ async def review_diff(
             f"{render_contexts_for_prompt(contexts)}"
         )
 
+    focus_block = ""
+    if review_focus:
+        focus_block = f"\n\nReview focus for this PR: {', '.join(review_focus)}"
+
+    feedback_block = ""
+    if feedback:
+        feedback_block = (
+            "\n\nRepair instructions from QA (a previous draft of these "
+            "comments failed review; regenerate ONLY the flagged comments, "
+            f"addressing every instruction):\n{feedback}"
+        )
+
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n{GENERATOR_POLICY}"},
         {
             "role": "user",
             "content": (
@@ -89,6 +122,8 @@ async def review_diff(
                 f"{json.dumps(commentable_lines, indent=2)}\n\n"
                 f"Review this diff:\n\n{rendered}"
                 f"{context_block}"
+                f"{focus_block}"
+                f"{feedback_block}"
             ),
         },
     ]
@@ -100,6 +135,28 @@ async def review_diff(
         messages=messages,
     )
     raw_result = ReviewResult.model_validate(response.content)
+    return raw_result, raw_result.comments
+
+
+async def review_diff(
+    *,
+    files: list[ChangedFile],
+    pr_title: str,
+    pr_body: str,
+    client: OpenRouterClient,
+    model: str,
+    contexts: list[RetrievedContext] | None = None,
+) -> GeneratedReview:
+    """Legacy one-shot path (local CLI, test_reviewer.py): generate + validate.
+    The graph calls generate_comments directly and does QA in critic_qa."""
+    raw_result, _candidates = await generate_comments(
+        files=files,
+        pr_title=pr_title,
+        pr_body=pr_body,
+        client=client,
+        model=model,
+        contexts=contexts,
+    )
 
     validation = validate_review_comments(result=raw_result, files=files)
 

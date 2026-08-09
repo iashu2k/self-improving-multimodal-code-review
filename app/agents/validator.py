@@ -7,10 +7,11 @@ from app.github.diff_parser import ChangedFile
 MAX_COMMENTS_PER_REVIEW = 5
 
 
-@dataclass(frozen=True)
+@dataclass
 class SuppressedComment:
     comment: ReviewComment
     reason: str
+    detail: str | None = None  # critic rationale; `reason` stays a contract string
 
 
 @dataclass(frozen=True)

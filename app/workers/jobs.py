@@ -3,17 +3,21 @@ from datetime import UTC, datetime
 import structlog
 from sqlalchemy import select
 
+from app.agents.graph import run_review_graph
 from app.core.config import settings
-from app.db.models.review import CommentStatus, ReviewRun, RunStatus, StoredReviewComment
+from app.db.models.review import (
+    CommentStatus,
+    ReviewRun,
+    ReviewRunEvent,
+    RunStatus,
+    StoredReviewComment,
+)
 from app.db.session import get_session_maker
 from app.github.app_auth import get_installation_token
 from app.github.client import GitHubClient
 from app.github.diff_parser import ChangedFile, parse_unified_diff
-from app.github.formatting import format_comment_body, format_review_summary
 from app.ingestion.indexer import get_or_create_snapshot, index_snapshot
-from app.ingestion.retriever import RetrievedContext, hybrid_retrieve
 from app.llm.openrouter_client import OpenRouterClient
-from app.llm.reviewer import review_diff
 
 logger = structlog.get_logger(__name__)
 
@@ -44,10 +48,6 @@ IGNORED_SUFFIXES = (
 )
 
 
-MAX_CONTEXT_QUERY_FILES = 5
-MAX_CONTEXTS_FOR_PROMPT = 8
-
-
 def is_reviewable(changed_file: ChangedFile) -> bool:
     if changed_file.status == "deleted":
         return False
@@ -55,14 +55,6 @@ def is_reviewable(changed_file: ChangedFile) -> bool:
     if name in IGNORED_EXACT_NAMES:
         return False
     return not changed_file.path.endswith(IGNORED_SUFFIXES)
-
-
-def build_context_query(changed_file: ChangedFile) -> str:
-    added_lines = [
-        line.content for hunk in changed_file.hunks for line in hunk.lines if line.kind == "add"
-    ]
-    symbols = " ".join(added_lines)[:500]
-    return f"{changed_file.path} {symbols}"
 
 
 async def run_pr_review(
@@ -148,7 +140,7 @@ async def run_pr_review(
                 if not settings.openrouter_review_model:
                     raise RuntimeError("OPENROUTER_REVIEW_MODEL is not configured")
 
-                # --- Phase 3B: index repo at head SHA, retrieve context ---
+                # --- index repo at head SHA (unchanged) ---
                 snapshot = await get_or_create_snapshot(
                     session,
                     owner=repository_owner,
@@ -158,35 +150,40 @@ async def run_pr_review(
                 await index_snapshot(session, snapshot=snapshot, github=github, llm=llm)
                 await session.commit()
 
-                contexts: list[RetrievedContext] = []
-                for changed_file in reviewable[:MAX_CONTEXT_QUERY_FILES]:
-                    file_contexts = await hybrid_retrieve(
-                        session,
-                        snapshot_id=snapshot.id,
-                        query_text=build_context_query(changed_file),
-                        llm=llm,
-                        embedding_model=settings.openrouter_embedding_model,
-                    )
-                    contexts.extend(file_contexts)
-
-                log.info(
-                    "context_retrieved",
+                # --- Phase 4: agent graph -------------------------------
+                # triage -> retrieve -> generate -> critic/QA <-> repair (<=2)
+                # -> publisher | suppressor. Retrieval and critique live in
+                # the graph now; every node transition lands in events.
+                output = await run_review_graph(
+                    session=session,
+                    llm=llm,
                     snapshot_id=snapshot.id,
-                    context_count=len(contexts),
-                    sources=[c.file_path for c in contexts[:MAX_CONTEXTS_FOR_PROMPT]],
-                )
-                # ------------------------------------------------------------
-
-                generated = await review_diff(
-                    files=reviewable,
+                    run_id=run.id,
+                    pr_number=pr_number,
+                    commit_sha=head_sha,
                     pr_title=pr_title,
                     pr_body=pr_body,
-                    client=llm,
-                    model=settings.openrouter_review_model,
-                    contexts=contexts[:MAX_CONTEXTS_FOR_PROMPT],
+                    diff=diff_text,
+                    changed_files=reviewable,
+                    config_version=settings.config_version,
+                    router_model=settings.openrouter_router_model
+                    or settings.openrouter_review_model,
+                    review_model=settings.openrouter_review_model,
+                    critic_model=settings.openrouter_critic_model
+                    or settings.openrouter_review_model,
+                    embedding_model=settings.openrouter_embedding_model,
                 )
 
-                for s in generated.suppressed:
+                for event in output.events:
+                    session.add(
+                        ReviewRunEvent(
+                            run_id=run.id,
+                            node=event["node"],
+                            detail=event["detail"],
+                        )
+                    )
+
+                for s in output.suppressed:
                     session.add(
                         StoredReviewComment(
                             run_id=run.id,
@@ -203,9 +200,9 @@ async def run_pr_review(
                         )
                     )
 
-                if not generated.result.should_post_review:
+                if not output.should_publish:
                     run.status = RunStatus.ABSTAINED
-                    run.abstain_reason = generated.result.abstain_reason
+                    run.abstain_reason = output.abstain_reason
                     run.completed_at = datetime.now(UTC)
                     await session.commit()
                     log.info("review_abstained", reason=run.abstain_reason)
@@ -215,22 +212,12 @@ async def run_pr_review(
                     repository_owner, repository_name, pr_number
                 )
 
-                # Phase 2C: run_id embeds hidden attribution markers in every
-                # posted artifact so reactions can be tied back to this run.
-                comments = [
-                    {
-                        "path": c.file_path,
-                        "line": c.line,
-                        "side": c.side,
-                        "body": format_comment_body(c, run_id=run.id),
-                    }
-                    for c in generated.accepted
-                ]
-
                 log.info(
                     "review_submitting",
                     commit_id=current_head_sha,
-                    comments=[{"path": c["path"], "line": c["line"]} for c in comments],
+                    comments=[
+                        {"path": c["path"], "line": c["line"]} for c in output.review_comments
+                    ],
                 )
 
                 review_response = await github.create_review(
@@ -238,11 +225,11 @@ async def run_pr_review(
                     repository_name,
                     pr_number,
                     commit_id=current_head_sha,
-                    body=format_review_summary(generated.result, run_id=run.id),
-                    comments=comments,
+                    body=output.review_body,
+                    comments=output.review_comments,
                 )
 
-                for c in generated.accepted:
+                for c in output.accepted:
                     session.add(
                         StoredReviewComment(
                             run_id=run.id,
@@ -266,9 +253,10 @@ async def run_pr_review(
                 log.info(
                     "review_published",
                     review_id=run.github_review_id,
-                    comment_count=len(comments),
+                    comment_count=len(output.review_comments),
+                    retry_count=output.retry_count,
                 )
-                return {"status": "published", "comments": len(comments)}
+                return {"status": "published", "comments": len(output.review_comments)}
 
             finally:
                 await github.aclose()

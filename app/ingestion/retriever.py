@@ -3,10 +3,13 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.github.diff_parser import ChangedFile
 from app.llm.openrouter_client import OpenRouterClient
 
 TOP_K = 5
 CANDIDATES_PER_LEG = 20
+MAX_CONTEXT_QUERY_FILES = 5
+MAX_CONTEXTS_FOR_PROMPT = 8
 
 
 @dataclass
@@ -17,6 +20,14 @@ class RetrievedContext:
     start_line: int
     end_line: int
     content: str
+
+
+def build_context_query(changed_file: ChangedFile) -> str:
+    added_lines = [
+        line.content for hunk in changed_file.hunks for line in hunk.lines if line.kind == "add"
+    ]
+    symbols = " ".join(added_lines)[:500]
+    return f"{changed_file.path} {symbols}"
 
 
 async def hybrid_retrieve(
