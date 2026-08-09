@@ -6,17 +6,17 @@ import structlog
 
 from app.agents.schemas import ReviewComment, ReviewResult
 from app.agents.validator import SuppressedComment, validate_review_comments
-from app.github.diff_parser import ChangedFile
+
+# CHANGED: merged import
+from app.github.diff_parser import ChangedFile, reviewable_files
 from app.ingestion.retriever import RetrievedContext
 from app.llm.openrouter_client import OpenRouterClient
 from app.llm.prompts.review import SYSTEM_PROMPT
 
 logger = structlog.get_logger(__name__)
 
-
 MAX_DIFF_CHARS = 60_000
 MAX_CONTEXT_CONTENT_CHARS = 1500
-
 
 GENERATOR_POLICY = """\
 Review policy (QA suppresses violations before anything is posted):
@@ -52,7 +52,7 @@ def render_diff_for_prompt(files: list[ChangedFile]) -> str:
                 elif line.kind == "del":
                     lines.append(f"- {line.content}")
                 else:
-                    lines.append(f"  {line.content}")
+                    lines.append(f" {line.content}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
 
@@ -83,6 +83,7 @@ async def generate_comments(
     """Prompt + LLM + schema validation. NO deterministic validation here —
     in the graph, placement and content QA are the critic_qa node's job.
     Returns the raw result and its unvalidated candidate comments."""
+    files = reviewable_files(files)  # CHANGED: deleted files never reach the prompt
     rendered = render_diff_for_prompt(files)
     if len(rendered) > MAX_DIFF_CHARS:
         rendered = rendered[:MAX_DIFF_CHARS] + "\n[DIFF TRUNCATED]"
@@ -157,7 +158,6 @@ async def review_diff(
         model=model,
         contexts=contexts,
     )
-
     validation = validate_review_comments(result=raw_result, files=files)
 
     if validation.suppressed_comments:

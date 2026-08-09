@@ -37,6 +37,9 @@ dev = [
     "ruff>=0.16.1",
     "types-redis>=4.6.0.20241004",
 ]
+eval = [
+    "datasets>=5.0.1",
+]
 
 [tool.ruff]
 target-version = "py312"

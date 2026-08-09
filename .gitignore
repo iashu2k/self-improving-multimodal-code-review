@@ -33,6 +33,8 @@ data/raw/*
 data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+data/golden_prs/pool/
+data/golden_prs/candidates/
 
 # Node, added later for dashboard
 node_modules/

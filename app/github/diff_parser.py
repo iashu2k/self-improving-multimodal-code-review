@@ -1,3 +1,4 @@
+# app/github/diff_parser.py
 import re
 from dataclasses import dataclass, field
 
@@ -54,28 +55,49 @@ class ChangedFile:
         }
 
 
+def reviewable_files(files: list[ChangedFile]) -> list[ChangedFile]:
+    """Files a reviewer can meaningfully comment on.
+
+    Deleted files have no RIGHT-side lines, so no comment can ever anchor
+    to them; including them in prompts is pure noise. Filter at the render
+    layer so every caller (worker, local CLI, enrichment) gets it for free.
+    """
+    return [f for f in files if f.status != "deleted"]
+
+
 def parse_unified_diff(diff_text: str) -> list[ChangedFile]:
     files: list[ChangedFile] = []
     current_file: ChangedFile | None = None
     current_hunk: DiffHunk | None = None
+    # File-header metadata ("new file mode", "deleted file mode",
+    # "rename from") appears BEFORE "+++", while no ChangedFile exists yet.
+    # Stash it here; the "+++" handler consumes it.
+    pending_status = "modified"
+    pending_old_path: str | None = None
     old_lineno = new_lineno = 0
 
     for raw in diff_text.splitlines():
         if raw.startswith("diff --git"):
             current_file = None
             current_hunk = None
+            pending_status = "modified"
+            pending_old_path = None
             continue
 
-        if raw.startswith("new file mode") and current_file is not None:
-            current_file.status = "added"
+        if raw.startswith("new file mode"):
+            pending_status = "added"
             continue
-        if raw.startswith("deleted file mode") and current_file is not None:
-            current_file.status = "deleted"
+        if raw.startswith("deleted file mode"):
+            pending_status = "deleted"
             continue
-        if raw.startswith("rename from ") and current_file is not None:
-            current_file.old_path = raw.removeprefix("rename from ").strip()
-            current_file.status = "renamed"
+        if raw.startswith("rename from "):
+            pending_old_path = raw.removeprefix("rename from ").strip()
+            pending_status = "renamed"
             continue
+        if raw.startswith("copy from "):
+            pending_old_path = raw.removeprefix("copy from ").strip()
+            continue
+
         if raw.startswith("\\"):
             # "\ No newline at end of file" marker: metadata, not a file line.
             # Must not consume a line number on either side.
@@ -86,8 +108,7 @@ def parse_unified_diff(diff_text: str) -> list[ChangedFile]:
         if raw.startswith("+++ "):
             path = raw[4:].strip()
             path = path.removeprefix("b/") if path != "/dev/null" else ""
-            old_path = current_file.old_path if current_file else None
-            current_file = ChangedFile(path=path, old_path=old_path)
+            current_file = ChangedFile(path=path, old_path=pending_old_path, status=pending_status)
             files.append(current_file)
             continue
 

@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     github_app_id: int | None = None
     github_private_key_path: str | None = None
     github_webhook_secret: str | None = None
+    # read-only PAT for public repo data; never used by the app
+    github_dataset_token: str = ""
 
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None

@@ -55,3 +55,40 @@ def test_no_newline_marker_does_not_shift_line_numbers() -> None:
     assert last_line.kind == "add"
     assert last_line.content == "    return int(result)"
     assert last_line.new_lineno == 3
+
+
+def test_file_status_and_rename_tracking():
+    diff = (
+        "diff --git a/new.py b/new.py\n"
+        "new file mode 100644\n"
+        "index 0000000..1111111\n"
+        "--- /dev/null\n"
+        "+++ b/new.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+line1\n"
+        "+line2\n"
+        "diff --git a/old.py b/old.py\n"
+        "deleted file mode 100644\n"
+        "index 2222222..0000000\n"
+        "--- a/old.py\n"
+        "+++ /dev/null\n"
+        "@@ -1,2 +0,0 @@\n"
+        "-gone1\n"
+        "-gone2\n"
+        "diff --git a/before.py b/after.py\n"
+        "similarity index 90%\n"
+        "rename from before.py\n"
+        "rename to after.py\n"
+        "index 3333333..4444444 100644\n"
+        "--- a/before.py\n"
+        "+++ b/after.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-x = 1\n"
+        "+x = 2\n"
+    )
+    files = parse_unified_diff(diff)
+    assert files[0].status == "added" and files[0].path == "new.py"
+    assert files[0].commentable_lines == {1, 2}
+    assert files[1].status == "deleted" and files[1].path == ""
+    assert files[2].status == "renamed"
+    assert files[2].old_path == "before.py" and files[2].path == "after.py"

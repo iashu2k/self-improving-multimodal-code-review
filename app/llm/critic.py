@@ -4,7 +4,7 @@ Advisory-but-enforced — its verdicts decide accept/repair/reject."""
 
 from app.agents.qa_schemas import QAResult
 from app.agents.schemas import ReviewComment
-from app.github.diff_parser import ChangedFile
+from app.github.diff_parser import ChangedFile, reviewable_files  # CHANGED
 from app.ingestion.retriever import RetrievedContext
 from app.llm.openrouter_client import OpenRouterClient
 
@@ -36,7 +36,8 @@ input index must appear exactly once."""
 
 def _render_diff_excerpt(files: list[ChangedFile]) -> str:
     parts = []
-    for f in files:
+    # CHANGED: candidates can never anchor to deleted files
+    for f in reviewable_files(files):
         parts.append(f"=== {f.path} ({f.status}) ===")
         for hunk in f.hunks:
             for line in hunk.lines:
@@ -56,11 +57,11 @@ def _render_contexts(contexts: list[RetrievedContext]) -> str:
 def _render_candidates(comments: list[ReviewComment]) -> str:
     return "\n\n".join(
         f"[index {i}] {c.file_path}:{c.line} ({c.side})\n"
-        f"  severity={c.severity.value} category={c.category.value} "
+        f" severity={c.severity.value} category={c.category.value} "
         f"confidence={c.confidence}\n"
-        f"  title: {c.title}\n  body: {c.body}\n"
-        f"  evidence: {c.evidence}\n"
-        f"  suggested_fix: {c.suggested_fix or '(none)'}"
+        f" title: {c.title}\n body: {c.body}\n"
+        f" evidence: {c.evidence}\n"
+        f" suggested_fix: {c.suggested_fix or '(none)'}"
         for i, c in enumerate(comments)
     )
 
