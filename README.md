@@ -31,6 +31,7 @@ A GitHub App that reviews pull requests with grounded, schema-validated inline c
   - [Phase 1 — Local Review MVP](#phase-1--local-review-mvp)
   - [Phase 2A — GitHub App + Webhook Verification](#phase-2a--github-app--webhook-verification)
   - [Phase 2B — End-to-End Inline Review Publishing](#phase-2b--end-to-end-inline-review-publishing)
+  - [Phase 2C — Feedback Instrumentation](#phase-2c--feedback-instrumentation)
   - [Phase 3A — PostgreSQL Persistence & Audit Trail](#phase-3a--postgresql-persistence--audit-trail)
   - [Phase 3B — AST Chunking + Hybrid Retrieval (RAG)](#phase-3b--ast-chunking--hybrid-retrieval-rag)
 - [Engineering Decisions](#engineering-decisions)
@@ -68,6 +69,7 @@ Most AI code-review demos are a single prompt that dumps unverifiable text onto 
 | Reviews see only the diff | Hybrid retrieval (pgvector + FTS, RRF-fused) grounds reviews in tests/call sites outside the diff; context is cited as evidence |
 | Webhook handler does LLM calls inline | 202-ack + ARQ background jobs with commit-scoped dedup keys |
 | Fire-and-forget | Full Postgres audit trail: webhook events, review runs, every comment AND every suppression with reasons; idempotent run upsert keyed on (repo, PR, head SHA) |
+| Feedback is an afterthought | Every posted artifact carries 👍/👎 prompts + hidden identity markers from day one — feedback is attributable to a specific run/comment/config |
 | "Self-improving" = changes its prompt | Versioned configs promoted only by passing a promotion gate on a held-out benchmark (Phase 8) |
 | Text only | Optional vision analysis of rendered UI for frontend PRs (Phase 5) |
 
@@ -125,6 +127,8 @@ ARQ worker (Redis)                                     app/workers/jobs.py
       └─► Publish review + persist everything          app/github/client.py
             POST /repos/{o}/{r}/pulls/{n}/reviews  (event=COMMENT)
             run status · comments · suppressions · token usage → Postgres
+            every summary + inline comment carries a 👍/👎 feedback prompt
+            and a hidden HTML metadata marker (run/comment identity)
 ```
 
 
@@ -134,7 +138,8 @@ ARQ worker (Redis)                                     app/workers/jobs.py
 ```text
 [done]      Phase 0   Foundation — FastAPI skeleton, config, logging, tests
 [done]      Phase 1   Local Review MVP — parser → OpenRouter → validated JSON
-[done]      Phase 2   GitHub App — HMAC webhooks, async jobs, inline review publishing
+[done]      Phase 2   GitHub App — HMAC webhooks, async jobs, inline review publishing,
+                      feedback instrumentation (emoji + hidden markers)
 [done]      Phase 3   Persistence + Repository RAG — PostgreSQL, Alembic, pgvector,
                       AST-aware chunking, hybrid retrieval, idempotent run upsert
 [next]      Phase 4   LangGraph — router, retriever, generator, critic, max-2 repair loop
@@ -192,7 +197,7 @@ self-improving-multimodal-code-review/
 │   │   ├── app_auth.py               # App JWT (RS256) + cached installation tokens
 │   │   ├── client.py                 # diff fetch, head-SHA fetch, tree fetch, review publishing
 │   │   ├── diff_parser.py            # unified-diff parser (commentable RIGHT lines)
-│   │   ├── formatting.py             # severity/category badges + review summary
+│   │   ├── formatting.py             # severity/category badges + feedback markers/prompts
 │   │   └── webhook_verifier.py       # HMAC-SHA256, constant-time comparison
 │   ├── rag/
 │   │   ├── chunker.py                # AST-aware Python chunker + fixed-size fallback
@@ -289,6 +294,8 @@ ngrok http --url=<your-reserved-domain>.ngrok-free.dev 8000 # 4. tunnel
 
 
 Open or update a PR on any repository where the App is installed. Within ~10 seconds the bot posts a review: a summary plus inline comments anchored to changed lines — grounded in retrieved repository context — or nothing at all, if every candidate comment fails validation (abstention). Every run, comment, and suppression is persisted for audit.
+
+Posted reviews include a 👍/👎 prompt on the summary and each inline comment. Reactions are the raw feedback signal for the tuning loop (Phase 6+); hidden metadata markers on each comment make them attributable to a specific run.
 
 
 ### Local review CLI (no GitHub needed)
@@ -413,6 +420,18 @@ The actual engineering journey — failures included, because that's where the d
 **Result:** review published on `review-sandbox` PR #1 — `review_id=4889599633`, 1 inline comment, correctly anchored. 23 → 26 tests passing.
 
 
+### Phase 2C — Feedback Instrumentation
+
+
+**Goal:** every posted artifact is feedback-addressable, so Phase 6/8 can attribute human 👍/👎 signals back to a specific run, comment, and prompt config.
+
+
+**Built:** hidden HTML metadata markers embedded in each review summary and inline comment body (`<!-- review-forge: {...} -->` — invisible in rendered Markdown, parseable via the API); 👍/👎 reaction prompts appended to summaries and comments; formatting tests covering marker rendering. The App already subscribes to `pull_request_review` / `pull_request_review_comment` events, so reactions can be collected without new permissions.
+
+
+**Design constraint:** markers must survive GitHub's Markdown rendering untouched (HTML comments do; front-matter and footnote tricks don't reliably) and must not pollute the visible review — reviewers should never see the instrumentation.
+
+
 ### Phase 3A — PostgreSQL Persistence & Audit Trail
 
 
@@ -481,9 +500,10 @@ The actual engineering journey — failures included, because that's where the d
 7. **Webhooks ack fast, work async.** 202 within milliseconds; LLM latency lives in the worker. Dedup keys make GitHub retries harmless.
 8. **Idempotency via constraints + upserts, not checks.** Check-then-insert races under concurrency; unique constraints with `ON CONFLICT` don't. Retries, redeliveries, and re-indexing are all safe because the schema makes them safe.
 9. **Persist suppressions, not just output.** A gate you can't audit is a gate you can't tune. Every suppressed comment is stored with its reason — that's the dataset for improving the gate and, later, the prompts.
-10. **Hybrid retrieval in one store.** pgvector + Postgres FTS fused with RRF beats either alone (symbols vs. paraphrases) and avoids operating a second datastore.
-11. **Errors must carry evidence.** API errors include response bodies and outgoing payloads; suppressed comments are logged with reasons. Debugging from data, not guesses.
-12. **Document the journey.** Model reliability findings, parser bugs, transaction-ordering mistakes, and auth pitfalls are recorded here as decisions — production realism, not tutorial code.
+10. **Instrumentation before intelligence.** Feedback markers shipped in Phase 2C, long before anything consumes them. Retrofitting attribution onto historical reviews is impossible; emitting an invisible marker costs nothing.
+11. **Hybrid retrieval in one store.** pgvector + Postgres FTS fused with RRF beats either alone (symbols vs. paraphrases) and avoids operating a second datastore.
+12. **Errors must carry evidence.** API errors include response bodies and outgoing payloads; suppressed comments are logged with reasons. Debugging from data, not guesses.
+13. **Document the journey.** Model reliability findings, parser bugs, transaction-ordering mistakes, and auth pitfalls are recorded here as decisions — production realism, not tutorial code.
 
 
 ## Testing
@@ -501,7 +521,7 @@ uv run pytest    # 33 tests, all passing
 | `test_validator.py` | Accept added line / RIGHT context line for deletions; reject out-of-diff line / unknown file / duplicate / caps |
 | `test_openrouter_client.py` | Structured-output error semantics |
 | `test_webhooks.py` | Valid/invalid/missing/malformed signatures, tampered body, ping events, draft-PR skip, event persistence + concurrent-safe dedup |
-| `test_formatting.py` | Severity badges, suggested-fix rendering |
+| `test_formatting.py` | Severity badges, suggested-fix rendering, feedback marker/prompt rendering |
 | `test_jobs.py` | End-to-end job with fakes → published payload; idempotent run upsert (skip/resume/new-SHA); abstention persists suppressions with reasons |
 | `test_chunker.py` | AST chunking: imports prepended, oversized splits, module-level grouping, non-Python fallback |
 | `test_retriever.py` | Hybrid vector + FTS fusion, top-k ranking |
@@ -530,6 +550,7 @@ Honest list — each has a phase assigned:
 
 
 - **No semantic quality check on comments:** the gate enforces *placement*, not *correctness*; a well-anchored but wrong comment still posts. That's the critic node's job (Phase 4).
+- **Feedback collection is passive:** markers and emoji prompts ship on every review, but nothing consumes reactions yet — that's the Phase 6/8 loop.
 - **Index freshness is SHA-scoped:** context is indexed at the PR head SHA and reused across redeliveries — correct by construction, but a first review of a big repo pays the full indexing cost. Incremental/background indexing is a later optimization.
 - **Retrieval seeding is heuristic:** queries come from diff paths + hunk keywords; there's no query reformulation or multi-hop retrieval yet (Phase 4's agent loop is the natural home for this).
 - **Single repo language tested:** Python so far; the parser is language-agnostic but chunking quality per language is unevaluated (Phase 6).

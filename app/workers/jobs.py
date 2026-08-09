@@ -17,6 +17,7 @@ from app.llm.reviewer import review_diff
 
 logger = structlog.get_logger(__name__)
 
+
 IGNORED_EXACT_NAMES = {
     "package-lock.json",
     "yarn.lock",
@@ -25,6 +26,7 @@ IGNORED_EXACT_NAMES = {
     "uv.lock",
     "Pipfile.lock",
 }
+
 
 IGNORED_SUFFIXES = (
     ".min.js",
@@ -40,6 +42,7 @@ IGNORED_SUFFIXES = (
     ".zip",
     ".gz",
 )
+
 
 MAX_CONTEXT_QUERY_FILES = 5
 MAX_CONTEXTS_FOR_PROMPT = 8
@@ -212,12 +215,14 @@ async def run_pr_review(
                     repository_owner, repository_name, pr_number
                 )
 
+                # Phase 2C: run_id embeds hidden attribution markers in every
+                # posted artifact so reactions can be tied back to this run.
                 comments = [
                     {
                         "path": c.file_path,
                         "line": c.line,
                         "side": c.side,
-                        "body": format_comment_body(c),
+                        "body": format_comment_body(c, run_id=run.id),
                     }
                     for c in generated.accepted
                 ]
@@ -233,7 +238,7 @@ async def run_pr_review(
                     repository_name,
                     pr_number,
                     commit_id=current_head_sha,
-                    body=format_review_summary(generated.result),
+                    body=format_review_summary(generated.result, run_id=run.id),
                     comments=comments,
                 )
 
