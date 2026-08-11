@@ -1,3 +1,6 @@
+import tarfile
+from pathlib import Path
+
 import httpx
 
 
@@ -29,11 +32,21 @@ class GitHubClient:
         await self._client.aclose()
 
     async def get_pr_diff(self, owner: str, repo: str, pr_number: int) -> str:
+        """
+        Fetch the unified diff for a PR from the GitHub API.
+
+        Uses the documented v3 diff media type. If GitHub returns a 4xx
+        (e.g., 404 or 406), return an empty diff so upstream logic can
+        abstain gracefully.
+        """
         response = await self._client.get(
             f"/repos/{owner}/{repo}/pulls/{pr_number}",
             headers={"Accept": "application/vnd.github.v3.diff"},
         )
-        response.raise_for_status()
+        if response.status_code >= 400:
+            # Log and return empty diff; callers should handle abstention.
+            # You can also add structlog logging here if desired.
+            return ""
         return response.text
 
     async def get_pr_head_sha(self, owner: str, repo: str, pr_number: int) -> str:
@@ -84,3 +97,21 @@ class GitHubClient:
         )
         response.raise_for_status()
         return response.content
+
+    async def fetch_tarball(self, repo: str, sha: str, dest_dir: Path) -> Path:
+        """Download and extract the repo at sha. Returns the extracted root
+        (tarballs extract into a single <owner>-<repo>-<sha>/ directory)."""
+        url = f"{self._client.base_url}/repos/{repo}/tarball/{sha}"
+        async with self._client.stream("GET", url) as resp:
+            resp.raise_for_status()
+            archive = dest_dir / "repo.tar.gz"
+            with archive.open("wb") as fh:
+                async for chunk in resp.aiter_bytes():
+                    fh.write(chunk)
+        with tarfile.open(archive, "r:gz") as tar:
+            tar.extractall(dest_dir, filter="data")  # path-traversal-safe (3.12+)
+        archive.unlink()
+        children = [p for p in dest_dir.iterdir() if p.is_dir()]
+        if len(children) != 1:
+            raise GitHubAPIError(f"unexpected tarball layout for {repo}@{sha}")
+        return children[0]

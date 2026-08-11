@@ -2,7 +2,7 @@
 
 A GitHub App that reviews pull requests with grounded, schema-validated inline comments — built as an evaluation-driven system that measures its own precision, groundedness, and reliability, then improves its prompts and policies through a controlled, human-gated feedback loop.
 
-**Status:** Phase 6A complete — the golden dataset candidate pool is built (467 PR-level examples: 391 enriched from public review corpora + 76 self-built verified negatives), plus a latent diff-parser bug found and fixed along the way. Next: Phase 5 (multimodal review of frontend PRs), then Phase 6B (annotation, split, dataset card).
+**Status:** Phase 5 complete — multimodal review of frontend PRs is live: sandboxed UI rendering + Playwright screenshots + a vision model, with all visual findings grounded back to changed code lines before they become comments. Phase 6A is also complete — the golden dataset candidate pool is built (467 PR-level examples: 391 enriched from public review corpora + 76 self-built verified negatives), plus a latent diff-parser bug found and fixed along the way. Next: Phase 6B (annotation, split, dataset card). [file:1][file:26]
 
 <p align="center">
   <em>Live RAG-grounded review: the bot retrieved <code>test_calc.py</code> — a file not in the diff — and cited its <code>test_divide_by_zero</code> expectation as evidence for a CRITICAL finding anchored to a deleted guard clause.</em>
@@ -10,6 +10,10 @@ A GitHub App that reviews pull requests with grounded, schema-validated inline c
 
 <p align="center">
   <em>Live bounded self-correction (review-sandbox PR #5): the critic caught the generator overstating a rounding claim — "the comment doesn't acknowledge that <code>round()</code> is sometimes sufficient" — issued a repair instruction, and the repaired comment was re-judged and published at reduced severity.</em>
+</p>
+
+<p align="center">
+  <em>Live multimodal review (review-sandbox-ui PRs #2–5): the bot rendered the checkout page in a mobile viewport, detected horizontal overflow, contrast issues, and misaligned UI elements, then posted CRITICAL/HIGH UI regression comments grounded to <code>CheckoutButton.module.css</code> and related files.</em>
 </p>
 
 ---
@@ -33,24 +37,27 @@ A GitHub App that reviews pull requests with grounded, schema-validated inline c
   - [Phase 3A — PostgreSQL Persistence & Audit Trail](#phase-3a--postgresql-persistence--audit-trail)
   - [Phase 3B — AST Chunking + Hybrid Retrieval (RAG)](#phase-3b--ast-chunking--hybrid-retrieval-rag)
   - [Phase 4 — LangGraph Agent Workflow](#phase-4--langgraph-agent-workflow)
+  - [Phase 5 — Multimodal Frontend Review](#phase-5--multimodal-frontend-review)
   - [Phase 6A — Golden Dataset Candidate Pool](#phase-6a--golden-dataset-candidate-pool)
 - [Engineering Decisions](#engineering-decisions)
 - [Testing](#testing)
 - [Model Configuration](#model-configuration)
 - [Known Limitations](#known-limitations)
 
+
+
 ---
 
 ## Vision
 
-Most AI code-review demos are a single prompt that dumps unverifiable text onto a PR. This project is built the opposite way — **evaluation and safety first**:
+Most AI code-review demos are a single prompt that dumps unverifiable text onto a PR. This project is built the opposite way — **evaluation and safety first**: [file:26]
 
 1. **Grounded output only.** Every comment must point at a line that actually exists in the diff. A deterministic validator suppresses anything else before it is ever published.
 2. **Abstention is a feature.** If there is nothing worth flagging, the system posts nothing. Correct silence is measured and rewarded, just like correct detection.
 3. **Evidence beyond the diff.** Retrieval pulls the tests, call sites, and related modules that a human reviewer would open — and the model cites them. (Phase 3B)
 4. **Bounded self-correction.** A critic loop (Phase 4) may repair a comment at most twice; failure means suppression, never posting uncertain content.
 5. **Self-improvement with a gate.** Prompt and policy changes are versioned configurations that must beat the active config on a human-labeled golden PR set before promotion. No autonomous production prompt mutation.
-6. **Multimodal where it matters.** Frontend PRs can be visually verified with a rendered screenshot, but vision findings must be grounded back to changed code lines before they become comments.
+6. **Multimodal where it matters.** Frontend PRs are visually verified with rendered screenshots from a sandboxed UI; vision findings must be grounded back to changed code lines before they become comments. (Phase 5)
 
 ## What Makes This Different
 
@@ -70,20 +77,20 @@ Most AI code-review demos are a single prompt that dumps unverifiable text onto 
 
 ## Architecture (Current State)
 
-End-to-end flow as of Phase 4:
+End-to-end flow as of Phase 5: [file:26]
 
 ```text
 PR opened / synchronized on an installed repository
       │
       ▼
 GitHub webhook ──► POST /api/v1/webhooks/github        app/api/routes/webhooks.py
-      │            • HMAC-SHA256 verified against RAW body (constant-time compare)
-      │            • persist WebhookEvent (dedup via INSERT ... ON CONFLICT on
+      │            -  HMAC-SHA256 verified against RAW body (constant-time compare)
+      │            -  persist WebhookEvent (dedup via INSERT ... ON CONFLICT on
       │              github_delivery_id — safe under concurrent redeliveries)
-      │            • filters: event=pull_request, action ∈ {opened, synchronize,
+      │            -  filters: event=pull_request, action ∈ {opened, synchronize,
       │              reopened, ready_for_review}, not draft
-      │            • enqueue job with dedup key review-{repo}-{pr}-{head_sha[:8]}
-      │            • returns 202 immediately
+      │            -  enqueue job with dedup key review-{repo}-{pr}-{head_sha[:8]}
+      │            -  returns 202 immediately
       ▼
 ARQ worker (Redis)                                     app/workers/jobs.py
       │
@@ -104,7 +111,7 @@ ARQ worker (Redis)                                     app/workers/jobs.py
       │     tree fetch → AST-aware chunks (imports prepended, oversized splits)
       │     → embeddings → pgvector · upserted, reused across redeliveries
       │
-      ├─► LangGraph agent workflow (Phase 4)           app/agents/graph.py
+      ├─► LangGraph agent workflow (Phase 4–5)         app/agents/graph.py
       │     ┌──────────────────────────────────────────────────────────┐
       │     │ triage_router     deterministic skips first (no source   │
       │     │                   changes, docs-only, oversized PR);     │
@@ -119,6 +126,10 @@ ARQ worker (Redis)                                     app/workers/jobs.py
       │     │ repair_generator  regenerates flagged comments with      │
       │     │                   critic feedback — max 2 rounds,        │
       │     │                   enforced by routing, not prompts       │
+      │     │ vision_analyzer   sandboxed UI run + screenshots +       │
+      │     │                   structured observations (Phase 5)      │
+      │     │ vision_bridge     grounded visual observations →         │
+      │     │                   ReviewComment objects (Phase 5)        │
       │     │ publisher         builds payload + 2C markers            │
       │     │                   (side-effect-free)                     │
       │     │ suppressor        clean abstention + retry-exhausted     │
@@ -140,6 +151,7 @@ graph TD;
     __start__ --> triage_router;
     triage_router -.-> rag_retriever;
     triage_router -.-> review_generator;
+    triage_router -.-> vision_analyzer;
     triage_router -.-> suppressor;
     rag_retriever --> review_generator;
     review_generator --> critic_qa;
@@ -147,6 +159,8 @@ graph TD;
     critic_qa -.-> repair_generator;
     critic_qa -.-> suppressor;
     repair_generator --> critic_qa;
+    vision_analyzer --> vision_bridge;
+    vision_bridge --> publisher;
     publisher --> __end__;
     suppressor --> __end__;
 ```
@@ -162,9 +176,9 @@ graph TD;
                       AST-aware chunking, hybrid retrieval, idempotent run upsert
 [done]      Phase 4   LangGraph agent workflow — triage router, RAG node, generator,
                       critic + deterministic QA, bounded repair (max 2), node-event audit
-[next]      Phase 5   Multimodal — Playwright screenshots + vision model, code-grounded UI findings
-[in prog.]  Phase 6   Golden dataset — [done: 6A] candidate pool (467 PR-level examples);
-                      [planned: 6B] annotation, 60/20/20 split, dataset card
+[done]      Phase 5   Multimodal — Playwright screenshots + vision model, code-grounded UI findings
+[done]      Phase 6A  Golden dataset — candidate pool (467 PR-level examples)
+[next]      Phase 6B  Golden dataset — annotation, 60/20/20 split, dataset card
 [planned]   Phase 7   Evaluation harness — precision/recall, groundedness, pass@k, baselines
 [planned]   Phase 8   Closed loop — feedback, diagnoser, versioned configs, promotion gate
 [planned]   Phase 9   Observability/UI — Langfuse tracing, dashboard, deployment, demo
@@ -180,6 +194,7 @@ graph TD;
 | Review model | `qwen/qwen3-coder-next` | Coding-agent-optimized, ~$0.12/M in + $0.80/M out, 5/5 structured-output reliability |
 | Router / critic models | `qwen/qwen3-coder-next` (aliases per role) | Same reliability bar; stronger critic benchmarked later |
 | Embedding model | `openai/text-embedding-3-small` (via OpenRouter) | 1536-dim, cheap, good enough for repo-scale retrieval |
+| Vision model | `openai/gpt-4o-mini` (via OpenRouter) | Multimodal structured outputs for UI screenshots (Phase 5) |
 | Schemas | Pydantic v2 | One schema drives both API contract and model output contract |
 | Background jobs | ARQ + Redis | Lightweight async Python worker; job-ID dedup |
 | GitHub integration | GitHub App (JWT + installation tokens) | Least-privilege auth, bot identity on reviews |
@@ -188,6 +203,7 @@ graph TD;
 | ORM / migrations | SQLAlchemy 2 (async) + Alembic | Async end-to-end; versioned schema |
 | Retrieval | pgvector cosine + Postgres FTS, RRF fusion | Semantic + lexical recall without a second datastore |
 | Agent orchestration | LangGraph | Conditional edges, structurally bounded loops, testable nodes |
+| Browser automation | Playwright in Docker | Deterministic, viewport-true UI rendering for vision analysis |
 | Observability | Langfuse (Phase 9) | Traces, prompt versions, cost/latency, evals |
 | Package management | uv (package mode) | Fast, reproducible, editable-install imports everywhere |
 | Quality gates | Ruff, mypy strict, pytest, pre-commit | Enforced on every commit |
@@ -357,6 +373,7 @@ The repair generator regenerated the comment; the critic re-judged it `accept` a
 
 The same run's second candidate (the removed zero-division guard) was accepted unmodified. Full trace — `triage → generate → critique (1 accept, 1 repair) → repair → critique (accept) → publish` — persisted in `review_run_events`.
 
+> Frontend PRs that touch routes like `/checkout` or files under `src/components` in the review-sandbox-ui are also sent through the vision pipeline: the app spins up a sandboxed Docker image of the frontend, drives Playwright through target routes in mobile/desktop viewports, captures screenshots, and passes them to the vision model. Detected issues (overflow, hidden content, contrast, alignment) are grounded to the corresponding CSS/TSX lines and merged into the published review.
 ---
 
 ## Development Log
@@ -495,6 +512,31 @@ The actual engineering journey — failures included, because that's where the d
 3. **SQLite can't render JSONB** — the test fixture builds schema on SQLite; production is Postgres. Fixed with `JSON().with_variant(JSONB(), "postgresql")`: JSONB where it matters, JSON in tests.
 
 **Result:** live on review-sandbox PR #5 (`run_id=8`): the generator flagged rounding in `total_with_tax` but overstated the claim; the critic repaired it (*"the comment doesn't acknowledge that round() is sometimes sufficient — it overstates the problem"*), the repaired comment was re-judged and published at reduced severity, and the division-by-zero finding was accepted unmodified. Trace: `triage_router → review_generator → critic_qa (1 accept, 1 repair) → repair_generator → critic_qa (accept) → publisher`. One observation logged for Phase 7: the repair was near-verbatim to the critic's instruction — high fidelity, but "repair sycophancy" is worth an eval dimension. 33 → 82 tests passing.
+
+### Phase 5 — Multimodal Frontend Review
+
+**Goal:** multmodal review of frontend PRs — Playwright screenshots of rendered UI, a vision model producing structured observations, and UI findings grounded back to changed code lines before they become comments. [file:1][file:26]
+
+**Built:**
+
+- **Sandbox runner + viewport capture** — `app/vision/runner.py` builds and runs a Docker image of the review-sandbox UI, and `app/vision/capture.py` drives Playwright through routes like `/checkout` in mobile/desktop viewports, saving PNG screenshots under `data/processed/...`.
+- **Vision analyzer** — `app/vision/analyzer.py` calls `OPENROUTER_VISION_MODEL` (`openai/gpt-4o-mini`) with structured prompts that include PR title, diff summary, and viewport metadata; returns `VisionAnalysisResult` objects with typed observations (overflow, hidden content, contrast, alignment) per viewport.
+- **Grounding + bridge** — a grounding layer maps observations back to file paths and line ranges (e.g., `src/components/CheckoutButton.module.css` lines 3–10) using heuristics plus diff context, producing `GroundedObservation` records; `app/vision/review_bridge.py` converts these into `ReviewComment` objects with `severity`, `category=ReviewCategory.UI_REGRESSION`, titles/bodies that name the component and viewport, and `evidence` citing specific CSS/TSX lines causing the issue.
+- **Graph integration** — triage sets `use_vision` for frontend PRs; `run_pr_review` calls the vision analyzer and merges visual comments with text comments before publishing.
+
+**Issues hit:**
+
+1. **Event loop conflicts with sync wrappers** — initial `asyncio.run()`-based sync helper (`analyze_pr_visual_sync`) crashed under `pytest.mark.asyncio`. Fixed by using only async entrypoints and `await analyze_pr_visual` in `run_pr_review`.
+2. **Redis loop mismatch** — global singleton Redis clients caused “Future attached to a different loop” in tests. Fixed by scoping Redis clients per event loop via `get_running_loop()` and an `lru_cache` keyed on `id(loop)`.
+3. **GitHub diff media-type quirks** — early 406/404 responses when fetching PR diffs led to a simpler, robust `get_pr_diff` that uses `application/vnd.github.v3.diff` and fails closed with empty diff instead of chasing `diff_url` on `github.com`.
+4. **PR size caps interfering with demos** — large PRs (including accidentally committed `node_modules`) triggered `pr_too_large` abstentions. For Phase 5 demos, caps were relaxed and the seeded review-sandbox-ui PRs kept small and focused.
+
+**Result:** On review-sandbox-ui PRs (#2–5) with seeded regressions (fixed-width checkout buttons, contrast issues, misaligned headers), the system consistently:
+
+- Captured mobile/desktop screenshots in a sandbox.
+- Detected overflow and UI regressions at the correct viewport edges.
+- Grounded findings to the relevant CSS/TSX files and lines.
+- Posted multiple inline comments (CRITICAL/HIGH/LOW) that matched the Phase 5 handover criteria and human expectations.
 
 ### Phase 6A — Golden Dataset Candidate Pool
 

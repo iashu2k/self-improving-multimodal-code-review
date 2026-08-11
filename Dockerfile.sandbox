@@ -1,0 +1,48 @@
+# Phase 5 sandbox image: runs untrusted PR code (install, build, serve)
+# and hosts the Playwright browser used for screenshots.
+#
+# Base: official Playwright Python image — browsers + all OS deps
+# preinstalled, and the Python playwright package version MUST match the
+# image tag (v1.49.0 here <=> playwright==1.49.0 in pyproject.toml).
+# A mismatch means "browser executable not found" or protocol drift.
+FROM mcr.microsoft.com/playwright/python:v1.49.0-jammy
+
+# Node 20 LTS: the demo repos under review are Next.js apps — the sandbox
+# must npm ci / npm run build / npm start them. The base image is
+# Python-only; Node comes from NodeSource.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+# Non-root by policy: untrusted install/build scripts (postinstall hooks!)
+# run in this container. The base Playwright image already provides a
+# non-root user (pwuser); reuse it.
+USER pwuser
+WORKDIR /workspace
+
+# Warm the npm cache for the KNOWN demo fixtures at image-build time.
+# This is what makes networkless execution possible: with a warm cache,
+# `npm ci --offline` succeeds, so the runner can serve the built app with
+# --network none. A PR that adds a NEW dependency cannot install offline —
+# it fails closed (review marked "sandbox: dependency not in cache"),
+# which is correct behavior for untrusted code.
+COPY --chown=pwuser:pwuser fixtures/demo-checkout/package.json \
+     fixtures/demo-checkout/package-lock.json /tmp/warm/
+RUN cd /tmp/warm && npm ci && rm -rf /tmp/warm
+
+# Install the Python playwright package to match the image tag.
+# The base image has browsers; this ensures the Python package is present.
+RUN pip install --no-cache-dir playwright==1.49.0
+
+# Sanity: both toolchains answer, and the browser is where the pinned
+# Python package expects it.
+RUN node --version && python --version \
+ && python -c "from playwright.sync_api import sync_playwright; \
+               p = sync_playwright().start(); \
+               b = p.chromium.launch(); b.close(); p.stop(); \
+               print('chromium OK')"
+
+CMD ["sleep", "infinity"]

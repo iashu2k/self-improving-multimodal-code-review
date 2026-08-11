@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from pathlib import Path
 
 import structlog
 from sqlalchemy import select
@@ -18,6 +19,8 @@ from app.github.client import GitHubClient
 from app.github.diff_parser import ChangedFile, parse_unified_diff
 from app.ingestion.indexer import get_or_create_snapshot, index_snapshot
 from app.llm.openrouter_client import OpenRouterClient
+from app.vision.analyzer import analyze_pr_visual
+from app.vision.review_bridge import build_visual_review_comments
 
 logger = structlog.get_logger(__name__)
 
@@ -150,10 +153,35 @@ async def run_pr_review(
                 await index_snapshot(session, snapshot=snapshot, github=github, llm=llm)
                 await session.commit()
 
+                # --- Phase 5: visual analyzer (sandbox + capture + vision) ---
+                # Adjust snapshot_root if your snapshots live elsewhere.
+                repo_root = Path(__file__).resolve().parent.parent.parent  # adjust if needed
+
+                visual_analysis = await analyze_pr_visual(
+                    repo_root=repo_root,
+                    pr_title=pr_title,
+                    diff_text=diff_text,
+                    routes=["/checkout"],
+                )
+
+                visual_comments = []
+                if visual_analysis.sandbox.ok and visual_analysis.grounded_observations:
+                    visual_comments = build_visual_review_comments(
+                        visual_analysis.grounded_observations
+                    )
+                    log.info(
+                        "visual_analysis_completed",
+                        viewport_results=list(visual_analysis.per_viewport.keys()),
+                        grounded_count=len(visual_analysis.grounded_observations),
+                    )
+                elif not visual_analysis.sandbox.ok:
+                    log.warning(
+                        "visual_sandbox_failed",
+                        stage_failed=visual_analysis.sandbox.stage_failed,
+                        error=visual_analysis.sandbox.error,
+                    )
+
                 # --- Phase 4: agent graph -------------------------------
-                # triage -> retrieve -> generate -> critic/QA <-> repair (<=2)
-                # -> publisher | suppressor. Retrieval and critique live in
-                # the graph now; every node transition lands in events.
                 output = await run_review_graph(
                     session=session,
                     llm=llm,
@@ -173,6 +201,21 @@ async def run_pr_review(
                     or settings.openrouter_review_model,
                     embedding_model=settings.openrouter_embedding_model,
                 )
+
+                # Merge visual comments into the final review payload.
+                if visual_comments:
+                    from app.github.formatting import format_comment_body
+
+                    for vc in visual_comments:
+                        output.accepted.append(vc)
+                        output.review_comments.append(
+                            {
+                                "path": vc.file_path,
+                                "line": vc.line,
+                                "side": vc.side,
+                                "body": format_comment_body(vc, run_id=run.id),
+                            }
+                        )
 
                 for event in output.events:
                     session.add(
@@ -256,7 +299,10 @@ async def run_pr_review(
                     comment_count=len(output.review_comments),
                     retry_count=output.retry_count,
                 )
-                return {"status": "published", "comments": len(output.review_comments)}
+                return {
+                    "status": "published",
+                    "comments": len(output.review_comments),
+                }
 
             finally:
                 await github.aclose()

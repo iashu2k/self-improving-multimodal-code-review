@@ -13,9 +13,37 @@ from app.llm.openrouter_client import OpenRouterClient
 
 logger = structlog.get_logger(__name__)
 
-INDEXABLE_SUFFIXES = (".py", ".md", ".toml", ".cfg", ".txt")
+
+INDEXABLE_SUFFIXES = (
+    ".py",
+    ".md",
+    ".toml",
+    ".cfg",
+    ".txt",
+    # Frontend source (Phase 5): without these, a UI repo's index is empty
+    # of application code and RAG has nothing real to retrieve.
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".css",
+)
+VENDORED_DIR_NAMES = frozenset(
+    {"node_modules", "vendor", ".venv", "venv", "dist", ".git", "__pycache__"}
+)
 MAX_FILES = 200
 EMBED_BATCH = 50
+
+
+def is_vendored_path(path: str) -> bool:
+    """Dependency/build directories: never index, never embed.
+
+    Vendored deps are retrieval noise and a huge embedding workload — first
+    seen live on review-sandbox-ui (Phase 5): ~200MB vendored node_modules,
+    thousands of .md/.txt files that would have filled the MAX_FILES cap
+    with junk while indexing zero application source.
+    """
+    return any(part in VENDORED_DIR_NAMES for part in path.split("/")[:-1])
 
 
 async def get_or_create_snapshot(
@@ -48,6 +76,7 @@ async def index_snapshot(
     archive = await github.get_repo_archive(snapshot.repo_owner, snapshot.repo_name, snapshot.sha)
 
     file_count = 0
+    vendored_skipped = 0
     chunks_to_add: list[CodeChunk] = []
 
     with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
@@ -59,6 +88,9 @@ async def index_snapshot(
             # Tarball paths are prefixed with owner-repo-sha/; strip first segment
             rel_path = "/".join(member.name.split("/")[1:])
             if not rel_path:
+                continue
+            if is_vendored_path(rel_path):
+                vendored_skipped += 1
                 continue
 
             extracted = tar.extractfile(member)
@@ -105,4 +137,5 @@ async def index_snapshot(
         sha=snapshot.sha[:8],
         files=file_count,
         chunks=len(chunks_to_add),
+        vendored_skipped=vendored_skipped,
     )
