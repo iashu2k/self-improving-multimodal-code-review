@@ -2,19 +2,8 @@
 
 A GitHub App that reviews pull requests with grounded, schema-validated inline comments — built as an evaluation-driven system that measures its own precision, groundedness, and reliability, then improves its prompts and policies through a controlled, human-gated feedback loop.
 
-**Status:** Phase 5 complete — multimodal review of frontend PRs is live: sandboxed UI rendering + Playwright screenshots + a vision model, with all visual findings grounded back to changed code lines before they become comments. Phase 6A is also complete — the golden dataset candidate pool is built (467 PR-level examples: 391 enriched from public review corpora + 76 self-built verified negatives), plus a latent diff-parser bug found and fixed along the way. Next: Phase 6B (annotation, split, dataset card). [file:1][file:26]
+**Status:** Phase 5 complete — multimodal review of frontend PRs is live: sandboxed UI rendering + Playwright screenshots + a vision model, with all visual findings grounded back to changed code lines before they become comments. Phase 6A is also complete — the golden dataset candidate pool is built (467 PR-level examples: 391 enriched from public review corpora + 76 self-built verified negatives), plus a latent diff-parser bug found and fixed along the way. Next: Phase 6B (annotation, split, dataset card).
 
-<p align="center">
-  <em>Live RAG-grounded review: the bot retrieved <code>test_calc.py</code> — a file not in the diff — and cited its <code>test_divide_by_zero</code> expectation as evidence for a CRITICAL finding anchored to a deleted guard clause.</em>
-</p>
-
-<p align="center">
-  <em>Live bounded self-correction (review-sandbox PR #5): the critic caught the generator overstating a rounding claim — "the comment doesn't acknowledge that <code>round()</code> is sometimes sufficient" — issued a repair instruction, and the repaired comment was re-judged and published at reduced severity.</em>
-</p>
-
-<p align="center">
-  <em>Live multimodal review (review-sandbox-ui PRs #2–5): the bot rendered the checkout page in a mobile viewport, detected horizontal overflow, contrast issues, and misaligned UI elements, then posted CRITICAL/HIGH UI regression comments grounded to <code>CheckoutButton.module.css</code> and related files.</em>
-</p>
 
 ---
 
@@ -50,7 +39,7 @@ A GitHub App that reviews pull requests with grounded, schema-validated inline c
 
 ## Vision
 
-Most AI code-review demos are a single prompt that dumps unverifiable text onto a PR. This project is built the opposite way — **evaluation and safety first**: [file:26]
+Most AI code-review demos are a single prompt that dumps unverifiable text onto a PR. This project is built the opposite way — **evaluation and safety first**:
 
 1. **Grounded output only.** Every comment must point at a line that actually exists in the diff. A deterministic validator suppresses anything else before it is ever published.
 2. **Abstention is a feature.** If there is nothing worth flagging, the system posts nothing. Correct silence is measured and rewarded, just like correct detection.
@@ -77,7 +66,7 @@ Most AI code-review demos are a single prompt that dumps unverifiable text onto 
 
 ## Architecture (Current State)
 
-End-to-end flow as of Phase 5: [file:26]
+End-to-end flow as of Phase 5:
 
 ```text
 PR opened / synchronized on an installed repository
@@ -515,7 +504,7 @@ The actual engineering journey — failures included, because that's where the d
 
 ### Phase 5 — Multimodal Frontend Review
 
-**Goal:** multmodal review of frontend PRs — Playwright screenshots of rendered UI, a vision model producing structured observations, and UI findings grounded back to changed code lines before they become comments. [file:1][file:26]
+**Goal:** multmodal review of frontend PRs — Playwright screenshots of rendered UI, a vision model producing structured observations, and UI findings grounded back to changed code lines before they become comments.
 
 **Built:**
 
