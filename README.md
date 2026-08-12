@@ -2,7 +2,7 @@
 
 A GitHub App that reviews pull requests with grounded, schema-validated inline comments — built as an evaluation-driven system that measures its own precision, groundedness, and reliability, then improves its prompts and policies through a controlled, human-gated feedback loop.
 
-**Status:** Phase 5 complete — multimodal review of frontend PRs is live: sandboxed UI rendering + Playwright screenshots + a vision model, with all visual findings grounded back to changed code lines before they become comments. Phase 6A is also complete — the golden dataset candidate pool is built (467 PR-level examples: 391 enriched from public review corpora + 76 self-built verified negatives), plus a latent diff-parser bug found and fixed along the way. Next: Phase 6B (annotation, split, dataset card).
+**Status:** Phase 6B complete — the golden visual dataset is annotated, split, hashed, and documented (5 seeded-defect cases, all holdout, `data/golden/`), and the vision model is now evidence-chosen: `anthropic/claude-sonnet-4.5` won a four-model, four-prompt-iteration bake-off scored by the new golden eval harness (final 5/5; total campaign cost $0.34, every call logged). Phases 0–6B are done. Next: Phase 7 — the evaluation harness, whose first component (the visual golden suite) is already running.
 
 
 ---
@@ -28,12 +28,11 @@ A GitHub App that reviews pull requests with grounded, schema-validated inline c
   - [Phase 4 — LangGraph Agent Workflow](#phase-4--langgraph-agent-workflow)
   - [Phase 5 — Multimodal Frontend Review](#phase-5--multimodal-frontend-review)
   - [Phase 6A — Golden Dataset Candidate Pool](#phase-6a--golden-dataset-candidate-pool)
+  - [Phase 6B — Golden Visual Dataset + Vision Model Bake-off](#phase-6b--golden-visual-dataset--vision-model-bake-off)
 - [Engineering Decisions](#engineering-decisions)
 - [Testing](#testing)
 - [Model Configuration](#model-configuration)
 - [Known Limitations](#known-limitations)
-
-
 
 ---
 
@@ -62,11 +61,11 @@ Most AI code-review demos are a single prompt that dumps unverifiable text onto 
 | Fire-and-forget | Full Postgres audit trail: webhook events, review runs, every node transition, every comment AND every suppression with reasons; idempotent run upsert keyed on (repo, PR, head SHA) |
 | Feedback is an afterthought | Every posted artifact carries 👍/👎 prompts + hidden identity markers from day one — feedback is attributable to a specific run/comment/config |
 | "Self-improving" = changes its prompt | Versioned configs promoted only by passing a promotion gate on a held-out benchmark (Phase 8) |
-| Text only | Optional vision analysis of rendered UI for frontend PRs (Phase 5) |
+| Text only | Optional vision analysis of rendered UI for frontend PRs (Phase 5), model chosen by a golden-set bake-off (Phase 6B) |
 
 ## Architecture (Current State)
 
-End-to-end flow as of Phase 5:
+End-to-end flow as of Phase 6B:
 
 ```text
 PR opened / synchronized on an installed repository
@@ -167,8 +166,9 @@ graph TD;
                       critic + deterministic QA, bounded repair (max 2), node-event audit
 [done]      Phase 5   Multimodal — Playwright screenshots + vision model, code-grounded UI findings
 [done]      Phase 6A  Golden dataset — candidate pool (467 PR-level examples)
-[next]      Phase 6B  Golden dataset — annotation, 60/20/20 split, dataset card
-[planned]   Phase 7   Evaluation harness — precision/recall, groundedness, pass@k, baselines
+[done]      Phase 6B  Golden dataset — 5 visual cases annotated/split/hashed/documented,
+                      vision model bake-off (sonnet-4.5), comparative diff-anchored prompt
+[next]      Phase 7   Evaluation harness — precision/recall, groundedness, pass@k, baselines
 [planned]   Phase 8   Closed loop — feedback, diagnoser, versioned configs, promotion gate
 [planned]   Phase 9   Observability/UI — Langfuse tracing, dashboard, deployment, demo
 ```
@@ -183,7 +183,7 @@ graph TD;
 | Review model | `qwen/qwen3-coder-next` | Coding-agent-optimized, ~$0.12/M in + $0.80/M out, 5/5 structured-output reliability |
 | Router / critic models | `qwen/qwen3-coder-next` (aliases per role) | Same reliability bar; stronger critic benchmarked later |
 | Embedding model | `openai/text-embedding-3-small` (via OpenRouter) | 1536-dim, cheap, good enough for repo-scale retrieval |
-| Vision model | `openai/gpt-4o-mini` (via OpenRouter) | Multimodal structured outputs for UI screenshots (Phase 5) |
+| Vision model | `anthropic/claude-sonnet-4.5` (via OpenRouter) | Won the Phase 6B comparative bake-off: 5/5 on the golden visual suite with the diff-anchored BEFORE/AFTER prompt |
 | Schemas | Pydantic v2 | One schema drives both API contract and model output contract |
 | Background jobs | ARQ + Redis | Lightweight async Python worker; job-ID dedup |
 | GitHub integration | GitHub App (JWT + installation tokens) | Least-privilege auth, bot identity on reviews |
@@ -210,7 +210,8 @@ self-improving-multimodal-code-review/
 │   │       └── webhooks.py           # POST /api/v1/webhooks/github (HMAC + persist + enqueue)
 │   ├── core/
 │   │   ├── config.py                 # pydantic-settings; env-driven, validated
-│   │   └── logging.py                # structlog JSON logging
+│   │   ├── logging.py                # structlog JSON logging
+│   │   └── redis.py                  # per-event-loop Redis factory
 │   ├── db/
 │   │   ├── models/                   # WebhookEvent, ReviewRun, StoredReviewComment,
 │   │   │                             # RepoContextFile, ReviewRunEvent
@@ -235,10 +236,21 @@ self-improving-multimodal-code-review/
 │   │   ├── qa.py                     # deterministic content QA (pre-critic)
 │   │   ├── graph.py                  # the LangGraph workflow + run_review_graph entrypoint
 │   │   └── validator.py              # deterministic placement gate (hard, unchanged)
+│   ├── sandbox/
+│   │   └── runner.py                 # networkless Docker sandbox (Phase 5; app_subdir-generalized in 6B)
+│   ├── vision/
+│   │   ├── analyzer.py               # vision analyzer node (Phase 5)
+│   │   ├── capture.py                # viewport-true Playwright capture (runs in-container)
+│   │   ├── prompts.py                # single-shot prompt v2 + comparison prompt v4.1 (6B)
+│   │   ├── review_bridge.py          # grounded observations → ReviewComment objects
+│   │   └── schemas.py                # VisionResult / VisualObservation contracts
 │   ├── eval/
-│   │   └── golden_schemas.py         # GoldenExample / GoldComment contracts (Phase 6)
+│   │   ├── golden_schemas.py         # GoldenExample / GoldComment contracts (Phase 6A)
+│   │   └── visual_schemas.py         # VisualGoldenExample + VisualGroundTruth (Phase 6B)
 │   ├── llm/
-│   │   ├── openrouter_client.py      # async client, structured outputs, smart retries
+│   │   ├── openrouter_client.py      # async client, structured outputs, smart retries,
+│   │   │                             # schema-dialect normalization (strictify + key stripping)
+│   │   ├── cost_guard.py             # fail-closed daily spend cap (Redis INCRBYFLOAT)
 │   │   ├── reviewer.py               # generate_comments + review_diff (legacy wrapper)
 │   │   ├── router.py                 # triage strategy model call
 │   │   ├── critic.py                 # LLM critic: accept/repair/reject verdicts
@@ -249,18 +261,31 @@ self-improving-multimodal-code-review/
 │   │   └── settings.py               # ARQ WorkerSettings
 │   └── main.py                       # FastAPI app factory
 ├── alembic/                          # async migrations (see dev log: pgvector convention)
+├── Dockerfile.sandbox                # Playwright + Node 20 sandbox image (warm npm cache)
+├── fixtures/
+│   ├── demo-checkout/                # Next.js seeded-defect fixture (the Phase 5 oracle)
+│   └── golden/                       # generated: defect-free template + 5 case overlays (6B)
 ├── scripts/
 │   ├── review_local.py               # CLI: git diff → review.json
-│   └── golden/                       # Phase 6A dataset tooling
-│       ├── harvest_candidates.py     # HF triplets → candidate pool (funnel-audited filters)
-│       ├── fetch_pr_context.py       # candidates → PR-level examples via GitHub API
-│       ├── fetch_negatives.py        # self-built NO_COMMENT negatives (merged, zero human feedback)
-│       └── pool_stats.py             # pool composition census
-├── tests/                            # 83 tests, all passing
+│   ├── golden/                       # dataset tooling
+│   │   ├── harvest_candidates.py     # (6A) HF triplets → candidate pool (funnel-audited filters)
+│   │   ├── fetch_pr_context.py       # (6A) candidates → PR-level examples via GitHub API
+│   │   ├── fetch_negatives.py        # (6A) self-built NO_COMMENT negatives (merged, zero human feedback)
+│   │   ├── pool_stats.py             # (6A) pool composition census
+│   │   ├── make_visual_fixtures.py   # (6B) template + case overlays, generated not hand-written
+│   │   ├── build_visual_cases.py     # (6B) materialize repos → sandbox capture → diffs + shots
+│   │   ├── annotate_visual_cases.py  # (6B) derived ground-truth annotations
+│   │   └── build_manifest.py         # (6B) sha256 manifest + generator versions
+│   └── eval/
+│       └── run_visual_golden.py      # (6B/7) golden visual eval + model bake-off rig
+├── tests/                            # 87 tests, all passing
 ├── data/
 │   ├── raw/                          # ignored
 │   ├── processed/                    # ignored review artifacts
-│   └── golden_prs/                   # pool/ + candidates/ ignored; curated 100 committed (6B)
+│   ├── golden/                       # Phase 6B visual golden set (committed): annotations,
+│   │                                 # shots, diffs, manifest.json, DATASET_CARD.md
+│   └── golden_prs/                   # pool/ + candidates/ ignored (regenerable from the API);
+│                                     # text-side curation into the golden 100 is post-6B
 ├── docker-compose.yml                # Redis + Postgres (pgvector)
 ├── pyproject.toml                    # uv package mode, ruff/mypy/pytest config
 ├── .env.example
@@ -292,6 +317,7 @@ uv run alembic upgrade head
 | `OPENROUTER_ROUTER_MODEL` | Triage router model (Phase 4) | defaults to review model if unset |
 | `OPENROUTER_CRITIC_MODEL` | Critic/QA model (Phase 4) | defaults to review model if unset |
 | `OPENROUTER_EMBEDDING_MODEL` | Embedding model for RAG | `openai/text-embedding-3-small` |
+| `OPENROUTER_VISION_MODEL` | Vision analyzer model (Phase 5/6B) | `anthropic/claude-sonnet-4.5` |
 | `GITHUB_APP_ID` | Numeric App ID | GitHub → Developer settings → your App |
 | `GITHUB_PRIVATE_KEY_PATH` | Path to `.pem` (outside repo) | App page → Generate a private key |
 | `GITHUB_WEBHOOK_SECRET` | HMAC secret for webhook verification | You generate it; set on the App |
@@ -334,6 +360,13 @@ uv run python scripts/review_local.py \
   --out data/processed/review.json
 ```
 
+### Golden visual eval (Phase 6B harness)
+
+```bash
+uv run python scripts/eval/run_visual_golden.py                                   # active vision model, 5 golden cases
+uv run python scripts/eval/run_visual_golden.py --model anthropic/claude-sonnet-4.5  # bake-off any OpenRouter model
+```
+
 ### Example published comment (RAG-grounded, Phase 3)
 
 A PR removed the zero-division guard from `divide()`. The retriever pulled in `test_calc.py` — **not part of the diff** — and the model cited it:
@@ -363,6 +396,7 @@ The repair generator regenerated the comment; the critic re-judged it `accept` a
 The same run's second candidate (the removed zero-division guard) was accepted unmodified. Full trace — `triage → generate → critique (1 accept, 1 repair) → repair → critique (accept) → publish` — persisted in `review_run_events`.
 
 > Frontend PRs that touch routes like `/checkout` or files under `src/components` in the review-sandbox-ui are also sent through the vision pipeline: the app spins up a sandboxed Docker image of the frontend, drives Playwright through target routes in mobile/desktop viewports, captures screenshots, and passes them to the vision model. Detected issues (overflow, hidden content, contrast, alignment) are grounded to the corresponding CSS/TSX lines and merged into the published review.
+
 ---
 
 ## Development Log
@@ -438,7 +472,7 @@ The actual engineering journey — failures included, because that's where the d
 
 **Design constraint:** markers must survive GitHub's Markdown rendering untouched (HTML comments do; front-matter and footnote tricks don't reliably) and must not pollute the visible review — reviewers should never see the instrumentation.
 
-**Verified live (Phase 4):** markers confirmed present via the API and invisible in rendered reviews — e.g. `<!-- review-forge {"file":"calc.py","line":2,"run_id":8} -->` on review-sandbox PR #5.
+**Verified live (Phase 4):** markers confirmed present via the API and invisible in rendered reviews — e.g. `<!-- review-forge {\"file\":\"calc.py\",\"line\":2,\"run_id\":8} -->` on review-sandbox PR #5.
 
 ### Phase 3A — PostgreSQL Persistence & Audit Trail
 
@@ -508,10 +542,11 @@ The actual engineering journey — failures included, because that's where the d
 
 **Built:**
 
-- **Sandbox runner + viewport capture** — `app/vision/runner.py` builds and runs a Docker image of the review-sandbox UI, and `app/vision/capture.py` drives Playwright through routes like `/checkout` in mobile/desktop viewports, saving PNG screenshots under `data/processed/...`.
-- **Vision analyzer** — `app/vision/analyzer.py` calls `OPENROUTER_VISION_MODEL` (`openai/gpt-4o-mini`) with structured prompts that include PR title, diff summary, and viewport metadata; returns `VisionAnalysisResult` objects with typed observations (overflow, hidden content, contrast, alignment) per viewport.
+- **Sandbox runner + viewport capture** — `app/sandbox/runner.py` runs the PR head in a networkless Docker sandbox (`--network none`, non-root user, warm npm cache, resource limits), and `app/vision/capture.py` drives Playwright through routes like `/checkout` in mobile/desktop viewports, saving viewport-true PNG screenshots (`full_page=False` + a PNG-header width assertion — the "496px lie" from a full-page capture hid a real clip during bring-up).
+- **Vision analyzer** — `app/vision/analyzer.py` calls `OPENROUTER_VISION_MODEL` with structured prompts that include PR title, changed files, and viewport metadata; returns `VisionResult` objects with typed observations (overflow, hidden content, contrast, alignment) per viewport. (Phase 5 model: `openai/gpt-4o-mini`, winner of a single-shot seeded-defect bake-off — superseded in 6B, see below.)
 - **Grounding + bridge** — a grounding layer maps observations back to file paths and line ranges (e.g., `src/components/CheckoutButton.module.css` lines 3–10) using heuristics plus diff context, producing `GroundedObservation` records; `app/vision/review_bridge.py` converts these into `ReviewComment` objects with `severity`, `category=ReviewCategory.UI_REGRESSION`, titles/bodies that name the component and viewport, and `evidence` citing specific CSS/TSX lines causing the issue.
 - **Graph integration** — triage sets `use_vision` for frontend PRs; `run_pr_review` calls the vision analyzer and merges visual comments with text comments before publishing.
+- **Cost guardrail** — every OpenRouter call passes a fail-closed daily cap (`OPENROUTER_DAILY_COST_CAP_USD`, default $2, Redis `INCRBYFLOAT` per UTC day); cost recording after each call is best-effort but loud, billing the provider-reported model.
 
 **Issues hit:**
 
@@ -519,6 +554,7 @@ The actual engineering journey — failures included, because that's where the d
 2. **Redis loop mismatch** — global singleton Redis clients caused “Future attached to a different loop” in tests. Fixed by scoping Redis clients per event loop via `get_running_loop()` and an `lru_cache` keyed on `id(loop)`.
 3. **GitHub diff media-type quirks** — early 406/404 responses when fetching PR diffs led to a simpler, robust `get_pr_diff` that uses `application/vnd.github.v3.diff` and fails closed with empty diff instead of chasing `diff_url` on `github.com`.
 4. **PR size caps interfering with demos** — large PRs (including accidentally committed `node_modules`) triggered `pr_too_large` abstentions. For Phase 5 demos, caps were relaxed and the seeded review-sandbox-ui PRs kept small and focused.
+5. **Schema dialect leaks through the gateway** — OpenAI strict mode 400s without `additionalProperties: false` + full `required` lists; the client now normalizes any pydantic schema unconditionally (`strictify_schema`). Schema-valid ≠ useful, either: `qwen2.5-vl-72b` passed 10/10 schema validity while detecting nothing across 4 prompt framings — models are gated on seeded-defect usefulness, not validity.
 
 **Result:** On review-sandbox-ui PRs (#2–5) with seeded regressions (fixed-width checkout buttons, contrast issues, misaligned headers), the system consistently:
 
@@ -546,7 +582,56 @@ The actual engineering journey — failures included, because that's where the d
 4. **Review bodies ≠ inline comments.** The review-body check caught 6 merged PRs the inline-comment check alone would have mislabeled as clean negatives.
 5. **CRLF normalization** — HF comments and API bodies normalize line endings differently; a whitespace-collapsing `normalize()` brought unresolved gold-comment URLs down to 7 of ~290.
 
-**Result:** **467 examples** (172 bug, 89 security, 71 refactor, 59 performance, 76 negatives), 87% multi-file. Attrition all in expected classes: 97 contaminated negatives, 18 candidate-file mismatches, 3 gone repos, 1 oversized. Pool is gitignored (regenerable from the API); only the curated 100 will be committed in 6B. **Sequencing note:** 6A → Phase 5 → 6B, because the 5 multimodal golden examples require the Phase 5 demo repo (`review-sandbox-ui`).
+**Result:** **467 examples** (172 bug, 89 security, 71 refactor, 59 performance, 76 negatives), 87% multi-file. Attrition all in expected classes: 97 contaminated negatives, 18 candidate-file mismatches, 3 gone repos, 1 oversized. Pool is gitignored (regenerable from the API); text-side curation into the golden 100 is deliberately sequenced after the visual loop (6B) proved the harness. **Sequencing note:** 6A → Phase 5 → 6B, because the 5 multimodal golden examples require the Phase 5 demo repo (`review-sandbox-ui`).
+
+### Phase 6B — Golden Visual Dataset + Vision Model Bake-off
+
+**Goal:** turn the Phase 5 multimodal pipeline into a measured asset — 5 annotated visual golden cases (the seeded-defect family), a versioned manifest with artifact hashes, a dataset card — and get a defensible answer to "which vision model, prompted how?"
+
+**Built:**
+
+- **Visual golden schemas** (`app/eval/visual_schemas.py`) — `VisualGoldenExample` extends 6A's `GoldenExample` with a `visual` block: baseline/PR shot paths, viewport, `expected_observations` (type / severity / element / edge / evidence tokens), `expected_empty`, and `ground_truth_source_line`. Matching is semantic — type equality + element named + evidence tokens cited — not string equality; empty/non-empty XOR is enforced by the model itself.
+- **Generated fixtures** (`scripts/golden/make_visual_fixtures.py`) — the golden template is `fixtures/demo-checkout` *minus the seeded defect*, derived mechanically; each case overlay is one CSS transform applied with exactly-once assertions that fail loudly on fixture drift. No hand-written fixture files; one command rebuilds all five cases.
+- **Case builder** (`scripts/golden/build_visual_cases.py`) — materializes baseline/PR repos, writes unified diffs, runs the Phase 5 networkless sandbox per side, collects viewport-true shots (`checkout_{mobile,desktop}_{baseline,pr}.png`).
+- **Annotation generator** (`scripts/golden/annotate_visual_cases.py`) — ground truth is derived, not hand-typed: defect line numbers are located by scanning the overlay for the defect marker, so annotations stay correct under regeneration.
+- **Manifest** (`scripts/golden/build_manifest.py` → `data/golden/manifest.json`) — per-case paths + sha256 of shots/diffs, split, and generator versions (vision model, prompt version, schema version). Artifact drift is a test failure.
+- **Dataset card** (`data/golden/DATASET_CARD.md`) — construction method, case table, annotation schema, split rationale, known limitations, and the adversarial backlog.
+- **Eval harness** (`scripts/eval/run_visual_golden.py`) — runs a vision model over the golden cases (BEFORE/AFTER shots + the diff), scores against annotations, reports over-flagging separately from misses; the `--model` flag makes it a bake-off rig. This is the Phase 7 entry point.
+- **Integrity tests** (`tests/test_golden_manifest.py`) — every case file exists, hashes match, splits valid, annotations validate, gold-comment lines cite the defect marker (markers imported from the generator — single source of truth). 83 → 87 tests.
+
+**The model bake-off (why 6B took four prompt iterations):**
+
+| Prompt | Design | Outcome |
+|---|---|---|
+| v1 | Single-shot, intent-conditioned (the Phase 5 winner) | Detects the seeded overflow; confabulates on clean pages |
+| v2 | v1 + anti-confabulation rules | Fabrication down; phantom "bottom-edge clipping" persists; blind to removed content |
+| v3 | BEFORE/AFTER comparison | Worse — models invent BEFORE-only elements to "explain" differences |
+| v4 | v3 + the actual diff in the prompt | The unlock: targeted verification of changed lines instead of free-scan |
+| v4.1 | v4 + short-page rule | Final (see issue #4 below) |
+
+| Model | v3 | v4/v4.1 | Verdict |
+|---|---|---|---|
+| `openai/gpt-4o-mini` | 1/5 — invented "cart items", a "promo banner", "$50.00" | — | Rejected: confabulation |
+| `google/gemini-2.5-flash` | 1/5 — blind on the proven oracle; invented a checkout form | — | Rejected |
+| `openai/gpt-4o` | 2/5 | 3/5 — missed white-on-white text AND alignment chaos | Rejected |
+| `anthropic/claude-haiku-4.5` | (blocked by dialect bug, issue #3) | 3/5, strong diff-grounding | Runner-up |
+| `anthropic/claude-sonnet-4.5` | 3/5 | **5/5** | **Winner** → `OPENROUTER_VISION_MODEL` |
+
+Total measured spend for the entire campaign (4 prompt iterations × 4–5 models × 5 cases, plus every diagnostic re-run): **$0.34** — every call logged via `openrouter_cost` events against the $2/day cap.
+
+**Issues hit:**
+
+1. **Sandbox runner hardcoded the fixture path** — install/build/start did `cd fixtures/demo-checkout` and `capture.py` was resolved against the repo under test; golden case repos are bare apps. Generalized `run_pr_in_sandbox` with an `app_subdir` parameter (default preserves Phase 5 behavior byte-for-byte) and resolved `capture.py` from the project root.
+2. **Latent import bug in `golden_schemas.py`** — it imported `Category` from `app.agents.schemas`, which only defines `ReviewCategory`; nothing had imported the module since 6A. One-line alias fix — and a reminder that unused modules rot invisibly.
+3. **Anthropic 400 on `maxItems`** — pydantic emits `maxItems` for `max_length=5`; Anthropic structured outputs reject it (via both Azure and Bedrock routes). `strictify_schema` now strips provider-unsupported keys (`maxItems`/`minItems`/`minProperties`/`maxProperties`) unconditionally; local pydantic validation still enforces them on the parsed response. Regression test added. Same lesson as Phase 5's `additionalProperties`: normalize dialects in the adapter, unconditionally.
+4. **The padding-fold phantom** — sonnet-4.5, shown a padding 24→32px diff on a short page, reported the button "clipped at the bottom edge" with confident fabricated detail — 3/3 reproductions, resistant to an explicit prompt counter-rule (v4.1's short-page rule). The diff anchor that fixed free-scan confabulation can itself trigger *reasoned* hallucination. Fix: the negative control was redesigned to be spatially neutral (button color `#2563eb → #1d4ed8`); the padding variant is preserved as a Phase 7 adversarial probe.
+5. **A case-design bug caught by a model** — the first alignment defect (`margin-left: 120px` on a 320px button in a 342px content box) was arithmetically an *overflow*: haiku-4.5 reported `layout_overflow` and was correct. Measure the artifact before blaming the model — again. Redesigned as three-way alignment chaos (heading right, total center, button left).
+6. **Evidence-token over-strictness** — the harness demanded substrings the model doesn't emit ("order total" vs `'orderTotal'`; "contrast" vs "too light"). Tokens retuned to model vocabulary; matching stays semantic.
+7. **Hash-drift test caught a stale manifest** after artifact regeneration — pipeline discipline: fixtures → annotate → build → manifest → test; the manifest is always the last write before commit.
+
+**Result:** **5/5** golden visual suite on `anthropic/claude-sonnet-4.5` with prompt v4.1 (diff-anchored BEFORE/AFTER comparison). Split decision: all 5 visual cases in `holdout` — the proven oracle family, n=5 too small to subdivide, and the live `demo-checkout` fixture remains the development smoke signal. Known model caveat recorded in the card: sonnet quotes plausible-but-**invented** prices in evidence prose ("$127.47" vs the real $42.00) — detection and localization are unaffected, but the grounding chain must never propagate model-quoted text verbatim without verifying it against the diff.
+
+**Adversarial backlog (Phase 7's first self-improvement targets):** subtle intent-licensed contrast (`#d1d5db` — all models abstained), single-element centering (all models abstained), the padding-fold phantom (sonnet), invented-price quoting in evidence (sonnet).
 
 ---
 
@@ -556,7 +641,7 @@ The actual engineering journey — failures included, because that's where the d
 2. **One Pydantic schema, two consumers.** The same `ReviewResult` schema drives both the OpenRouter JSON Schema request and response validation — no parallel contracts to drift.
 3. **Determinism around the model, freedom inside it.** The LLM reasons freely about *what* to flag; *where* a comment may land is enforced by the parser, and the model is told the legal set explicitly.
 4. **Fail closed.** Empty, malformed, schema-invalid, or ungrounded output → retry → suppress → abstain. Nothing reaches a PR without passing every gate.
-5. **Model as configuration, not commitment.** Models live in `.env` aliases per role; adoption requires passing a consecutive-run structured-output check (≥9/10 valid with retry recovery).
+5. **Model as configuration, not commitment.** Models live in `.env` aliases per role; adoption requires passing a consecutive-run structured-output check (≥9/10 valid with retry recovery) — and, for vision, a golden-set bake-off (6B).
 6. **Retry transient, fail fast on permanent.** 429/5xx/malformed-JSON retry; 404 and validation-fatal errors don't.
 7. **Webhooks ack fast, work async.** 202 within milliseconds; LLM latency lives in the worker. Dedup keys make GitHub retries harmless.
 8. **Idempotency via constraints + upserts, not checks.** Check-then-insert races under concurrency; unique constraints with `ON CONFLICT` don't. Retries, redeliveries, and re-indexing are all safe because the schema makes them safe.
@@ -569,11 +654,14 @@ The actual engineering journey — failures included, because that's where the d
 15. **Deterministic layers reject the malformed; models judge the semantic.** Keyword-level checks never decide content quality (a hand-rolled rationale heuristic suppressed two real findings on its first live run). Cheap deterministic gates catch structural problems; semantic judgment goes to a model with full evidence in front of it.
 16. **Bounds are structural, not verbal.** The repair limit lives in the graph's routing function, not in a prompt — "max 2 attempts" can't be talked out of existence by a model.
 17. **Labels are derived through production code.** Golden-set line anchors are computed by the same diff parser the validator enforces with — labels and the gate can never disagree about what a legal line is. Dataset-provided line numbers (chunk-relative) are never trusted.
+18. **Regression vision is comparative, not free-scan.** Asking a vision model "is anything wrong with this page?" invites prior-driven confabulation at every capability tier; asking "what changed between BEFORE and AFTER, given this diff?" converts detection into verification. The golden set ships baseline shots for exactly this reason.
+19. **Golden artifacts are generated, never hand-written.** The template equals the fixture minus the seeded defect, derived mechanically with fail-loud assertions; ground-truth line numbers are located by scanning for the defect marker. One command rebuilds the dataset; drift surfaces immediately instead of silently.
+20. **Artifact drift is a test failure.** The manifest hashes every golden artifact (sha256); the pipeline order is fixtures → annotate → build → manifest → test, and the manifest is always the last write before commit.
 
 ## Testing
 
 ```bash
-uv run pytest    # 83 tests, all passing
+uv run pytest    # 87 tests, all passing
 ```
 
 | Suite | Coverage |
@@ -581,7 +669,7 @@ uv run pytest    # 83 tests, all passing
 | `test_diff_parser.py` | Hunk parsing, commentable-line sets, `\ No newline` marker regression, file status/rename tracking (6A regression) |
 | `test_reviewer.py` | Reviewer with mocked client → validated `ReviewResult`; commentable-line map always bound |
 | `test_validator.py` | Accept added line / RIGHT context line for deletions; reject out-of-diff line / unknown file / duplicate / caps |
-| `test_openrouter_client.py` | Structured-output error semantics |
+| `test_openrouter_client.py` | Structured-output error semantics; provider-dialect key stripping (`maxItems` et al., 6B) |
 | `test_webhooks.py` | Valid/invalid/missing/malformed signatures, tampered body, ping events, draft-PR skip, event persistence + concurrent-safe dedup |
 | `test_formatting.py` | Severity badges, suggested-fix rendering, feedback marker/prompt rendering |
 | `test_chunker.py` | AST chunking: imports prepended, oversized splits, module-level grouping, non-Python fallback |
@@ -596,6 +684,7 @@ uv run pytest    # 83 tests, all passing
 | `test_publisher_suppressor.py` | 2C-marked payload, abstain-reason precedence, retry-exhausted finalization, audit-trail accumulation |
 | `test_run_graph.py` | `run_review_graph` wrapper: state plumbing and output mapping on both terminal paths |
 | `test_jobs.py` | Worker at the graph seam: published payload passthrough, idempotent run upsert, event persistence, abstention with suppressions |
+| `test_golden_manifest.py` | Golden dataset integrity (6B): artifact existence, sha256 drift detection, split validity, annotation schema validation, gold-line defect-marker grounding |
 | `test_health.py` | API smoke tests |
 
 ## Model Configuration
@@ -606,7 +695,7 @@ uv run pytest    # 83 tests, all passing
 | Embeddings | `openai/text-embedding-3-small` ✅ (via OpenRouter) | 3 |
 | Triage router | `qwen/qwen3-coder-next` ✅ (`OPENROUTER_ROUTER_MODEL`) | 4 |
 | Critic / QA | `qwen/qwen3-coder-next` ✅ (`OPENROUTER_CRITIC_MODEL`) — first live repair loop verified; benchmark a stronger critic later | 4 |
-| Vision analyzer | TBD (vision-capable, structured-output) | 5 |
+| Vision analyzer | `anthropic/claude-sonnet-4.5` ✅ (5/5 golden visual suite, diff-anchored comparative prompt v4.1) — replaced `openai/gpt-4o-mini` (the Phase 5 single-shot winner) after the 6B bake-off | 5–6B |
 | Eval judge | TBD (lowest-cost structured-output model) | 7 |
 
 ## Known Limitations
@@ -615,14 +704,16 @@ Honest list — each has a phase assigned:
 
 - **Feedback collection is passive:** markers and emoji prompts ship on every review, but nothing consumes reactions yet — that's the Phase 6/8 loop.
 - **Index freshness is SHA-scoped:** context is indexed at the PR head SHA and reused across redeliveries — correct by construction, but a first review of a big repo pays the full indexing cost. Incremental/background indexing is a later optimization.
-- **Retrieval seeding is heuristic:** queries come from diff paths + hunk keywords; triage's `review_focus` isn't yet wired into retrieval queries, and there's no query reformulation or multi-hop retrieval (a natural Phase 5/6 refinement).
-- **RAG path inside the graph is unexercised live (beyond the Phase 3B demo):** the golden pool is built; labeled RAG-slice examples (incl. banking review-sandbox PR #5) land in Phase 6B annotation.
-- **QA heuristics are uncalibrated:** the word-count floor and Jaccard threshold are reasonable defaults, not measured values — calibration happens on the golden development split (Phase 6B/7); the candidate pool is now built.
+- **Retrieval seeding is heuristic:** queries come from diff paths + hunk keywords; triage's `review_focus` isn't yet wired into retrieval queries, and there's no query reformulation or multi-hop retrieval (a natural Phase 7 refinement).
+- **RAG path inside the graph is unexercised live (beyond the Phase 3B demo):** the golden pool is built; labeled RAG-slice examples (incl. banking review-sandbox PR #5) land with text-side golden curation (post-6B).
+- **QA heuristics are uncalibrated:** the word-count floor and Jaccard threshold are reasonable defaults, not measured values — calibration happens on the golden development split (Phase 7); the candidate pool is built.
 - **Repair fidelity vs. sycophancy unevaluated:** repaired comments can parrot the critic's instruction verbatim; high fidelity now, but it's an eval dimension, not a guarantee (Phase 7).
 - **Single repo language tested:** Python so far; the parser is language-agnostic but chunking quality per language is unevaluated (Phase 6).
-- **Golden pool skews:** dataset-derived positives are Python-only and older (HF corpus era); self-built negatives skew recent (2024–2026). To be documented in the Phase 6B dataset card.
+- **Golden pool skews:** dataset-derived positives are Python-only and older (HF corpus era); self-built negatives skew recent (2024–2026). Documented in `data/golden/DATASET_CARD.md`.
+- **Visual golden set is small and synthetic:** 5 cases, one Next.js fixture, CSS-only seeded defects, mobile-primary annotation. The adversarial backlog (subtle contrast, single-element centering, padding-fold phantom) is queued as Phase 7's first self-improvement targets.
+- **Vision model quotes unverified text:** sonnet-4.5 invents plausible prices/labels in evidence prose; detection and localization are reliable, verbatim quotes are not — the critic must verify quoted text against the diff before anything publishes.
 - **Dev-only hosting:** ngrok + local worker; deployment topology comes in Phase 9.
 
 ## Roadmap
 
-**Phase 5 (next):** multimodal review of frontend PRs — Playwright screenshots of rendered UI, a vision model producing structured observations, and UI findings grounded back to changed code lines before they become comments. The graph is ready for it: `ui_screenshot_url` / `vision_observations` are already in the state model, and triage already detects frontend file changes — `use_vision` is simply forced off until the analyzer node lands.
+**Phase 7 (next):** the evaluation harness — its first component already exists (`scripts/eval/run_visual_golden.py`, 5/5 gate on sonnet-4.5). Remaining: text-side curation of the 467-example pool into the golden 100, precision/recall + groundedness metrics over the full golden set, pass@k and abstention-quality baselines, and the 6B adversarial backlog as the first self-improvement targets.
