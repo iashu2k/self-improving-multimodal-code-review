@@ -19,22 +19,22 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
-    op.alter_column(
-        "review_runs",
-        "github_review_id",
-        existing_type=sa.Integer(),
-        type_=sa.BigInteger(),
-        existing_nullable=True,
-    )
+  """Upgrade schema."""
+  op.alter_column(
+    "review_runs",
+    "github_review_id",
+    existing_type=sa.Integer(),
+    type_=sa.BigInteger(),
+    existing_nullable=True,
+  )
 
 
 def downgrade() -> None:
-    """Downgrade schema."""
-    op.alter_column(
-        "review_runs",
-        "github_review_id",
-        existing_type=sa.BigInteger(),
-        type_=sa.Integer(),
-        existing_nullable=True,
-    )
+  """Downgrade schema."""
+  op.alter_column(
+    "review_runs",
+    "github_review_id",
+    existing_type=sa.BigInteger(),
+    type_=sa.Integer(),
+    existing_nullable=True,
+  )

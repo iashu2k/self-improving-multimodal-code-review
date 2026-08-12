@@ -1,0 +1,55 @@
+{
+  "example_id": "vis-broken-alignment-04",
+  "source": "review-sandbox",
+  "repository": "local/fixtures",
+  "commit_sha": "fixture-local",
+  "language": "css",
+  "pr_metadata": {
+    "title": "Polish checkout styling",
+    "description": "",
+    "url": ""
+  },
+  "changed_files": [
+    "app/checkout/checkout.module.css"
+  ],
+  "diff_path": "visual/diffs/vis-broken-alignment-04.diff",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "app/checkout/checkout.module.css",
+      "line": 9,
+      "category": "ui_regression",
+      "severity": "medium",
+      "issue_summary": "Heading, total, and button sit at three different alignments",
+      "evidence_requirement": "cites the heading pulled right while the button stays left",
+      "must_not_claim": [
+        "button overflows"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": true,
+      "rationale": "heading right + total center + button left is visibly incoherent"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "visual": {
+    "baseline_shot": "visual/shots/vis-broken-alignment-04/checkout_mobile_baseline.png",
+    "pr_shot": "visual/shots/vis-broken-alignment-04/checkout_mobile_pr.png",
+    "viewport": "mobile",
+    "expected_observations": [
+      {
+        "type": "broken_alignment",
+        "severity_hint": "medium",
+        "element": "heading",
+        "edge": null,
+        "evidence_must_mention": [
+          "align"
+        ]
+      }
+    ],
+    "expected_empty": false,
+    "ground_truth_source_line": "app/checkout/checkout.module.css:9"
+  }
+}

@@ -1,0 +1,11 @@
+--- a/app/checkout/checkout.module.css
++++ b/app/checkout/checkout.module.css
+@@ -17,7 +17,7 @@
+   display: block;
+   width: 320px;
+   padding: 12px 16px;
+-  background-color: #2563eb;
++  background-color: #1d4ed8;
+   color: #ffffff;
+   border: none;
+   border-radius: 8px;

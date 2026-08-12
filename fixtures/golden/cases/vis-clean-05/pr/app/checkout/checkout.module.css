@@ -1,0 +1,27 @@
+.container {
+  padding: 24px;
+}
+
+.heading {
+  margin: 0 0 12px 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.orderTotal {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+}
+
+.placeOrder {
+  display: block;
+  width: 320px;
+  padding: 12px 16px;
+  background-color: #1d4ed8;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}

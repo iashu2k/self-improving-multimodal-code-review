@@ -25,47 +25,47 @@ QA_DUPLICATE = "qa_duplicate"
 
 
 class RiskLevel(StrEnum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
+  LOW = "low"
+  MEDIUM = "medium"
+  HIGH = "high"
 
 
 class RouteDecision(BaseModel):
-    risk_level: RiskLevel
-    review_focus: list[str] = Field(default_factory=list)
-    use_rag: bool = True
-    use_vision: bool = False  # always False until Phase 5
-    abstain: bool = False
-    reason: str = ""
+  risk_level: RiskLevel
+  review_focus: list[str] = Field(default_factory=list)
+  use_rag: bool = True
+  use_vision: bool = False  # always False until Phase 5
+  abstain: bool = False
+  reason: str = ""
 
 
 # --- Critic output: one verdict per candidate comment ---
 
 
 class Verdict(StrEnum):
-    ACCEPT = "accept"
-    REPAIR = "repair"
-    REJECT = "reject"
+  ACCEPT = "accept"
+  REPAIR = "repair"
+  REJECT = "reject"
 
 
 class QAVerdict(BaseModel):
-    comment_index: int = Field(description="Index into the candidate comment list")
-    verdict: Verdict
-    grounded: bool = Field(description="Every claim supported by diff or context")
-    actionable: bool = Field(description="Author knows what to change")
-    duplicate: bool
-    policy_safe: bool
-    reason: str
-    repair_instruction: str | None = Field(default=None, description="Required when verdict=repair")
+  comment_index: int = Field(description="Index into the candidate comment list")
+  verdict: Verdict
+  grounded: bool = Field(description="Every claim supported by diff or context")
+  actionable: bool = Field(description="Author knows what to change")
+  duplicate: bool
+  policy_safe: bool
+  reason: str
+  repair_instruction: str | None = Field(default=None, description="Required when verdict=repair")
 
 
 class QAResult(BaseModel):
-    verdicts: list[QAVerdict]
+  verdicts: list[QAVerdict]
 
 
 # --- Phase 5 placeholder, defined now so state doesn't migrate later ---
 
 
 class VisionObservation(BaseModel):
-    summary: str
-    grounded_line: int | None = None
+  summary: str
+  grounded_line: int | None = None

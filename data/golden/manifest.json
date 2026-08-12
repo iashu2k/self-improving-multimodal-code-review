@@ -1,0 +1,108 @@
+{
+  "dataset_version": "0.1.0",
+  "created": "2026-08-12",
+  "generators": {
+    "vision_model": "anthropic/claude-sonnet-4.5",
+    "prompt_version": "analysis_prompt_v4.1",
+    "schema_version": "1",
+    "capture": "viewport-true, full_page=False, PNG width == viewport width"
+  },
+  "cases": [
+    {
+      "id": "vis-broken-alignment-04",
+      "kind": "visual",
+      "split": "holdout",
+      "viewport": "mobile",
+      "expected_empty": false,
+      "paths": {
+        "annotation": "visual/annotations/vis-broken-alignment-04.json",
+        "diff": "visual/diffs/vis-broken-alignment-04.diff",
+        "baseline_shot": "visual/shots/vis-broken-alignment-04/checkout_mobile_baseline.png",
+        "pr_shot": "visual/shots/vis-broken-alignment-04/checkout_mobile_pr.png"
+      },
+      "sha256": {
+        "diff": "8baa1e88fb47cbc9be7718404af82895359839412f4a23aec0041acf0d0dd454",
+        "baseline_shot": "bac87615f7106a74d6ab538ffaa56aba31052a741e82c85af4cd1754e70838d2",
+        "pr_shot": "e5fe5d1a13550bde00ce6d77b245b9eca463b94b458678cbbc334d566139f8e8"
+      }
+    },
+    {
+      "id": "vis-clean-05",
+      "kind": "visual",
+      "split": "holdout",
+      "viewport": "mobile",
+      "expected_empty": true,
+      "paths": {
+        "annotation": "visual/annotations/vis-clean-05.json",
+        "diff": "visual/diffs/vis-clean-05.diff",
+        "baseline_shot": "visual/shots/vis-clean-05/checkout_mobile_baseline.png",
+        "pr_shot": "visual/shots/vis-clean-05/checkout_mobile_pr.png"
+      },
+      "sha256": {
+        "diff": "b52679f3e83c47a88d77bbd34950f5beff67d9bb97fa045e0b5f24edad699484",
+        "baseline_shot": "bac87615f7106a74d6ab538ffaa56aba31052a741e82c85af4cd1754e70838d2",
+        "pr_shot": "9fc900c41d0ed6f94f1d30903b840923a362466e01be4dc4479b3504eec6f52a"
+      }
+    },
+    {
+      "id": "vis-contrast-02",
+      "kind": "visual",
+      "split": "holdout",
+      "viewport": "mobile",
+      "expected_empty": false,
+      "paths": {
+        "annotation": "visual/annotations/vis-contrast-02.json",
+        "diff": "visual/diffs/vis-contrast-02.diff",
+        "baseline_shot": "visual/shots/vis-contrast-02/checkout_mobile_baseline.png",
+        "pr_shot": "visual/shots/vis-contrast-02/checkout_mobile_pr.png"
+      },
+      "sha256": {
+        "diff": "9faa4fd815de187d9ea946a4e18c48e3cb3113033f970de7e8b62a0b72d65f56",
+        "baseline_shot": "bac87615f7106a74d6ab538ffaa56aba31052a741e82c85af4cd1754e70838d2",
+        "pr_shot": "f5b495b31c8e7637c2f2123d7fe869c1ea25baa1320a2305e0eee88051c6ce21"
+      }
+    },
+    {
+      "id": "vis-hidden-content-03",
+      "kind": "visual",
+      "split": "holdout",
+      "viewport": "mobile",
+      "expected_empty": false,
+      "paths": {
+        "annotation": "visual/annotations/vis-hidden-content-03.json",
+        "diff": "visual/diffs/vis-hidden-content-03.diff",
+        "baseline_shot": "visual/shots/vis-hidden-content-03/checkout_mobile_baseline.png",
+        "pr_shot": "visual/shots/vis-hidden-content-03/checkout_mobile_pr.png"
+      },
+      "sha256": {
+        "diff": "c1a0ae401e38a28a7ac3d683724a987c24f47d592fc576a9c0736055306ea0c9",
+        "baseline_shot": "bac87615f7106a74d6ab538ffaa56aba31052a741e82c85af4cd1754e70838d2",
+        "pr_shot": "1ba40d3de04f40943fc75b503ff3b013d557cd36b96c6839bbc9b12da2e21296"
+      }
+    },
+    {
+      "id": "vis-layout-overflow-01",
+      "kind": "visual",
+      "split": "holdout",
+      "viewport": "mobile",
+      "expected_empty": false,
+      "paths": {
+        "annotation": "visual/annotations/vis-layout-overflow-01.json",
+        "diff": "visual/diffs/vis-layout-overflow-01.diff",
+        "baseline_shot": "visual/shots/vis-layout-overflow-01/checkout_mobile_baseline.png",
+        "pr_shot": "visual/shots/vis-layout-overflow-01/checkout_mobile_pr.png"
+      },
+      "sha256": {
+        "diff": "d35fe4551710adf0066caf34e2f2a5507e8c3e1a389f0a5c5bb1cbdd0a6113a4",
+        "baseline_shot": "bac87615f7106a74d6ab538ffaa56aba31052a741e82c85af4cd1754e70838d2",
+        "pr_shot": "c516407287144a7c9bd9bd5b58ec620def3a2bf65c61cf55bf63f53f135dcdc8"
+      }
+    }
+  ],
+  "totals": {
+    "cases": 5,
+    "by_split": {
+      "holdout": 5
+    }
+  }
+}

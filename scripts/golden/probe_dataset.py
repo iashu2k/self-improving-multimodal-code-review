@@ -10,6 +10,6 @@ print("comment_type:", ds.unique("comment_type"))
 
 # spot-check a python-looking row end to end
 for row in ds:
-    if "python" in str(row["language"]).lower() or "python" in str(row["repo_language"]).lower():
-        print({k: (str(v)[:120] if isinstance(v, str) else v) for k, v in row.items()})
-        break
+  if "python" in str(row["language"]).lower() or "python" in str(row["repo_language"]).lower():
+    print({k: (str(v)[:120] if isinstance(v, str) else v) for k, v in row.items()})
+    break

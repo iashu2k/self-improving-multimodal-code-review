@@ -1,0 +1,56 @@
+{
+  "example_id": "vis-hidden-content-03",
+  "source": "review-sandbox",
+  "repository": "local/fixtures",
+  "commit_sha": "fixture-local",
+  "language": "css",
+  "pr_metadata": {
+    "title": "Fix checkout spacing",
+    "description": "",
+    "url": ""
+  },
+  "changed_files": [
+    "app/checkout/checkout.module.css"
+  ],
+  "diff_path": "visual/diffs/vis-hidden-content-03.diff",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "app/checkout/checkout.module.css",
+      "line": 14,
+      "category": "ui_regression",
+      "severity": "high",
+      "issue_summary": "Order total is no longer visible on the checkout page",
+      "evidence_requirement": "cites that the order total is absent while heading and button render",
+      "must_not_claim": [
+        "page failed to load"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": true,
+      "rationale": "display:none on .orderTotal hides pricing on a checkout page; a spacing-titled PR gives no license to remove it"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "visual": {
+    "baseline_shot": "visual/shots/vis-hidden-content-03/checkout_mobile_baseline.png",
+    "pr_shot": "visual/shots/vis-hidden-content-03/checkout_mobile_pr.png",
+    "viewport": "mobile",
+    "expected_observations": [
+      {
+        "type": "hidden_element",
+        "severity_hint": "high",
+        "element": "order total text",
+        "edge": null,
+        "evidence_must_mention": [
+          "order",
+          "missing"
+        ]
+      }
+    ],
+    "expected_empty": false,
+    "ground_truth_source_line": "app/checkout/checkout.module.css:14"
+  }
+}

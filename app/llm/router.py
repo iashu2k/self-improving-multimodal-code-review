@@ -22,36 +22,36 @@ Never set use_vision (handled elsewhere). When unsure, abstain=false."""
 
 
 def _render_stats(files: list[ChangedFile]) -> str:
-    lines = []
-    for f in reviewable_files(files):  # CHANGED: deleted files are triage noise
-        added = sum(1 for h in f.hunks for line in h.lines if line.kind == "add")
-        deleted = sum(1 for h in f.hunks for line in h.lines if line.kind == "del")
-        lines.append(f"{f.path} ({f.status}): +{added}/-{deleted}")
-    return "\n".join(lines)
+  lines = []
+  for f in reviewable_files(files):  # CHANGED: deleted files are triage noise
+    added = sum(1 for h in f.hunks for line in h.lines if line.kind == "add")
+    deleted = sum(1 for h in f.hunks for line in h.lines if line.kind == "del")
+    lines.append(f"{f.path} ({f.status}): +{added}/-{deleted}")
+  return "\n".join(lines)
 
 
 async def route_pr(
-    *,
-    client: OpenRouterClient,
-    model: str,
-    files: list[ChangedFile],
-    pr_title: str,
-    pr_body: str,
+  *,
+  client: OpenRouterClient,
+  model: str,
+  files: list[ChangedFile],
+  pr_title: str,
+  pr_body: str,
 ) -> RouteDecision:
-    user_prompt = (
-        f"PR title: {pr_title}\n"
-        f"PR body: {pr_body or '(empty)'}\n\n"
-        f"Changed files:\n{_render_stats(files)}"
-    )
-    # CHANGED: removed stale scaffolding NOTE — the call below already matches
-    # reviewer.py's chat_structured signature exactly.
-    response = await client.chat_structured(
-        model=model,
-        schema_name="route_decision",
-        json_schema=RouteDecision.model_json_schema(),
-        messages=[
-            {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
-    return RouteDecision.model_validate(response.content)
+  user_prompt = (
+    f"PR title: {pr_title}\n"
+    f"PR body: {pr_body or '(empty)'}\n\n"
+    f"Changed files:\n{_render_stats(files)}"
+  )
+  # CHANGED: removed stale scaffolding NOTE — the call below already matches
+  # reviewer.py's chat_structured signature exactly.
+  response = await client.chat_structured(
+    model=model,
+    schema_name="route_decision",
+    json_schema=RouteDecision.model_json_schema(),
+    messages=[
+      {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
+      {"role": "user", "content": user_prompt},
+    ],
+  )
+  return RouteDecision.model_validate(response.content)

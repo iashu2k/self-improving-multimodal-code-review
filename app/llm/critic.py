@@ -35,60 +35,60 @@ input index must appear exactly once."""
 
 
 def _render_diff_excerpt(files: list[ChangedFile]) -> str:
-    parts = []
-    # CHANGED: candidates can never anchor to deleted files
-    for f in reviewable_files(files):
-        parts.append(f"=== {f.path} ({f.status}) ===")
-        for hunk in f.hunks:
-            for line in hunk.lines:
-                if line.kind == "add":
-                    parts.append(f"+{line.new_lineno}: {line.content}")
-                elif line.kind == "del":
-                    parts.append(f"-: {line.content}")
-    return "\n".join(parts)[:MAX_DIFF_CHARS]
+  parts = []
+  # CHANGED: candidates can never anchor to deleted files
+  for f in reviewable_files(files):
+    parts.append(f"=== {f.path} ({f.status}) ===")
+    for hunk in f.hunks:
+      for line in hunk.lines:
+        if line.kind == "add":
+          parts.append(f"+{line.new_lineno}: {line.content}")
+        elif line.kind == "del":
+          parts.append(f"-: {line.content}")
+  return "\n".join(parts)[:MAX_DIFF_CHARS]
 
 
 def _render_contexts(contexts: list[RetrievedContext]) -> str:
-    if not contexts:
-        return "(no retrieved context)"
-    return "\n\n".join(f"--- {c.file_path} ---\n{c.content[:MAX_CONTEXT_CHARS]}" for c in contexts)
+  if not contexts:
+    return "(no retrieved context)"
+  return "\n\n".join(f"--- {c.file_path} ---\n{c.content[:MAX_CONTEXT_CHARS]}" for c in contexts)
 
 
 def _render_candidates(comments: list[ReviewComment]) -> str:
-    return "\n\n".join(
-        f"[index {i}] {c.file_path}:{c.line} ({c.side})\n"
-        f" severity={c.severity.value} category={c.category.value} "
-        f"confidence={c.confidence}\n"
-        f" title: {c.title}\n body: {c.body}\n"
-        f" evidence: {c.evidence}\n"
-        f" suggested_fix: {c.suggested_fix or '(none)'}"
-        for i, c in enumerate(comments)
-    )
+  return "\n\n".join(
+    f"[index {i}] {c.file_path}:{c.line} ({c.side})\n"
+    f" severity={c.severity.value} category={c.category.value} "
+    f"confidence={c.confidence}\n"
+    f" title: {c.title}\n body: {c.body}\n"
+    f" evidence: {c.evidence}\n"
+    f" suggested_fix: {c.suggested_fix or '(none)'}"
+    for i, c in enumerate(comments)
+  )
 
 
 async def critique_candidates(
-    *,
-    client: OpenRouterClient,
-    model: str,
-    files: list[ChangedFile],
-    comments: list[ReviewComment],
-    contexts: list[RetrievedContext],
+  *,
+  client: OpenRouterClient,
+  model: str,
+  files: list[ChangedFile],
+  comments: list[ReviewComment],
+  contexts: list[RetrievedContext],
 ) -> QAResult:
-    user_prompt = (
-        "## Diff under review\n\n"
-        + _render_diff_excerpt(files)
-        + "\n\n## Retrieved repository context (ground truth for citations)\n\n"
-        + _render_contexts(contexts)
-        + "\n\n## Candidate comments to judge\n\n"
-        + _render_candidates(comments)
-    )
-    response = await client.chat_structured(
-        model=model,
-        schema_name="qa_result",
-        json_schema=QAResult.model_json_schema(),
-        messages=[
-            {"role": "system", "content": CRITIC_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
-    return QAResult.model_validate(response.content)
+  user_prompt = (
+    "## Diff under review\n\n"
+    + _render_diff_excerpt(files)
+    + "\n\n## Retrieved repository context (ground truth for citations)\n\n"
+    + _render_contexts(contexts)
+    + "\n\n## Candidate comments to judge\n\n"
+    + _render_candidates(comments)
+  )
+  response = await client.chat_structured(
+    model=model,
+    schema_name="qa_result",
+    json_schema=QAResult.model_json_schema(),
+    messages=[
+      {"role": "system", "content": CRITIC_SYSTEM_PROMPT},
+      {"role": "user", "content": user_prompt},
+    ],
+  )
+  return QAResult.model_validate(response.content)

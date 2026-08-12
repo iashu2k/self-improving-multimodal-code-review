@@ -1,0 +1,30 @@
+{
+  "example_id": "vis-clean-05",
+  "source": "review-sandbox",
+  "repository": "local/fixtures",
+  "commit_sha": "fixture-local",
+  "language": "css",
+  "pr_metadata": {
+    "title": "Refresh checkout button color",
+    "description": "",
+    "url": ""
+  },
+  "changed_files": [
+    "app/checkout/checkout.module.css"
+  ],
+  "diff_path": "visual/diffs/vis-clean-05.diff",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "subtle brand-color tweak (blue-600 -> blue-700) is a correct, intentional change; flagging it is over-flagging",
+  "human_label_notes": "",
+  "split": "holdout",
+  "visual": {
+    "baseline_shot": "visual/shots/vis-clean-05/checkout_mobile_baseline.png",
+    "pr_shot": "visual/shots/vis-clean-05/checkout_mobile_pr.png",
+    "viewport": "mobile",
+    "expected_observations": [],
+    "expected_empty": true,
+    "ground_truth_source_line": "app/checkout/checkout.module.css:20"
+  }
+}

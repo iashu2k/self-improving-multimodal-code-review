@@ -1,0 +1,16 @@
+--- a/app/checkout/checkout.module.css
++++ b/app/checkout/checkout.module.css
+@@ -6,11 +6,13 @@
+   margin: 0 0 12px 0;
+   font-size: 24px;
+   font-weight: 600;
++  text-align: right;
+ }
+
+ .orderTotal {
+   margin: 0 0 16px 0;
+   font-size: 16px;
++  text-align: center;
+ }
+
+ .placeOrder {

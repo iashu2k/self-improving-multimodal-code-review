@@ -44,3 +44,7 @@ scratch-review-demo/
 # Playwright artifacts, added in Phase 5
 playwright-report/
 test-results/
+
+# Phase 6B regenerable artifacts
+data/golden/visual/repos/
+data/golden/visual/_work/

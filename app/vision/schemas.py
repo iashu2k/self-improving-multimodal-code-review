@@ -14,39 +14,39 @@ from pydantic import BaseModel, Field
 
 
 class ObservationType(StrEnum):
-    LAYOUT_OVERFLOW = "layout_overflow"
-    CONTRAST = "wrong_color_contrast"
-    HIDDEN_ELEMENT = "hidden_element"
-    BROKEN_ALIGNMENT = "broken_alignment"
-    OTHER = "other"
+  LAYOUT_OVERFLOW = "layout_overflow"
+  CONTRAST = "wrong_color_contrast"
+  HIDDEN_ELEMENT = "hidden_element"
+  BROKEN_ALIGNMENT = "broken_alignment"
+  OTHER = "other"
 
 
 class SeverityHint(StrEnum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
+  LOW = "low"
+  MEDIUM = "medium"
+  HIGH = "high"
 
 
 class VisualObservation(BaseModel):
-    """One visually verified problem.
+  """One visually verified problem.
 
-    visual_evidence must describe something concrete in the rendered page
-    (clipped edges, pixel positions, invisible text) — never a code cause.
-    """
+  visual_evidence must describe something concrete in the rendered page
+  (clipped edges, pixel positions, invisible text) — never a code cause.
+  """
 
-    type: ObservationType
-    severity_hint: SeverityHint
-    description: str
-    visual_evidence: str
+  type: ObservationType
+  severity_hint: SeverityHint
+  description: str
+  visual_evidence: str
 
 
 class VisionResult(BaseModel):
-    """Structured output of the vision analyzer.
+  """Structured output of the vision analyzer.
 
-    Uncertainties are first-class: anything the model is unsure about goes
-    here instead of becoming an observation (abstention is a feature).
-    """
+  Uncertainties are first-class: anything the model is unsure about goes
+  here instead of becoming an observation (abstention is a feature).
+  """
 
-    page_loaded: bool
-    observations: list[VisualObservation] = Field(default_factory=list, max_length=5)
-    uncertainties: list[str] = Field(default_factory=list)
+  page_loaded: bool
+  observations: list[VisualObservation] = Field(default_factory=list, max_length=5)
+  uncertainties: list[str] = Field(default_factory=list)

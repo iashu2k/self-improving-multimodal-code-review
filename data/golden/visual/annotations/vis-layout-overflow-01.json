@@ -1,0 +1,57 @@
+{
+  "example_id": "vis-layout-overflow-01",
+  "source": "review-sandbox",
+  "repository": "local/fixtures",
+  "commit_sha": "fixture-local",
+  "language": "css",
+  "pr_metadata": {
+    "title": "Make checkout button full-width",
+    "description": "",
+    "url": ""
+  },
+  "changed_files": [
+    "app/checkout/checkout.module.css"
+  ],
+  "diff_path": "visual/diffs/vis-layout-overflow-01.diff",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "app/checkout/checkout.module.css",
+      "line": 18,
+      "category": "ui_regression",
+      "severity": "high",
+      "issue_summary": "Checkout button overflows the 390px mobile viewport",
+      "evidence_requirement": "cites the Place order button clipped at the right edge",
+      "must_not_claim": [
+        "button is missing",
+        "page failed to load"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": true,
+      "rationale": "width 320->480px in a 390px viewport clips the button at the right edge"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "visual": {
+    "baseline_shot": "visual/shots/vis-layout-overflow-01/checkout_mobile_baseline.png",
+    "pr_shot": "visual/shots/vis-layout-overflow-01/checkout_mobile_pr.png",
+    "viewport": "mobile",
+    "expected_observations": [
+      {
+        "type": "layout_overflow",
+        "severity_hint": "high",
+        "element": "Place order button",
+        "edge": "right",
+        "evidence_must_mention": [
+          "button",
+          "right"
+        ]
+      }
+    ],
+    "expected_empty": false,
+    "ground_truth_source_line": "app/checkout/checkout.module.css:18"
+  }
+}

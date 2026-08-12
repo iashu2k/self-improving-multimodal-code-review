@@ -14,37 +14,37 @@ MAX_CONTEXTS_FOR_PROMPT = 8
 
 @dataclass
 class RetrievedContext:
-    file_path: str
-    symbol: str | None
-    chunk_type: str
-    start_line: int
-    end_line: int
-    content: str
+  file_path: str
+  symbol: str | None
+  chunk_type: str
+  start_line: int
+  end_line: int
+  content: str
 
 
 def build_context_query(changed_file: ChangedFile) -> str:
-    added_lines = [
-        line.content for hunk in changed_file.hunks for line in hunk.lines if line.kind == "add"
-    ]
-    symbols = " ".join(added_lines)[:500]
-    return f"{changed_file.path} {symbols}"
+  added_lines = [
+    line.content for hunk in changed_file.hunks for line in hunk.lines if line.kind == "add"
+  ]
+  symbols = " ".join(added_lines)[:500]
+  return f"{changed_file.path} {symbols}"
 
 
 async def hybrid_retrieve(
-    session: AsyncSession,
-    *,
-    snapshot_id: int,
-    query_text: str,
-    llm: OpenRouterClient,
-    embedding_model: str | None,
+  session: AsyncSession,
+  *,
+  snapshot_id: int,
+  query_text: str,
+  llm: OpenRouterClient,
+  embedding_model: str | None,
 ) -> list[RetrievedContext]:
-    """Reciprocal-rank-fusion over pgvector cosine + Postgres FTS."""
-    embedding: list[float] | None = None
-    if embedding_model:
-        [embedding] = await llm.embed(model=embedding_model, texts=[query_text[:4000]])
+  """Reciprocal-rank-fusion over pgvector cosine + Postgres FTS."""
+  embedding: list[float] | None = None
+  if embedding_model:
+    [embedding] = await llm.embed(model=embedding_model, texts=[query_text[:4000]])
 
-    sql = text(
-        """
+  sql = text(
+    """
         WITH vector_leg AS (
             SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> :embedding) AS rank
             FROM code_chunks
@@ -72,29 +72,29 @@ async def hybrid_retrieve(
         ORDER BY fused.rrf DESC
         LIMIT :top_k
         """
+  )
+
+  rows = (
+    await session.execute(
+      sql,
+      {
+        "sid": snapshot_id,
+        "embedding": str(embedding) if embedding else None,
+        "q": query_text,
+        "k": CANDIDATES_PER_LEG,
+        "top_k": TOP_K,
+      },
     )
+  ).all()
 
-    rows = (
-        await session.execute(
-            sql,
-            {
-                "sid": snapshot_id,
-                "embedding": str(embedding) if embedding else None,
-                "q": query_text,
-                "k": CANDIDATES_PER_LEG,
-                "top_k": TOP_K,
-            },
-        )
-    ).all()
-
-    return [
-        RetrievedContext(
-            file_path=r.file_path,
-            symbol=r.symbol,
-            chunk_type=r.chunk_type,
-            start_line=r.start_line,
-            end_line=r.end_line,
-            content=r.content,
-        )
-        for r in rows
-    ]
+  return [
+    RetrievedContext(
+      file_path=r.file_path,
+      symbol=r.symbol,
+      chunk_type=r.chunk_type,
+      start_line=r.start_line,
+      end_line=r.end_line,
+      content=r.content,
+    )
+    for r in rows
+  ]

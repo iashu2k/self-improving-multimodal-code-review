@@ -1,0 +1,10 @@
+{
+  "visual": {
+    "vis-layout-overflow-01": "test",
+    "vis-contrast-02": "test",
+    "vis-hidden-content-03": "test",
+    "vis-broken-alignment-04": "test",
+    "vis-clean-05": "test"
+  },
+  "text": {}
+}

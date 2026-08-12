@@ -1,0 +1,11 @@
+--- a/app/checkout/checkout.module.css
++++ b/app/checkout/checkout.module.css
+@@ -15,7 +15,7 @@
+
+ .placeOrder {
+   display: block;
+-  width: 320px;
++  width: 480px; /* seeded defect: too wide for 390px viewport */
+   padding: 12px 16px;
+   background-color: #2563eb;
+   color: #ffffff;

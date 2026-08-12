@@ -1,0 +1,55 @@
+{
+  "example_id": "vis-contrast-02",
+  "source": "review-sandbox",
+  "repository": "local/fixtures",
+  "commit_sha": "fixture-local",
+  "language": "css",
+  "pr_metadata": {
+    "title": "Update checkout styles",
+    "description": "",
+    "url": ""
+  },
+  "changed_files": [
+    "app/checkout/checkout.module.css"
+  ],
+  "diff_path": "visual/diffs/vis-contrast-02.diff",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "app/checkout/checkout.module.css",
+      "line": 14,
+      "category": "ui_regression",
+      "severity": "high",
+      "issue_summary": "Order-total text is invisible (white on white)",
+      "evidence_requirement": "cites the order-total text blending into the background",
+      "must_not_claim": [
+        "page failed to load"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": true,
+      "rationale": "#ffffff on white renders the total invisible \u2014 unambiguous, intent can't license it"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "visual": {
+    "baseline_shot": "visual/shots/vis-contrast-02/checkout_mobile_baseline.png",
+    "pr_shot": "visual/shots/vis-contrast-02/checkout_mobile_pr.png",
+    "viewport": "mobile",
+    "expected_observations": [
+      {
+        "type": "wrong_color_contrast",
+        "severity_hint": "high",
+        "element": "order total text",
+        "edge": null,
+        "evidence_must_mention": [
+          "total"
+        ]
+      }
+    ],
+    "expected_empty": false,
+    "ground_truth_source_line": "app/checkout/checkout.module.css:14"
+  }
+}
