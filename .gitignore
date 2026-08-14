@@ -35,6 +35,7 @@ data/processed/*
 !data/processed/.gitkeep
 data/golden_prs/pool/
 data/golden_prs/candidates/
+paste*.txt
 
 # Node, added later for dashboard
 node_modules/
