@@ -1,0 +1,43 @@
+{
+  "example_id": "blackjack4494__yt-dlc__pr_000101",
+  "source": "github-codereview",
+  "repository": "blackjack4494/yt-dlc",
+  "commit_sha": "6dc68c2af734d1264db54395cd54097c5992d17f",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[vlive] fix extractor for revamped website",
+    "description": "### Before submitting a *pull request* make sure you have:\r\n- [x] At least skimmed through [adding new extractor tutorial](https://github.com/ytdl-org/youtube-dl#adding-support-for-a-new-site) and [youtube-dl coding conventions](https://github.com/ytdl-org/youtube-dl#youtube-dl-coding-conventions) sections\r\n- [x] [Searched](https://github.com/ytdl-org/youtube-dl/search?q=is%3Apr&type=Issues) the bugtracker for similar pull requests\r\n- [x] Checked the code with [flake8](https://pypi.python.org/pypi/flake8)\r\n\r\n### In order to be accepted and merged into youtube-dl each piece of code must be in public domain or released under [Unlicense](http://unlicense.org/). Check one of the following options:\r\n- [x] I am the original author of this code and I am willing to release it under [Unlicense](http://unlicense.org/)\r\n- [ ] I am not the original author of this code but it is in public domain or released under [Unlicense](http://unlicense.org/) (provide reliable evidence)\r\n\r\n### What is the purpose of your *pull request*?\r\n- [x] Bug fix\r\n- [x] Improvement\r\n- [ ] New extractor\r\n- [ ] New feature\r\n\r\n---\r\n\r\n### Description of your *pull request* and other information\r\n\r\nFixes vlive extractor for their revamped website. This should address #60 to some degree but is tested only with VODs and not with other video types such as live video. Thanks to @robindz in https://github.com/blackjack4494/yt-dlc/issues/60#issuecomment-719923648 for investigation into the fix.\r\n\r\nThe basic extractor now supports both video urls (eg `https://www.vlive.tv/video/1326`) and video post urls that point to the same video (eg `https://vlive.tv/post/1-18244258` which points to the same example video `1326`).\r\n\r\nAdds support for new channel url format. The old format followed the example `https://channels.vlive.tv/FCD4B` while the new format follows the example `https://www.vlive.tv/channel/FCD4B`. The old format redirects to the new format. Additionally `https://www.vlive.tv/channel**s**/FCD4B` will also redirect to `https://www.vlive.tv/channel/FCD4B`. Also includes some regex improvements here, allowing `www` and `m` subdomains in channel urls.\r\n\r\nPlaylists seem to have been removed from my cursory investigation and I did not touch the playlist extractor code for now.\r\n\r\nEdit 1: The live video extractor should now be fixed using the `https://www.vlive.tv/globalv-web/vam-web/old/v3/live/<videoSeq>/playInfo` endpoint. Thanks to @robindz and @SeonjaeHyeon for finding this endpoint.\r\n\r\nEdit 2: Things missing so far: \r\n* extraction of playlists, which are still present in some form but may no longer be detectable from the url alone\r\n\r\nEdit 3: Fixed detection of vlive+ paywalled videos. Login for vlive+ videos is likely missing.\r\n\r\nEdit 4: Login is working, but downloading premium content is still broken. There may be a different endpoint or different headers that need to be passed to the current vod key endpoint `https://www.vlive.tv/globalv-web/vam-web/video/v1.0/vod/%s/inkey`. Playlists are also still not working. Work on these items could be continued in a new pull request.\r\n\r\n",
+    "url": "https://github.com/blackjack4494/yt-dlc/pull/101"
+  },
+  "changed_files": [
+    "youtube_dlc/extractor/vlive.py"
+  ],
+  "diff_path": "text/holdout/blackjack4494__yt-dlc__pr_000101/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "youtube_dlc/extractor/vlive.py",
+      "line": 152,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "```suggestion\r\n            elif video_status == 'ENDED':\r\n                raise ExtractorError('Uploading for replay. Please wait...',\r\n                                     expected=True)\r\n            else:\r\n```",
+      "evidence_requirement": "The code must handle 'ENDED' video status explicitly to avoid falling through to 'Unknown video type' error.",
+      "must_not_claim": [
+        "exposes secrets",
+        "breaks functionality",
+        "causes crash"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A live stream that has ended ('ENDED') should be treated differently from other statuses; without explicit handling, users get a confusing 'Unknown video type' error instead of a clear message about waiting for replay upload.",
+      "_reviewer_comment_full": "```suggestion\r\n            elif video_status == 'ENDED':\r\n                raise ExtractorError('Uploading for replay. Please wait...',\r\n                                     expected=True)\r\n            else:\r\n```",
+      "_gold_comment_url": "https://github.com/blackjack4494/yt-dlc/pull/101#discussion_r515708266"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 190
+}

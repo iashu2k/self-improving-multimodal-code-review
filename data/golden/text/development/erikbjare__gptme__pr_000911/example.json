@@ -1,0 +1,44 @@
+{
+  "example_id": "erikbjare__gptme__pr_000911",
+  "source": "github-codereview",
+  "repository": "ErikBjare/gptme",
+  "commit_sha": "b733260c9e140a41128483438387d5a07c20dd07",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "feat(tools): add form tool for structured user input (Issue #591)",
+    "description": "## Summary\n\nImplements a form tool as an extension to the choice tool, allowing assistants to collect structured data from users through interactive forms.\n\n## Motivation\n\nAddresses part of #591 - specifically the \"forms tool which prompts the user to fill out a form of values\" mentioned in the issue.\n\n## Changes\n\n- **New `form` tool** (`gptme/tools/form.py`): Presents interactive forms with multiple field types\n- **Comprehensive tests** (`tests/test_tools_form.py`): Tests for parsing and registration\n\n## Features\n\n- **Multiple field types**:\n  - Text field (default): `name: What's your name?`\n  - Select field: `priority: Priority level [low, medium, high]`\n  - Boolean field: `confirm: Proceed? [yes/no]`\n  - Number field: `count: How many? (number)`\n\n- **Simple DSL** for field definitions in code blocks\n- **JSON output** of collected data\n- **Uses questionary** library (same as choice tool)\n- **Disabled by default** (opt-in via config)\n\n## Example Usage\n\n```form\nname: Project name?\ndescription: Brief description?\nlanguage: Primary language [python, javascript, rust]\npriority: Priority level [low, medium, high]\n```\n\nOutput:\n```json\n{\"name\": \"my-project\", \"description\": \"A CLI tool\", \"language\": \"python\", \"priority\": \"high\"}\n```\n\n## Testing\n\n- Added unit tests for field parsing (text, select, boolean, number)\n- Added test for form content parsing\n- Added test for tool registration\n\n## Remaining Work for #591\n\nThis PR addresses the forms tool. Still remaining from the issue:\n- Auto-suggestion via LLM call (detecting options in assistant messages)\n- Web UI integration\n\nPart of #591\n<!-- ELLIPSIS_HIDDEN -->\n\n\n----\n\n> [!IMPORTANT]\n> Introduces a new form tool for structured user input with comprehensive tests and utility functions for environment detection and package installation.\n> \n>   - **New `form` tool**:\n>     - Added in `gptme/tools/form.py` to present interactive forms with text, select, boolean, and number fields.\n>     - Outputs collected data as JSON.\n>     - Disabled by default, opt-in via config.\n>   - **Testing**:\n>     - Comprehensive tests in `tests/test_tools_form.py` for field parsing and tool registration.\n>   - **Utilities**:\n>     - Added `detect_install_environment()` and `get_package_install_command()` in `gptme/util/install.py` for environment detection and package installation commands.\n>   - **Misc**:\n>     - Updated `execute_choice()` in `gptme/tools/choice.py` to use `get_package_install_command()` for `questionary` installation.\n> \n> <sup>This description was created by </sup>[<img alt=\"Ellipsis\" src=\"https://img.shields.io/badge/Ellipsis-blue?color=175173\">](https://www.ellipsis.dev?ref=gptme%2Fgptme&utm_source=github&utm_medium=referral)<sup> for b733260c9e140a41128483438387d5a07c20dd07. You can [customize](https://app.ellipsis.dev/gptme/settings/summaries) this summary. It will automatically update as commits are pushed.</sup>\n\n\n<!-- ELLIPSIS_HIDDEN -->",
+    "url": "https://github.com/gptme/gptme/pull/911"
+  },
+  "changed_files": [
+    "gptme/tools/choice.py",
+    "gptme/tools/form.py",
+    "gptme/util/install.py",
+    "tests/test_tools_form.py"
+  ],
+  "diff_path": "text/development/erikbjare__gptme__pr_000911/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "gptme/tools/form.py",
+      "line": 156,
+      "category": "maintainability",
+      "severity": "medium",
+      "issue_summary": "I feel like this should be rewritten to use a standard helper which appropriately detects the installation method and provides a correct command that considers any possible e.g. pipx (use `pipx inject gptme questionary`) or uv environments so that the correct install command is shown to be aware of the venv gptme is probably installed in.\n\nThis helper may be useful in other tools too, I think you should take the opportunity to review where it could be useful/refactored to share a common good uti",
+      "evidence_requirement": "The code must use a helper function that detects the installation method (e.g., pipx, uv) and constructs the correct install command for questionary, rather than relying on a brittle or generic approach.",
+      "must_not_claim": [
+        "exposes secrets",
+        "breaks functionality"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The reviewer identified that the install command generation should use a standardized helper to handle various environments (pipx, uv, etc.) and suggested refactoring to avoid brittle hints; the current implementation uses `get_package_install_command(",
+      "_reviewer_comment_full": "I feel like this should be rewritten to use a standard helper which appropriately detects the installation method and provides a correct command that considers any possible e.g. pipx (use `pipx inject gptme questionary`) or uv environments so that the correct install command is shown to be aware of the venv gptme is probably installed in.\n\nThis helper may be useful in other tools too, I think you should take the opportunity to review where it could be useful/refactored to share a common good utility instead of a brittle hint like this.",
+      "_gold_comment_url": "https://github.com/gptme/gptme/pull/911#discussion_r2581952013"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "development",
+  "snapshot_id": 57
+}

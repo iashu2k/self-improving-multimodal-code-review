@@ -1,0 +1,40 @@
+{
+  "example_id": "all-hands-ai__openhands__pr_012525",
+  "source": "github-codereview",
+  "repository": "All-Hands-AI/OpenHands",
+  "commit_sha": "fa261a58697d3ba8d4b2466195af3e9fed771a27",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "fix: remove keycloak_auth cookie requirement for webhook secrets endpoint",
+    "description": "## Summary of PR\n\nV1 conversations started from the Slack integration were failing to retrieve GitHub tokens because the `/api/v1/webhooks/secrets` endpoint requires authentication, but the middleware was rejecting requests without a `keycloak_auth` cookie.\n\n**Root cause:** The `/api/v1/webhooks/secrets` endpoint uses `X-Access-Token` header for authentication (via JWT), but the middleware's `_check_tos` method only recognizes:\n- `keycloak_auth` cookie\n- `Authorization: Bearer ...` header  \n- `X-Session-API-Key` header\n\nSince `X-Access-Token` is not in this list, requests to the secrets endpoint from sandboxes were being rejected unless a cookie was also present. Browser-initiated conversations work because they have a cookie, but Slack-initiated conversations don't have a browser session.\n\n**Fix:**\n1. Add `/api/v1/webhooks/secrets` to the middleware's `ignore_paths` - This endpoint has its own JWT-based authentication via `X-Access-Token`, so middleware auth is redundant\n2. Remove the `keycloak_auth_cookie` workaround from `LiveStatusAppConversationService` - This was added in #11814 as a workaround but is no longer needed\n\n## Demo Screenshots/Videos\n\nN/A - Backend fix\n\n## Change Type\n\n- [x] Bug fix\n- [ ] New feature\n- [ ] Breaking change\n- [ ] Refactor\n- [ ] Other (dependency update, docs, typo fixes, etc.)\n\n## Checklist\n\n- [ ] I have read and reviewed the code and I understand what the code is doing.\n- [ ] I have tested the code to the best of my ability and ensured it works as expected.\n\n## Fixes\n\nFixes GitHub tokens not working for V1 conversations started from Slack integration.\n\n## Release Notes\n\n- [ ] Include this change in the Release Notes.\n\n\n@tofarr can click here to [continue refining the PR](https://app.all-hands.dev/conversations/None)\n\n---\n\nTo run this PR locally, use the following command:\n\nGUI with Docker:\n```\ndocker run -it --rm   -p 3000:3000   -v /var/run/docker.sock:/var/run/docker.sock   --add-host host.docker.internal:host-gateway   -e SANDBOX_RUNTIME_CONTAINER_IMAGE=docker.openhands.dev/openhands/runtime:fa261a5-nikolaik   --name openhands-app-fa261a5   docker.openhands.dev/openhands/openhands:fa261a5\n```",
+    "url": "https://github.com/OpenHands/OpenHands/pull/12525"
+  },
+  "changed_files": [
+    "enterprise/server/middleware.py",
+    "openhands/app_server/app_conversation/live_status_app_conversation_service.py",
+    "tests/unit/app_server/test_live_status_app_conversation_service.py"
+  ],
+  "diff_path": "text/validation/all-hands-ai__openhands__pr_012525/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "enterprise/server/middleware.py",
+      "line": 166,
+      "category": "security",
+      "severity": "high",
+      "issue_summary": "**question:** If we make this endpoint public, could it introduce any potential security risks? As we prepare to release the shared conversation feature, I would appreciate your guidance on whether someone who receives a shared conversation might have any way of accessing sensitive information or secrets. Thank you! \ud83d\ude4f ",
+      "evidence_requirement": "The added line '/api/v1/webhooks/secrets' in the ignore_paths list shows the endpoint no longer requires keycloak_auth cookie authentication.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Removing authentication for a secrets endpoint exposes it to unauthorized access, potentially allowing anyone to retrieve sensitive webhook secrets.",
+      "_reviewer_comment_full": "**question:** If we make this endpoint public, could it introduce any potential security risks? As we prepare to release the shared conversation feature, I would appreciate your guidance on whether someone who receives a shared conversation might have any way of accessing sensitive information or secrets. Thank you! \ud83d\ude4f ",
+      "_gold_comment_url": "https://github.com/OpenHands/OpenHands/pull/12525#discussion_r2713266088"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 33
+}

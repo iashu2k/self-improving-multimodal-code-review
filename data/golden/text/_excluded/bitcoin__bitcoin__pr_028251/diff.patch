@@ -1,0 +1,805 @@
+diff --git a/src/policy/packages.cpp b/src/policy/packages.cpp
+index 6e70a94088a2..a901ef8f38c7 100644
+--- a/src/policy/packages.cpp
++++ b/src/policy/packages.cpp
+@@ -37,6 +37,13 @@ bool CheckPackage(const Package& txns, PackageValidationState& state)
+     std::unordered_set<uint256, SaltedTxidHasher> later_txids;
+     std::transform(txns.cbegin(), txns.cend(), std::inserter(later_txids, later_txids.end()),
+                    [](const auto& tx) { return tx->GetHash(); });
++
++    // Package must not contain any duplicate transactions, which is checked by txid. This also
++    // includes transactions with duplicate wtxids and same-txid-different-witness transactions.
++    if (later_txids.size() != txns.size()) {
++        return state.Invalid(PackageValidationResult::PCKG_POLICY, "package-contains-duplicates");
++    }
++
+     for (const auto& tx : txns) {
+         for (const auto& input : tx->vin) {
+             if (later_txids.find(input.prevout.hash) != later_txids.end()) {
+diff --git a/src/test/txpackage_tests.cpp b/src/test/txpackage_tests.cpp
+index c08d2748a623..118a963c75cf 100644
+--- a/src/test/txpackage_tests.cpp
++++ b/src/test/txpackage_tests.cpp
+@@ -66,6 +66,17 @@ BOOST_FIXTURE_TEST_CASE(package_sanitization_tests, TestChain100Setup)
+     BOOST_CHECK(!CheckPackage(package_too_large, state_too_large));
+     BOOST_CHECK_EQUAL(state_too_large.GetResult(), PackageValidationResult::PCKG_POLICY);
+     BOOST_CHECK_EQUAL(state_too_large.GetRejectReason(), "package-too-large");
++
++    // Packages can't contain transactions with the same txid.
++    Package package_duplicate_txids_empty;
++    for (auto i{0}; i < 3; ++i) {
++        CMutableTransaction empty_tx;
++        package_duplicate_txids_empty.emplace_back(MakeTransactionRef(empty_tx));
++    }
++    PackageValidationState state_duplicates;
++    BOOST_CHECK(!CheckPackage(package_duplicate_txids_empty, state_duplicates));
++    BOOST_CHECK_EQUAL(state_duplicates.GetResult(), PackageValidationResult::PCKG_POLICY);
++    BOOST_CHECK_EQUAL(state_duplicates.GetRejectReason(), "package-contains-duplicates");
+ }
+
+ BOOST_FIXTURE_TEST_CASE(package_validation_tests, TestChain100Setup)
+@@ -810,18 +821,20 @@ BOOST_FIXTURE_TEST_CASE(package_cpfp_tests, TestChain100Setup)
+         expected_pool_size += 1;
+         BOOST_CHECK_MESSAGE(submit_rich_parent.m_state.IsInvalid(), "Package validation unexpectedly succeeded");
+
+-        // The child would have been validated on its own and failed, then submitted as a "package" of 1.
++        // The child would have been validated on its own and failed.
+         BOOST_CHECK_EQUAL(submit_rich_parent.m_state.GetResult(), PackageValidationResult::PCKG_TX);
+         BOOST_CHECK_EQUAL(submit_rich_parent.m_state.GetRejectReason(), "transaction failed");
+
+         auto it_parent = submit_rich_parent.m_tx_results.find(tx_parent_rich->GetWitnessHash());
++        auto it_child = submit_rich_parent.m_tx_results.find(tx_child_poor->GetWitnessHash());
+         BOOST_CHECK(it_parent != submit_rich_parent.m_tx_results.end());
++        BOOST_CHECK(it_child != submit_rich_parent.m_tx_results.end());
+         BOOST_CHECK(it_parent->second.m_result_type == MempoolAcceptResult::ResultType::VALID);
++        BOOST_CHECK(it_child->second.m_result_type == MempoolAcceptResult::ResultType::INVALID);
+         BOOST_CHECK(it_parent->second.m_state.GetRejectReason() == "");
+         BOOST_CHECK_MESSAGE(it_parent->second.m_base_fees.value() == high_parent_fee,
+                 strprintf("rich parent: expected fee %s, got %s", high_parent_fee, it_parent->second.m_base_fees.value()));
+         BOOST_CHECK(it_parent->second.m_effective_feerate == CFeeRate(high_parent_fee, GetVirtualTransactionSize(*tx_parent_rich)));
+-        auto it_child = submit_rich_parent.m_tx_results.find(tx_child_poor->GetWitnessHash());
+         BOOST_CHECK(it_child != submit_rich_parent.m_tx_results.end());
+         BOOST_CHECK_EQUAL(it_child->second.m_result_type, MempoolAcceptResult::ResultType::INVALID);
+         BOOST_CHECK_EQUAL(it_child->second.m_state.GetResult(), TxValidationResult::TX_MEMPOOL_POLICY);
+diff --git a/src/txmempool.cpp b/src/txmempool.cpp
+index 79b2b4ec94a8..70985dec00c1 100644
+--- a/src/txmempool.cpp
++++ b/src/txmempool.cpp
+@@ -982,6 +982,7 @@ bool CCoinsViewMemPool::GetCoin(const COutPoint &outpoint, Coin &coin) const {
+     if (ptx) {
+         if (outpoint.n < ptx->vout.size()) {
+             coin = Coin(ptx->vout[outpoint.n], MEMPOOL_HEIGHT, false);
++            m_non_base_coins.emplace(outpoint);
+             return true;
+         } else {
+             return false;
+@@ -994,8 +995,14 @@ void CCoinsViewMemPool::PackageAddTransaction(const CTransactionRef& tx)
+ {
+     for (unsigned int n = 0; n < tx->vout.size(); ++n) {
+         m_temp_added.emplace(COutPoint(tx->GetHash(), n), Coin(tx->vout[n], MEMPOOL_HEIGHT, false));
++        m_non_base_coins.emplace(COutPoint(tx->GetHash(), n));
+     }
+ }
++void CCoinsViewMemPool::Reset()
++{
++    m_temp_added.clear();
++    m_non_base_coins.clear();
++}
+
+ size_t CTxMemPool::DynamicMemoryUsage() const {
+     LOCK(cs);
+diff --git a/src/txmempool.h b/src/txmempool.h
+index a1867eb895ae..4e68b711a2aa 100644
+--- a/src/txmempool.h
++++ b/src/txmempool.h
+@@ -839,15 +839,27 @@ class CCoinsViewMemPool : public CCoinsViewBacked
+     * validation, since we can access transaction outputs without submitting them to mempool.
+     */
+     std::unordered_map<COutPoint, Coin, SaltedOutpointHasher> m_temp_added;
++
++    /**
++     * Set of all coins that have been fetched from mempool or created using PackageAddTransaction
++     * (not base). Used to track the origin of a coin, see GetNonBaseCoins().
++     */
++    mutable std::unordered_set<COutPoint, SaltedOutpointHasher> m_non_base_coins;
+ protected:
+     const CTxMemPool& mempool;
+
+ public:
+     CCoinsViewMemPool(CCoinsView* baseIn, const CTxMemPool& mempoolIn);
++    /** GetCoin, returning whether it exists and is not spent. Also updates m_non_base_coins if the
++     * coin is not fetched from base. */
+     bool GetCoin(const COutPoint &outpoint, Coin &coin) const override;
+     /** Add the coins created by this transaction. These coins are only temporarily stored in
+      * m_temp_added and cannot be flushed to the back end. Only used for package validation. */
+     void PackageAddTransaction(const CTransactionRef& tx);
++    /** Get all coins in m_non_base_coins. */
++    std::unordered_set<COutPoint, SaltedOutpointHasher> GetNonBaseCoins() const { return m_non_base_coins; }
++    /** Clear m_temp_added and m_non_base_coins. */
++    void Reset();
+ };
+
+ /**
+diff --git a/src/validation.cpp b/src/validation.cpp
+index c45c847471ac..b8168c2e4c22 100644
+--- a/src/validation.cpp
++++ b/src/validation.cpp
+@@ -455,7 +455,7 @@ class MemPoolAccept
+          * any transaction spending the same inputs as a transaction in the mempool is considered
+          * a conflict. */
+         const bool m_allow_replacement;
+-        /** When true, the mempool will not be trimmed when individual transactions are submitted in
++        /** When true, the mempool will not be trimmed when any transactions are submitted in
+          * Finalize(). Instead, limits should be enforced at the end to ensure the package is not
+          * partially submitted.
+          */
+@@ -516,7 +516,7 @@ class MemPoolAccept
+                             /* m_coins_to_uncache */ package_args.m_coins_to_uncache,
+                             /* m_test_accept */ package_args.m_test_accept,
+                             /* m_allow_replacement */ true,
+-                            /* m_package_submission */ false,
++                            /* m_package_submission */ true, // do not LimitMempoolSize in Finalize()
+                             /* m_package_feerates */ false, // only 1 transaction
+             };
+         }
+@@ -554,6 +554,19 @@ class MemPoolAccept
+     */
+     PackageMempoolAcceptResult AcceptMultipleTransactions(const std::vector<CTransactionRef>& txns, ATMPArgs& args) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+
++    /**
++     * Submission of a subpackage.
++     * If subpackage size == 1, calls AcceptSingleTransaction() with adjusted ATMPArgs to avoid
++     * package policy restrictions like no CPFP carve out (PackageMempoolChecks) and disabled RBF
++     * (m_allow_replacement), and creates a PackageMempoolAcceptResult wrapping the result.
++     *
++     * If subpackage size > 1, calls AcceptMultipleTransactions() with the provided ATMPArgs.
++     *
++     * Also cleans up all non-chainstate coins from m_view at the end.
++    */
++    PackageMempoolAcceptResult AcceptSubPackage(const std::vector<CTransactionRef>& subpackage, ATMPArgs& args)
++        EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_pool.cs);
++
+     /**
+      * Package (more specific than just multiple transactions) acceptance. Package must be a child
+      * with all of its unconfirmed parents, and topologically sorted.
+@@ -639,10 +652,9 @@ class MemPoolAccept
+
+     // Submit all transactions to the mempool and call ConsensusScriptChecks to add to the script
+     // cache - should only be called after successful validation of all transactions in the package.
+-    // The package may end up partially-submitted after size limiting; returns true if all
+-    // transactions are successfully added to the mempool, false otherwise.
++    // Does not call LimitMempoolSize(), so mempool max_size_bytes may be temporarily exceeded.
+     bool SubmitPackage(const ATMPArgs& args, std::vector<Workspace>& workspaces, PackageValidationState& package_state,
+-                       std::map<const uint256, const MempoolAcceptResult>& results)
++                       std::map<uint256, MempoolAcceptResult>& results)
+          EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_pool.cs);
+
+     // Compare a package's feerate against minimum allowed.
+@@ -1119,7 +1131,7 @@ bool MemPoolAccept::Finalize(const ATMPArgs& args, Workspace& ws)
+
+ bool MemPoolAccept::SubmitPackage(const ATMPArgs& args, std::vector<Workspace>& workspaces,
+                                   PackageValidationState& package_state,
+-                                  std::map<const uint256, const MempoolAcceptResult>& results)
++                                  std::map<uint256, MempoolAcceptResult>& results)
+ {
+     AssertLockHeld(cs_main);
+     AssertLockHeld(m_pool.cs);
+@@ -1174,32 +1186,21 @@ bool MemPoolAccept::SubmitPackage(const ATMPArgs& args, std::vector<Workspace>&
+         }
+     }
+
+-    // It may or may not be the case that all the transactions made it into the mempool. Regardless,
+-    // make sure we haven't exceeded max mempool size.
+-    LimitMempoolSize(m_pool, m_active_chainstate.CoinsTip());
+-
+     std::vector<uint256> all_package_wtxids;
+     all_package_wtxids.reserve(workspaces.size());
+     std::transform(workspaces.cbegin(), workspaces.cend(), std::back_inserter(all_package_wtxids),
+                    [](const auto& ws) { return ws.m_ptx->GetWitnessHash(); });
+-    // Find the wtxids of the transactions that made it into the mempool. Allow partial submission,
+-    // but don't report success unless they all made it into the mempool.
++
++    // Add successful results. The returned results may change later if LimitMempoolSize() evicts them.
+     for (Workspace& ws : workspaces) {
+         const auto effective_feerate = args.m_package_feerates ? ws.m_package_feerate :
+             CFeeRate{ws.m_modified_fees, static_cast<uint32_t>(ws.m_vsize)};
+         const auto effective_feerate_wtxids = args.m_package_feerates ? all_package_wtxids :
+             std::vector<uint256>({ws.m_ptx->GetWitnessHash()});
+-        if (m_pool.exists(GenTxid::Wtxid(ws.m_ptx->GetWitnessHash()))) {
+-            results.emplace(ws.m_ptx->GetWitnessHash(),
+-                MempoolAcceptResult::Success(std::move(ws.m_replaced_transactions), ws.m_vsize,
+-                                             ws.m_base_fees, effective_feerate, effective_feerate_wtxids));
+-            GetMainSignals().TransactionAddedToMempool(ws.m_ptx, m_pool.GetAndIncrementSequence());
+-        } else {
+-            all_submitted = false;
+-            ws.m_state.Invalid(TxValidationResult::TX_MEMPOOL_POLICY, "mempool full");
+-            package_state.Invalid(PackageValidationResult::PCKG_TX, "transaction failed");
+-            results.emplace(ws.m_ptx->GetWitnessHash(), MempoolAcceptResult::Failure(ws.m_state));
+-        }
++        results.emplace(ws.m_ptx->GetWitnessHash(),
++                        MempoolAcceptResult::Success(std::move(ws.m_replaced_transactions), ws.m_vsize,
++                                         ws.m_base_fees, effective_feerate, effective_feerate_wtxids));
++        GetMainSignals().TransactionAddedToMempool(ws.m_ptx, m_pool.GetAndIncrementSequence());
+     }
+     return all_submitted;
+ }
+@@ -1249,7 +1250,7 @@ PackageMempoolAcceptResult MemPoolAccept::AcceptMultipleTransactions(const std::
+     workspaces.reserve(txns.size());
+     std::transform(txns.cbegin(), txns.cend(), std::back_inserter(workspaces),
+                    [](const auto& tx) { return Workspace(tx); });
+-    std::map<const uint256, const MempoolAcceptResult> results;
++    std::map<uint256, MempoolAcceptResult> results;
+
+     LOCK(m_pool.cs);
+
+@@ -1326,6 +1327,54 @@ PackageMempoolAcceptResult MemPoolAccept::AcceptMultipleTransactions(const std::
+     return PackageMempoolAcceptResult(package_state, std::move(results));
+ }
+
++PackageMempoolAcceptResult MemPoolAccept::AcceptSubPackage(const std::vector<CTransactionRef>& subpackage, ATMPArgs& args)
++{
++    AssertLockHeld(::cs_main);
++    AssertLockHeld(m_pool.cs);
++    auto result = [&]() EXCLUSIVE_LOCKS_REQUIRED(::cs_main, m_pool.cs) {
++        if (subpackage.size() > 1) {
++            return AcceptMultipleTransactions(subpackage, args);
++        }
++        const auto& tx = subpackage.front();
++        ATMPArgs single_args = ATMPArgs::SingleInPackageAccept(args);
++        const auto single_res = AcceptSingleTransaction(tx, single_args);
++        PackageValidationState package_state_wrapped;
++        if (single_res.m_result_type != MempoolAcceptResult::ResultType::VALID) {
++            package_state_wrapped.Invalid(PackageValidationResult::PCKG_TX, "transaction failed");
++        }
++        return PackageMempoolAcceptResult(package_state_wrapped, {{tx->GetWitnessHash(), single_res}});
++    }();
++    // Clean up m_view and m_viewmempool so that other subpackage evaluations don't have access to
++    // coins they shouldn't. Keep some coins in order to minimize re-fetching coins from the UTXO set.
++    //
++    // There are 3 kinds of coins in m_view:
++    // (1) Temporary coins from the transactions in subpackage, constructed by m_viewmempool.
++    // (2) Mempool coins from transactions in the mempool, constructed by m_viewmempool.
++    // (3) Confirmed coins fetched from our current UTXO set.
++    //
++    // (1) Temporary coins need to be removed, regardless of whether the transaction was submitted.
++    // If the transaction was submitted to the mempool, m_viewmempool will be able to fetch them from
++    // there. If it wasn't submitted to mempool, it is incorrect to keep them - future calls may try
++    // to spend those coins that don't actually exist.
++    // (2) Mempool coins also need to be removed. If the mempool contents have changed as a result
++    // of submitting or replacing transactions, coins previously fetched from mempool may now be
++    // spent or nonexistent. Those coins need to be deleted from m_view.
++    // (3) Confirmed coins don't need to be removed. The chainstate has not changed (we are
++    // holding cs_main and no blocks have been processed) so the confirmed tx cannot disappear like
++    // a mempool tx can. The coin may now be spent after we submitted a tx to mempool, but
++    // we have already checked that the package does not have 2 transactions spending the same coin.
++    // Keeping them in m_view is an optimization to not re-fetch confirmed coins if we later look up
++    // inputs for this transaction again.
++    for (const auto& outpoint : m_viewmempool.GetNonBaseCoins()) {
++        // In addition to resetting m_viewmempool, we also need to manually delete these coins from
++        // m_view because it caches copies of the coins it fetched from m_viewmempool previously.
++        m_view.Uncache(outpoint);
++    }
++    // This deletes the temporary and mempool coins.
++    m_viewmempool.Reset();
++    return result;
++}
++
+ PackageMempoolAcceptResult MemPoolAccept::AcceptPackage(const Package& package, ATMPArgs& args)
+ {
+     AssertLockHeld(cs_main);
+@@ -1382,21 +1431,12 @@ PackageMempoolAcceptResult MemPoolAccept::AcceptPackage(const Package& package,
+     m_view.SetBackend(m_dummy);
+
+     LOCK(m_pool.cs);
+-    // Stores final results that won't change
+-    std::map<const uint256, const MempoolAcceptResult> results_final;
+-    // Node operators are free to set their mempool policies however they please, nodes may receive
+-    // transactions in different orders, and malicious counterparties may try to take advantage of
+-    // policy differences to pin or delay propagation of transactions. As such, it's possible for
+-    // some package transaction(s) to already be in the mempool, and we don't want to reject the
+-    // entire package in that case (as that could be a censorship vector). De-duplicate the
+-    // transactions that are already in the mempool, and only call AcceptMultipleTransactions() with
+-    // the new transactions. This ensures we don't double-count transaction counts and sizes when
+-    // checking ancestor/descendant limits, or double-count transaction fees for fee-related policy.
+-    ATMPArgs single_args = ATMPArgs::SingleInPackageAccept(args);
+-    // Results from individual validation. "Nonfinal" because if a transaction fails by itself but
+-    // succeeds later (i.e. when evaluated with a fee-bumping child), the result changes (though not
+-    // reflected in this map). If a transaction fails more than once, we want to return the first
+-    // result, when it was considered on its own. So changes will only be from invalid -> valid.
++    // Stores results from which we will create the returned PackageMempoolAcceptResult.
++    // A result may be changed if a mempool transaction is evicted later due to LimitMempoolSize().
++    std::map<uint256, MempoolAcceptResult> results_final;
++    // Results from individual validation which will be returned if no other result is available for
++    // this transaction. "Nonfinal" because if a transaction fails by itself but succeeds later
++    // (i.e. when evaluated with a fee-bumping child), the result in this map may be discarded.
+     std::map<uint256, MempoolAcceptResult> individual_results_nonfinal;
+     bool quit_early{false};
+     std::vector<CTransactionRef> txns_package_eval;
+@@ -1408,6 +1448,14 @@ PackageMempoolAcceptResult MemPoolAccept::AcceptPackage(const Package& package,
+         // we know is that the inputs aren't available.
+         if (m_pool.exists(GenTxid::Wtxid(wtxid))) {
+             // Exact transaction already exists in the mempool.
++            // Node operators are free to set their mempool policies however they please, nodes may receive
++            // transactions in different orders, and malicious counterparties may try to take advantage of
++            // policy differences to pin or delay propagation of transactions. As such, it's possible for
++            // some package transaction(s) to already be in the mempool, and we don't want to reject the
++            // entire package in that case (as that could be a censorship vector). De-duplicate the
++            // transactions that are already in the mempool, and only call AcceptMultipleTransactions() with
++            // the new transactions. This ensures we don't double-count transaction counts and sizes when
++            // checking ancestor/descendant limits, or double-count transaction fees for fee-related policy.
+             auto iter = m_pool.GetIter(txid);
+             assert(iter != std::nullopt);
+             results_final.emplace(wtxid, MempoolAcceptResult::MempoolTx(iter.value()->GetTxSize(), iter.value()->GetFee()));
+@@ -1426,7 +1474,8 @@ PackageMempoolAcceptResult MemPoolAccept::AcceptPackage(const Package& package,
+         } else {
+             // Transaction does not already exist in the mempool.
+             // Try submitting the transaction on its own.
+-            const auto single_res = AcceptSingleTransaction(tx, single_args);
++            const auto single_package_res = AcceptSubPackage({tx}, args);
++            const auto& single_res = single_package_res.m_tx_results.at(wtxid);
+             if (single_res.m_result_type == MempoolAcceptResult::ResultType::VALID) {
+                 // The transaction succeeded on its own and is now in the mempool. Don't include it
+                 // in package validation, because its fees should only be "used" once.
+@@ -1453,32 +1502,52 @@ PackageMempoolAcceptResult MemPoolAccept::AcceptPackage(const Package& package,
+         }
+     }
+
+-    // Quit early because package validation won't change the result or the entire package has
+-    // already been submitted.
+-    if (quit_early || txns_package_eval.empty()) {
+-        for (const auto& [wtxid, mempoolaccept_res] : individual_results_nonfinal) {
+-            Assume(results_final.emplace(wtxid, mempoolaccept_res).second);
+-            Assume(mempoolaccept_res.m_result_type == MempoolAcceptResult::ResultType::INVALID);
++    auto multi_submission_result = quit_early || txns_package_eval.empty() ? PackageMempoolAcceptResult(package_state_quit_early, {}) :
++        AcceptSubPackage(txns_package_eval, args);
++    PackageValidationState& package_state_final = multi_submission_result.m_state;
++
++    // Make sure we haven't exceeded max mempool size.
++    // Package transactions that were submitted to mempool or already in mempool may be evicted.
++    LimitMempoolSize(m_pool, m_active_chainstate.CoinsTip());
++
++    for (const auto& tx : package) {
++        const auto& wtxid = tx->GetWitnessHash();
++        if (multi_submission_result.m_tx_results.count(wtxid) > 0) {
++            // We shouldn't have re-submitted if the tx result was already in results_final.
++            Assume(results_final.count(wtxid) == 0);
++            // If it was submitted, check to see if the tx is still in the mempool. It could have
++            // been evicted due to LimitMempoolSize() above.
++            const auto& txresult = multi_submission_result.m_tx_results.at(wtxid);
++            if (txresult.m_result_type == MempoolAcceptResult::ResultType::VALID && !m_pool.exists(GenTxid::Wtxid(wtxid))) {
++                package_state_final.Invalid(PackageValidationResult::PCKG_TX, "transaction failed");
++                TxValidationState mempool_full_state;
++                mempool_full_state.Invalid(TxValidationResult::TX_MEMPOOL_POLICY, "mempool full");
++                results_final.emplace(wtxid, MempoolAcceptResult::Failure(mempool_full_state));
++            } else {
++                results_final.emplace(wtxid, txresult);
++            }
++        } else if (const auto it{results_final.find(wtxid)}; it != results_final.end()) {
++            // Already-in-mempool transaction. Check to see if it's still there, as it could have
++            // been evicted when LimitMempoolSize() was called.
++            Assume(it->second.m_result_type != MempoolAcceptResult::ResultType::INVALID);
++            Assume(individual_results_nonfinal.count(wtxid) == 0);
++            // Query by txid to include the same-txid-different-witness ones.
++            if (!m_pool.exists(GenTxid::Txid(tx->GetHash()))) {
++                package_state_final.Invalid(PackageValidationResult::PCKG_TX, "transaction failed");
++                TxValidationState mempool_full_state;
++                mempool_full_state.Invalid(TxValidationResult::TX_MEMPOOL_POLICY, "mempool full");
++                // Replace the previous result.
++                results_final.erase(wtxid);
++                results_final.emplace(wtxid, MempoolAcceptResult::Failure(mempool_full_state));
++            }
++        } else if (const auto it{individual_results_nonfinal.find(wtxid)}; it != individual_results_nonfinal.end()) {
++            Assume(it->second.m_result_type == MempoolAcceptResult::ResultType::INVALID);
++            // Interesting result from previous processing.
++            results_final.emplace(wtxid, it->second);
+         }
+-        return PackageMempoolAcceptResult(package_state_quit_early, std::move(results_final));
+-    }
+-    // Validate the (deduplicated) transactions as a package. Note that submission_result has its
+-    // own PackageValidationState; package_state_quit_early is unused past this point.
+-    auto submission_result = AcceptMultipleTransactions(txns_package_eval, args);
+-    // Include already-in-mempool transaction results in the final result.
+-    for (const auto& [wtxid, mempoolaccept_res] : results_final) {
+-        Assume(submission_result.m_tx_results.emplace(wtxid, mempoolaccept_res).second);
+-        Assume(mempoolaccept_res.m_result_type != MempoolAcceptResult::ResultType::INVALID);
+-    }
+-    if (submission_result.m_state.GetResult() == PackageValidationResult::PCKG_TX) {
+-        // Package validation failed because one or more transactions failed. Provide a result for
+-        // each transaction; if AcceptMultipleTransactions() didn't return a result for a tx,
+-        // include the previous individual failure reason.
+-        submission_result.m_tx_results.insert(individual_results_nonfinal.cbegin(),
+-                                              individual_results_nonfinal.cend());
+-        Assume(submission_result.m_tx_results.size() == package.size());
+     }
+-    return submission_result;
++    Assume(results_final.size() == package.size());
++    return PackageMempoolAcceptResult(package_state_final, std::move(results_final));
+ }
+
+ } // anon namespace
+diff --git a/src/validation.h b/src/validation.h
+index d7ad86a5e853..aacc69330051 100644
+--- a/src/validation.h
++++ b/src/validation.h
+@@ -211,21 +211,21 @@ struct MempoolAcceptResult {
+ */
+ struct PackageMempoolAcceptResult
+ {
+-    const PackageValidationState m_state;
++    PackageValidationState m_state;
+     /**
+     * Map from wtxid to finished MempoolAcceptResults. The client is responsible
+     * for keeping track of the transaction objects themselves. If a result is not
+     * present, it means validation was unfinished for that transaction. If there
+     * was a package-wide error (see result in m_state), m_tx_results will be empty.
+     */
+-    std::map<const uint256, const MempoolAcceptResult> m_tx_results;
++    std::map<uint256, MempoolAcceptResult> m_tx_results;
+
+     explicit PackageMempoolAcceptResult(PackageValidationState state,
+-                                        std::map<const uint256, const MempoolAcceptResult>&& results)
++                                        std::map<uint256, MempoolAcceptResult>&& results)
+         : m_state{state}, m_tx_results(std::move(results)) {}
+
+     explicit PackageMempoolAcceptResult(PackageValidationState state, CFeeRate feerate,
+-                                        std::map<const uint256, const MempoolAcceptResult>&& results)
++                                        std::map<uint256, MempoolAcceptResult>&& results)
+         : m_state{state}, m_tx_results(std::move(results)) {}
+
+     /** Constructor to create a PackageMempoolAcceptResult from a single MempoolAcceptResult */
+diff --git a/test/functional/mempool_limit.py b/test/functional/mempool_limit.py
+index f3f4b42ad06e..0abebbec0258 100755
+--- a/test/functional/mempool_limit.py
++++ b/test/functional/mempool_limit.py
+@@ -34,29 +34,27 @@ def set_test_params(self):
+         ]]
+         self.supports_cli = False
+
+-    def run_test(self):
++    def fill_mempool(self):
++        """Fill mempool until eviction."""
++        self.log.info("Fill the mempool until eviction is triggered and the mempoolminfee rises")
+         txouts = gen_return_txouts()
+         node = self.nodes[0]
+-        miniwallet = MiniWallet(node)
++        miniwallet = self.wallet
+         relayfee = node.getnetworkinfo()['relayfee']
+
+-        self.log.info('Check that mempoolminfee is minrelaytxfee')
+-        assert_equal(node.getmempoolinfo()['minrelaytxfee'], Decimal('0.00001000'))
+-        assert_equal(node.getmempoolinfo()['mempoolminfee'], Decimal('0.00001000'))
+-
+         tx_batch_size = 1
+         num_of_batches = 75
+         # Generate UTXOs to flood the mempool
+         # 1 to create a tx initially that will be evicted from the mempool later
+-        # 3 batches of multiple transactions with a fee rate much higher than the previous UTXO
++        # 75 transactions each with a fee rate higher than the previous one
+         # And 1 more to verify that this tx does not get added to the mempool with a fee rate less than the mempoolminfee
+         # And 2 more for the package cpfp test
+-        self.generate(miniwallet, 1 + (num_of_batches * tx_batch_size) + 1 + 2)
++        self.generate(miniwallet, 1 + (num_of_batches * tx_batch_size))
+
+         # Mine 99 blocks so that the UTXOs are allowed to be spent
+         self.generate(node, COINBASE_MATURITY - 1)
+
+-        self.log.info('Create a mempool tx that will be evicted')
++        self.log.debug("Create a mempool tx that will be evicted")
+         tx_to_be_evicted_id = miniwallet.send_self_transfer(from_node=node, fee_rate=relayfee)["txid"]
+
+         # Increase the tx fee rate to give the subsequent transactions a higher priority in the mempool
+@@ -64,21 +62,196 @@ def run_test(self):
+         # by 130 should result in a fee that corresponds to 2x of that fee rate
+         base_fee = relayfee * 130
+
+-        self.log.info("Fill up the mempool with txs with higher fee rate")
+-        for batch_of_txid in range(num_of_batches):
+-            fee = (batch_of_txid + 1) * base_fee
+-            create_lots_of_big_transactions(miniwallet, node, fee, tx_batch_size, txouts)
++        self.log.debug("Fill up the mempool with txs with higher fee rate")
++        with node.assert_debug_log(["rolling minimum fee bumped"]):
++            for batch_of_txid in range(num_of_batches):
++                fee = (batch_of_txid + 1) * base_fee
++                create_lots_of_big_transactions(miniwallet, node, fee, tx_batch_size, txouts)
+
+-        self.log.info('The tx should be evicted by now')
++        self.log.debug("The tx should be evicted by now")
+         # The number of transactions created should be greater than the ones present in the mempool
+         assert_greater_than(tx_batch_size * num_of_batches, len(node.getrawmempool()))
+         # Initial tx created should not be present in the mempool anymore as it had a lower fee rate
+         assert tx_to_be_evicted_id not in node.getrawmempool()
+
+-        self.log.info('Check that mempoolminfee is larger than minrelaytxfee')
++        self.log.debug("Check that mempoolminfee is larger than minrelaytxfee")
+         assert_equal(node.getmempoolinfo()['minrelaytxfee'], Decimal('0.00001000'))
+         assert_greater_than(node.getmempoolinfo()['mempoolminfee'], Decimal('0.00001000'))
+
++    def test_mid_package_eviction(self):
++        node = self.nodes[0]
++        self.log.info("Check a package where each parent passes the current mempoolminfee but would cause eviction before package submission terminates")
++
++        self.restart_node(0, extra_args=self.extra_args[0])
++
++        # Restarting the node resets mempool minimum feerate
++        assert_equal(node.getmempoolinfo()['minrelaytxfee'], Decimal('0.00001000'))
++        assert_equal(node.getmempoolinfo()['mempoolminfee'], Decimal('0.00001000'))
++
++        self.fill_mempool()
++        current_info = node.getmempoolinfo()
++        mempoolmin_feerate = current_info["mempoolminfee"]
++
++        package_hex = []
++        # UTXOs to be spent by the ultimate child transaction
++        parent_utxos = []
++
++        evicted_weight = 8000
++        # Mempool transaction which is evicted due to being at the "bottom" of the mempool when the
++        # mempool overflows and evicts by descendant score. It's important that the eviction doesn't
++        # happen in the middle of package evaluation, as it can invalidate the coins cache.
++        mempool_evicted_tx = self.wallet.send_self_transfer(
++            from_node=node,
++            fee=(mempoolmin_feerate / 1000) * (evicted_weight // 4) + Decimal('0.000001'),
++            target_weight=evicted_weight,
++            confirmed_only=True
++        )
++        # Already in mempool when package is submitted.
++        assert mempool_evicted_tx["txid"] in node.getrawmempool()
++
++        # This parent spends the above mempool transaction that exists when its inputs are first
++        # looked up, but disappears later. It is rejected for being too low fee (but eligible for
++        # reconsideration), and its inputs are cached. When the mempool transaction is evicted, its
++        # coin is no longer available, but the cache could still contains the tx.
++        cpfp_parent = self.wallet.create_self_transfer(
++            utxo_to_spend=mempool_evicted_tx["new_utxo"],
++            fee_rate=mempoolmin_feerate - Decimal('0.00001'),
++            confirmed_only=True)
++        package_hex.append(cpfp_parent["hex"])
++        parent_utxos.append(cpfp_parent["new_utxo"])
++        assert_equal(node.testmempoolaccept([cpfp_parent["hex"]])[0]["reject-reason"], "mempool min fee not met")
++
++        self.wallet.rescan_utxos()
++
++        # Series of parents that don't need CPFP and are submitted individually. Each one is large and
++        # high feerate, which means they should trigger eviction but not be evicted.
++        parent_weight = 100000
++        num_big_parents = 3
++        assert_greater_than(parent_weight * num_big_parents, current_info["maxmempool"] - current_info["bytes"])
++        parent_fee = (100 * mempoolmin_feerate / 1000) * (parent_weight // 4)
++
++        big_parent_txids = []
++        for i in range(num_big_parents):
++            parent = self.wallet.create_self_transfer(fee=parent_fee, target_weight=parent_weight, confirmed_only=True)
++            parent_utxos.append(parent["new_utxo"])
++            package_hex.append(parent["hex"])
++            big_parent_txids.append(parent["txid"])
++            # There is room for each of these transactions independently
++            assert node.testmempoolaccept([parent["hex"]])[0]["allowed"]
++
++        # Create a child spending everything, bumping cpfp_parent just above mempool minimum
++        # feerate. It's important not to bump too much as otherwise mempool_evicted_tx would not be
++        # evicted, making this test much less meaningful.
++        approx_child_vsize = self.wallet.create_self_transfer_multi(utxos_to_spend=parent_utxos)["tx"].get_vsize()
++        cpfp_fee = (mempoolmin_feerate / 1000) * (cpfp_parent["tx"].get_vsize() + approx_child_vsize) - cpfp_parent["fee"]
++        # Specific number of satoshis to fit within a small window. The parent_cpfp + child package needs to be
++        # - When there is mid-package eviction, high enough feerate to meet the new mempoolminfee
++        # - When there is no mid-package eviction, low enough feerate to be evicted immediately after submission.
++        magic_satoshis = 1200
++        cpfp_satoshis = int(cpfp_fee * COIN) + magic_satoshis
++
++        child = self.wallet.create_self_transfer_multi(utxos_to_spend=parent_utxos, fee_per_output=cpfp_satoshis)
++        package_hex.append(child["hex"])
++
++        # Package should be submitted, temporarily exceeding maxmempool, and then evicted.
++        with node.assert_debug_log(expected_msgs=["rolling minimum fee bumped"]):
++            assert_raises_rpc_error(-26, "mempool full", node.submitpackage, package_hex)
++
++        # Maximum size must never be exceeded.
++        assert_greater_than(node.getmempoolinfo()["maxmempool"], node.getmempoolinfo()["bytes"])
++
++        # Evicted transaction and its descendants must not be in mempool.
++        resulting_mempool_txids = node.getrawmempool()
++        assert mempool_evicted_tx["txid"] not in resulting_mempool_txids
++        assert cpfp_parent["txid"] not in resulting_mempool_txids
++        assert child["txid"] not in resulting_mempool_txids
++        for txid in big_parent_txids:
++            assert txid in resulting_mempool_txids
++
++    def test_mid_package_replacement(self):
++        node = self.nodes[0]
++        self.log.info("Check a package where an early tx depends on a later-replaced mempool tx")
++
++        self.restart_node(0, extra_args=self.extra_args[0])
++
++        # Restarting the node resets mempool minimum feerate
++        assert_equal(node.getmempoolinfo()['minrelaytxfee'], Decimal('0.00001000'))
++        assert_equal(node.getmempoolinfo()['mempoolminfee'], Decimal('0.00001000'))
++
++        self.fill_mempool()
++        current_info = node.getmempoolinfo()
++        mempoolmin_feerate = current_info["mempoolminfee"]
++
++        # Mempool transaction which is evicted due to being at the "bottom" of the mempool when the
++        # mempool overflows and evicts by descendant score. It's important that the eviction doesn't
++        # happen in the middle of package evaluation, as it can invalidate the coins cache.
++        double_spent_utxo = self.wallet.get_utxo(confirmed_only=True)
++        replaced_tx = self.wallet.send_self_transfer(
++            from_node=node,
++            utxo_to_spend=double_spent_utxo,
++            fee_rate=mempoolmin_feerate,
++            confirmed_only=True
++        )
++        # Already in mempool when package is submitted.
++        assert replaced_tx["txid"] in node.getrawmempool()
++
++        # This parent spends the above mempool transaction that exists when its inputs are first
++        # looked up, but disappears later. It is rejected for being too low fee (but eligible for
++        # reconsideration), and its inputs are cached. When the mempool transaction is evicted, its
++        # coin is no longer available, but the cache could still contain the tx.
++        cpfp_parent = self.wallet.create_self_transfer(
++            utxo_to_spend=replaced_tx["new_utxo"],
++            fee_rate=mempoolmin_feerate - Decimal('0.00001'),
++            confirmed_only=True)
++
++        self.wallet.rescan_utxos()
++
++        # Parent that replaces the parent of cpfp_parent.
++        replacement_tx = self.wallet.create_self_transfer(
++            utxo_to_spend=double_spent_utxo,
++            fee_rate=10*mempoolmin_feerate,
++            confirmed_only=True
++        )
++        parent_utxos = [cpfp_parent["new_utxo"], replacement_tx["new_utxo"]]
++
++        # Create a child spending everything, CPFPing the low-feerate parent.
++        approx_child_vsize = self.wallet.create_self_transfer_multi(utxos_to_spend=parent_utxos)["tx"].get_vsize()
++        cpfp_fee = (2 * mempoolmin_feerate / 1000) * (cpfp_parent["tx"].get_vsize() + approx_child_vsize) - cpfp_parent["fee"]
++        child = self.wallet.create_self_transfer_multi(utxos_to_spend=parent_utxos, fee_per_output=int(cpfp_fee * COIN))
++        # It's very important that the cpfp_parent is before replacement_tx so that its input (from
++        # replaced_tx) is first looked up *before* replacement_tx is submitted.
++        package_hex = [cpfp_parent["hex"], replacement_tx["hex"], child["hex"]]
++
++        # Package should be submitted, temporarily exceeding maxmempool, and then evicted.
++        assert_raises_rpc_error(-26, "bad-txns-inputs-missingorspent", node.submitpackage, package_hex)
++
++        # Maximum size must never be exceeded.
++        assert_greater_than(node.getmempoolinfo()["maxmempool"], node.getmempoolinfo()["bytes"])
++
++        resulting_mempool_txids = node.getrawmempool()
++        # The replacement should be successful.
++        assert replacement_tx["txid"] in resulting_mempool_txids
++        # The replaced tx and all of its descendants must not be in mempool.
++        assert replaced_tx["txid"] not in resulting_mempool_txids
++        assert cpfp_parent["txid"] not in resulting_mempool_txids
++        assert child["txid"] not in resulting_mempool_txids
++
++
++    def run_test(self):
++        node = self.nodes[0]
++        self.wallet = MiniWallet(node)
++        miniwallet = self.wallet
++
++        # Generate coins needed to create transactions in the subtests (excluding coins used in fill_mempool).
++        self.generate(miniwallet, 20)
++
++        relayfee = node.getnetworkinfo()['relayfee']
++        self.log.info('Check that mempoolminfee is minrelaytxfee')
++        assert_equal(node.getmempoolinfo()['minrelaytxfee'], Decimal('0.00001000'))
++        assert_equal(node.getmempoolinfo()['mempoolminfee'], Decimal('0.00001000'))
++
++        self.fill_mempool()
++
+         # Deliberately try to create a tx with a fee less than the minimum mempool fee to assert that it does not get added to the mempool
+         self.log.info('Create a mempool tx that will not pass mempoolminfee')
+         assert_raises_rpc_error(-26, "mempool min fee not met", miniwallet.send_self_transfer, from_node=node, fee_rate=relayfee)
+@@ -149,6 +322,9 @@ def run_test(self):
+         self.stop_node(0)
+         self.nodes[0].assert_start_raises_init_error(["-maxmempool=4"], "Error: -maxmempool must be at least 5 MB")
+
++        self.test_mid_package_replacement()
++        self.test_mid_package_eviction()
++
+
+ if __name__ == '__main__':
+     MempoolLimitTest().main()
+diff --git a/test/functional/rpc_packages.py b/test/functional/rpc_packages.py
+index ae1a498e28ab..9c4960aa1ea9 100755
+--- a/test/functional/rpc_packages.py
++++ b/test/functional/rpc_packages.py
+@@ -212,8 +212,8 @@ def test_conflicting(self):
+         coin = self.wallet.get_utxo()
+
+         # tx1 and tx2 share the same inputs
+-        tx1 = self.wallet.create_self_transfer(utxo_to_spend=coin)
+-        tx2 = self.wallet.create_self_transfer(utxo_to_spend=coin)
++        tx1 = self.wallet.create_self_transfer(utxo_to_spend=coin, fee_rate=DEFAULT_FEE)
++        tx2 = self.wallet.create_self_transfer(utxo_to_spend=coin, fee_rate=2*DEFAULT_FEE)
+
+         # Ensure tx1 and tx2 are valid by themselves
+         assert node.testmempoolaccept([tx1["hex"]])[0]["allowed"]
+@@ -222,8 +222,8 @@ def test_conflicting(self):
+         self.log.info("Test duplicate transactions in the same package")
+         testres = node.testmempoolaccept([tx1["hex"], tx1["hex"]])
+         assert_equal(testres, [
+-            {"txid": tx1["txid"], "wtxid": tx1["wtxid"], "package-error": "conflict-in-package"},
+-            {"txid": tx1["txid"], "wtxid": tx1["wtxid"], "package-error": "conflict-in-package"}
++            {"txid": tx1["txid"], "wtxid": tx1["wtxid"], "package-error": "package-contains-duplicates"},
++            {"txid": tx1["txid"], "wtxid": tx1["wtxid"], "package-error": "package-contains-duplicates"}
+         ])
+
+         self.log.info("Test conflicting transactions in the same package")
+diff --git a/test/functional/test_framework/wallet.py b/test/functional/test_framework/wallet.py
+index 4d7519435368..035a482f4cb2 100644
+--- a/test/functional/test_framework/wallet.py
++++ b/test/functional/test_framework/wallet.py
+@@ -208,7 +208,7 @@ def get_address(self):
+         assert_equal(self._mode, MiniWalletMode.ADDRESS_OP_TRUE)
+         return self._address
+
+-    def get_utxo(self, *, txid: str = '', vout: Optional[int] = None, mark_as_spent=True) -> dict:
++    def get_utxo(self, *, txid: str = '', vout: Optional[int] = None, mark_as_spent=True, confirmed_only=False) -> dict:
+         """
+         Returns a utxo and marks it as spent (pops it from the internal list)
+
+@@ -224,19 +224,23 @@ def get_utxo(self, *, txid: str = '', vout: Optional[int] = None, mark_as_spent=
+             utxo_filter = reversed(mature_coins)  # By default the largest utxo
+         if vout is not None:
+             utxo_filter = filter(lambda utxo: vout == utxo['vout'], utxo_filter)
++        if confirmed_only:
++            utxo_filter = filter(lambda utxo: utxo['confirmations'] > 0, utxo_filter)
+         index = self._utxos.index(next(utxo_filter))
+         if mark_as_spent:
+             return self._utxos.pop(index)
+         else:
+             return self._utxos[index]
+
+-    def get_utxos(self, *, include_immature_coinbase=False, mark_as_spent=True):
++    def get_utxos(self, *, include_immature_coinbase=False, mark_as_spent=True, confirmed_only=False):
+         """Returns the list of all utxos and optionally mark them as spent"""
+         if not include_immature_coinbase:
+             blocks_height = self._test_node.getblockchaininfo()['blocks']
+             utxo_filter = filter(lambda utxo: not utxo['coinbase'] or COINBASE_MATURITY - 1 <= blocks_height - utxo['height'], self._utxos)
+         else:
+             utxo_filter = self._utxos
++        if confirmed_only:
++            utxo_filter = filter(lambda utxo: utxo['confirmations'] > 0, utxo_filter)
+         utxos = deepcopy(list(utxo_filter))
+         if mark_as_spent:
+             self._utxos = []
+@@ -286,14 +290,15 @@ def create_self_transfer_multi(
+         locktime=0,
+         sequence=0,
+         fee_per_output=1000,
+-        target_weight=0
++        target_weight=0,
++        confirmed_only=False
+     ):
+         """
+         Create and return a transaction that spends the given UTXOs and creates a
+         certain number of outputs with equal amounts. The output amounts can be
+         set by amount_per_output or automatically calculated with a fee_per_output.
+         """
+-        utxos_to_spend = utxos_to_spend or [self.get_utxo()]
++        utxos_to_spend = utxos_to_spend or [self.get_utxo(confirmed_only=confirmed_only)]
+         sequence = [sequence] * len(utxos_to_spend) if type(sequence) is int else sequence
+         assert_equal(len(utxos_to_spend), len(sequence))
+
+@@ -333,9 +338,17 @@ def create_self_transfer_multi(
+             "tx": tx,
+         }
+
+-    def create_self_transfer(self, *, fee_rate=Decimal("0.003"), fee=Decimal("0"), utxo_to_spend=None, locktime=0, sequence=0, target_weight=0):
++    def create_self_transfer(self, *,
++            fee_rate=Decimal("0.003"),
++            fee=Decimal("0"),
++            utxo_to_spend=None,
++            locktime=0,
++            sequence=0,
++            target_weight=0,
++            confirmed_only=False
++    ):
+         """Create and return a tx with the specified fee. If fee is 0, use fee_rate, where the resulting fee may be exact or at most one satoshi higher than needed."""
+-        utxo_to_spend = utxo_to_spend or self.get_utxo()
++        utxo_to_spend = utxo_to_spend or self.get_utxo(confirmed_only=confirmed_only)
+         assert fee_rate >= 0
+         assert fee >= 0
+         # calculate fee

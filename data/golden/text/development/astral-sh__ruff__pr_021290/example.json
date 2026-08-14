@@ -1,0 +1,41 @@
+{
+  "example_id": "astral-sh__ruff__pr_021290",
+  "source": "github-codereview",
+  "repository": "astral-sh/ruff",
+  "commit_sha": "da8b13252eb7100c6131ce23a740f068cd459b29",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[`pylint`] Fix suppression for empty dict without tuple key annotation (`PLE1141`)",
+    "description": "## Summary\r\n\r\nFixes the PLE1141 (`dict-iter-missing-items`) rule to allow fixes for empty dictionaries unless they have type annotations indicating 2-tuple keys. Previously, the fix was incorrectly suppressed for all empty dicts due to vacuous truth in the `all()` function.\r\n\r\nFixes #21289\r\n\r\n## Problem Analysis\r\n\r\nThe `is_dict_key_tuple_with_two_elements` function was designed to suppress the fix when a dictionary's keys are all 2-tuples, as unpacking tuple keys directly would change runtime behavior.\r\n\r\nHowever, for empty dictionaries, `iter_keys()` returns an empty iterator, and `all()` on an empty iterator returns `true` (vacuous truth). This caused the function to incorrectly suppress fixes for empty dicts, even when there was no indication that future keys would be 2-tuples.\r\n\r\n## Approach\r\n\r\n1. **Detect empty dictionaries**: Added a check to identify when a dict literal has no keys.\r\n\r\n2. **Handle annotated empty dicts**: For empty dicts with type annotations:\r\n   - Parse the annotation to check if it's `dict[tuple[T1, T2], ...]` where the tuple has exactly 2 elements\r\n   - Support both PEP 484 (`typing.Dict`, `typing.Tuple`) and PEP 585 (`dict`, `tuple`) syntax\r\n   - If tuple keys are detected, suppress the fix (correct behavior)\r\n   - Otherwise, allow the fix\r\n\r\n3. **Handle unannotated empty dicts**: For empty dicts without annotations, allow the fix since there's no indication that keys will be 2-tuples.\r\n\r\n4. **Preserve existing behavior**: For non-empty dicts, the original logic is unchanged - check if all existing keys are 2-tuples.\r\n\r\nThe implementation includes helper functions:\r\n- `is_annotation_dict_with_tuple_keys()`: Checks if a type annotation specifies dict with tuple keys\r\n- `is_tuple_type_with_two_elements()`: Checks if a type expression represents a 2-tuple\r\n\r\nTest cases were added to verify:\r\n- Empty dict without annotation triggers the error\r\n- Empty dict with `dict[tuple[int, str], bool]` suppresses the error\r\n- Empty dict with `dict[str, int]` triggers the error\r\n- Existing tests remain unchanged",
+    "url": "https://github.com/astral-sh/ruff/pull/21290"
+  },
+  "changed_files": [
+    "crates/ruff_linter/resources/test/fixtures/pylint/dict_iter_missing_items.py",
+    "crates/ruff_linter/src/rules/pylint/rules/dict_iter_missing_items.rs",
+    "crates/ruff_linter/src/rules/pylint/snapshots/ruff_linter__rules__pylint__tests__PLE1141_dict_iter_missing_items.py.snap"
+  ],
+  "diff_path": "text/development/astral-sh__ruff__pr_021290/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "crates/ruff_linter/resources/test/fixtures/pylint/dict_iter_missing_items.py",
+      "line": 41,
+      "category": "bug_risk",
+      "severity": "low",
+      "issue_summary": "I think it would be interesting to have these two lines in separate test cases, i.e.\n\n```py\nempty_dict_annotated_tuple_keys: dict[tuple[int, str], bool] = {}\nfor k, v in empty_dict_annotated_tuple_keys:\n    pass\n\nempty_dict_annotated_tuple_keys = {}\nempty_dict_annotated_tuple_keys[(\"x\", \"y\")] = True\nfor k, v in empty_dict_annotated_tuple_keys:\n    pass\n```\n\nI don't think we have to skip the second case even if it's technically incorrect because it's likely to be rare, as mentioned on the issue. ",
+      "evidence_requirement": "The comment must cite the reviewer's request for two separate test cases (annotated-only loop vs annotated-then-populated loop) and show the current single combined case fails to isolate the second scenario.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The reviewer wants to capture behavior for the rare but plausible case of an annotated dict that is populated before iteration, to ensure the linter correctly handles the type annotation even when the dict is not empty at declaration.",
+      "_reviewer_comment_full": "I think it would be interesting to have these two lines in separate test cases, i.e.\n\n```py\nempty_dict_annotated_tuple_keys: dict[tuple[int, str], bool] = {}\nfor k, v in empty_dict_annotated_tuple_keys:\n    pass\n\nempty_dict_annotated_tuple_keys = {}\nempty_dict_annotated_tuple_keys[(\"x\", \"y\")] = True\nfor k, v in empty_dict_annotated_tuple_keys:\n    pass\n```\n\nI don't think we have to skip the second case even if it's technically incorrect because it's likely to be rare, as mentioned on the issue. But it seems useful to capture our behavior in this case.",
+      "_gold_comment_url": "https://github.com/astral-sh/ruff/pull/21290#discussion_r2500947096"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "development",
+  "snapshot_id": 183
+}

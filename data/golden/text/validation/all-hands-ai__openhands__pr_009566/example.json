@@ -1,0 +1,41 @@
+{
+  "example_id": "all-hands-ai__openhands__pr_009566",
+  "source": "github-codereview",
+  "repository": "All-Hands-AI/OpenHands",
+  "commit_sha": "473ea10f153f31aefdb9494aca5cf8b0cd287ee9",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Add additional networks",
+    "description": "- [x] This change is worth documenting at https://docs.all-hands.dev/\r\n- [x] Include this change in the Release Notes. If checked, you **must** provide an **end-user friendly** description for your change below\r\n\r\n**End-user friendly description of the problem this fixes or functionality this introduces.**\r\n\r\nAllow additional docker networks to be specified to be attached to all sandbox instances, allowing sidecar containers (like build caches) to be securely shared between all runners.\r\n\r\n---\r\n**Summarize what the PR does, explaining any non-trivial design decisions.**\r\n\r\nAdds additional networks to containers after they have been created. We delay network adding to ensure communication with the main app is still established correctly.\r\n\r\n---\r\n**Link of any specific issues this addresses:**\r\n\r\n#6637\r\n",
+    "url": "https://github.com/OpenHands/OpenHands/pull/9566"
+  },
+  "changed_files": [
+    "docs/usage/runtimes/docker.mdx",
+    "openhands/core/config/sandbox_config.py",
+    "openhands/runtime/impl/docker/docker_runtime.py"
+  ],
+  "diff_path": "text/validation/all-hands-ai__openhands__pr_009566/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "openhands/runtime/impl/docker/docker_runtime.py",
+      "line": 206,
+      "category": "bug_risk",
+      "severity": "low",
+      "issue_summary": "```suggestion\r\n                    f'Error: Failed to connect instance {self.container_name} to network {network_name}',\r\n```",
+      "evidence_requirement": "The added code at line 206 omits a trailing comma after the f-string in the first self.log() call, which the reviewer explicitly suggested adding.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A missing trailing comma in a log statement is a minor syntax/style issue that could affect readability or consistency with Python formatting conventions, though it does not impact functionality.",
+      "_reviewer_comment_full": "```suggestion\r\n                    f'Error: Failed to connect instance {self.container_name} to network {network_name}',\r\n```",
+      "_gold_comment_url": "https://github.com/OpenHands/OpenHands/pull/9566#discussion_r2245891221"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 154
+}

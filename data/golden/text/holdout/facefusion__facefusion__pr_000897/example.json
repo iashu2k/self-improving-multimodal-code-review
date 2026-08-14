@@ -1,0 +1,43 @@
+{
+  "example_id": "facefusion__facefusion__pr_000897",
+  "source": "github-codereview",
+  "repository": "facefusion/facefusion",
+  "commit_sha": "7905cfe6a33d4af69a819787aa006c9b4f6827e5",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Add Edtalk and re organize lipsyncer",
+    "description": "",
+    "url": "https://github.com/facefusion/facefusion/pull/897"
+  },
+  "changed_files": [
+    "facefusion/processors/choices.py",
+    "facefusion/processors/modules/lip_syncer.py",
+    "facefusion/processors/types.py"
+  ],
+  "diff_path": "text/holdout/facefusion__facefusion__pr_000897/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "facefusion/processors/modules/lip_syncer.py",
+      "line": 270,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "give it a meaningful name and probably move to face helper?\r\n\r\n```\r\ndef resize_bounding_box(bounding_box: BoundingBox, aspect_ratio: float) -> BoundingBox:\r\n```\r\n\r\n```\r\nresize_bounding_box(bbox, 4/3)\r\n```",
+      "evidence_requirement": "The diff must show a call to `resize_bounding_box` without a corresponding function definition or import in the file.",
+      "must_not_claim": [
+        "causes crash",
+        "breaks functionality"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The code calls `resize_bounding_box(bounding_box, 4 / 3)` but the function is not defined or imported, causing a NameError at runtime.",
+      "_reviewer_comment_full": "give it a meaningful name and probably move to face helper?\r\n\r\n```\r\ndef resize_bounding_box(bounding_box: BoundingBox, aspect_ratio: float) -> BoundingBox:\r\n```\r\n\r\n```\r\nresize_bounding_box(bbox, 4/3)\r\n```",
+      "_gold_comment_url": "https://github.com/facefusion/facefusion/pull/897#discussion_r2142793117"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 59
+}

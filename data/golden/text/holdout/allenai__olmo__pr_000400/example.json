@@ -1,0 +1,39 @@
+{
+  "example_id": "allenai__olmo__pr_000400",
+  "source": "github-codereview",
+  "repository": "allenai/OLMo",
+  "commit_sha": "5c32f679e3999444cb0c0c4c8ef80b83ddcb34b3",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[Storage cleaner] Add wandb path implementation",
+    "description": "This PR adds a basic implementation for getting a wandb path for a given run directory. This may have issues in some common cases:\r\n\r\n- If the run used `save_overwrite` and so the top-level `config.yaml` does not match all checkpoints, then the resulting wandb path won't be correct for all checkpoints of the \"run\". Dealing with this programmatically seems more messy than is worth.\r\n- If run does not have a top-level `config.yaml`, then the script exits with error. Using a checkpoint's `config.yaml` could lead to the previous scenario.\r\n- If the run has been deleted from wandb, then the script exits with error. We can probably deal with this manually?\r\n- If the run has under-specified wandb information in the config file. One can probably deduce the right run from other information, but I don't think this is worth it presently.\r\n\r\nI am hoping that most of the runs worth keeping do not face the above issues. I can improve how the storage cleaner deals with these scenarios if we believe they are more important than I had expected.",
+    "url": "https://github.com/allenai/OLMo/pull/400"
+  },
+  "changed_files": [
+    "scripts/storage_cleaner.py"
+  ],
+  "diff_path": "text/holdout/allenai__olmo__pr_000400/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "scripts/storage_cleaner.py",
+      "line": 960,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "Can this be debug?\r\n```suggestion\r\n    log.debug(\"Wandb entity/project: %s/%s\", config.wandb.entity, config.wandb.project)\r\n    log.debug(\"Wandb filters: %s\", run_filters)\r\n```",
+      "evidence_requirement": "The code at line 960 uses `log.info` for Wandb entity/project and filters, but the reviewer explicitly suggested using `log.debug` instead.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Logging at INFO level for internal debugging details like Wandb filters is excessive for production logs and may clutter logs unnecessarily.",
+      "_reviewer_comment_full": "Can this be debug?\r\n```suggestion\r\n    log.debug(\"Wandb entity/project: %s/%s\", config.wandb.entity, config.wandb.project)\r\n    log.debug(\"Wandb filters: %s\", run_filters)\r\n```",
+      "_gold_comment_url": "https://github.com/allenai/OLMo/pull/400#discussion_r1426018015"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 158
+}

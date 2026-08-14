@@ -1,0 +1,46 @@
+{
+  "example_id": "bitcoin__bitcoin__pr_028251",
+  "source": "github-codereview",
+  "repository": "bitcoin/bitcoin",
+  "commit_sha": "32c1dd1ad65af0ad4d36a56d2ca32a8481237e68",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "validation: fix coins disappearing mid-package evaluation",
+    "description": "While we are evaluating a package, we split it into \"subpackages\" for evaluation (currently subpackages all have size 1 except the last one). If a subpackage has size 1, we may add a tx to mempool and call `LimitMempoolSize()`, which evicts transactions if the mempool gets full. We handle the case where the just-submitted transaction is evicted immediately, but we don't handle the case in which a transaction from a previous subpackage (either just submitted or already in mempool) is evicted. Mainly, since the coins created by the evicted transaction are cached in `m_view`, we don't realize the UTXO has disappeared until `CheckInputsFromMempoolAndCache` asserts that they exist. Also, the returned `PackageMempoolAcceptResult` reports that the transaction is in mempool even though it isn't anymore.\r\n\r\nFix this by not calling `LimitMempoolSize()` until the very end, and editing the results map with \"mempool full\" if things fall out.\r\n\r\nPointed out by instagibbs in https://github.com/bitcoin/bitcoin/commit/faeed687e5cde5e32750d93818dd1d4add837f24 on top of the v3 PR.",
+    "url": "https://github.com/bitcoin/bitcoin/pull/28251"
+  },
+  "changed_files": [
+    "src/policy/packages.cpp",
+    "src/test/txpackage_tests.cpp",
+    "src/txmempool.cpp",
+    "src/txmempool.h",
+    "src/validation.cpp",
+    "src/validation.h",
+    "test/functional/mempool_limit.py",
+    "test/functional/rpc_packages.py",
+    "test/functional/test_framework/wallet.py"
+  ],
+  "diff_path": "text/holdout/bitcoin__bitcoin__pr_028251/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "test/functional/mempool_limit.py",
+      "line": 115,
+      "category": "performance",
+      "severity": "medium",
+      "issue_summary": "```Suggestion\r\n        # coin is no longer available, but the cache could still contain the tx.\r\n```",
+      "evidence_requirement": "TODO: what the agent must cite to get credit",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "TODO: why this gold issue is valid",
+      "_reviewer_comment_full": "```Suggestion\r\n        # coin is no longer available, but the cache could still contain the tx.\r\n```",
+      "_gold_comment_url": "https://github.com/bitcoin/bitcoin/pull/28251#discussion_r1301971311"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 66
+}

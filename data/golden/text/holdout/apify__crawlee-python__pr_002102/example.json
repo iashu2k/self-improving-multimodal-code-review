@@ -1,0 +1,23 @@
+{
+  "example_id": "apify__crawlee-python__pr_002102",
+  "source": "github-codereview",
+  "repository": "apify/crawlee-python",
+  "commit_sha": "c2ae28f552af4df4b44c1603063aab00a60b4cf0",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "test: Increase the `operation_timeout` in the `test_new_page_with_each_plugin`",
+    "description": "### Description\r\n\r\n- Increase the `operation_timeout` in the `test_new_page_with_each_plugin` because launching two browsers is quite resource-intensive and may run slowly on low-spec instances\r\n\r\n### Issues\r\n\r\n- Closes: #1660 \r\n\r\n",
+    "url": "https://github.com/apify/crawlee-python/pull/2102"
+  },
+  "changed_files": [
+    "tests/unit/browsers/test_browser_pool.py"
+  ],
+  "diff_path": "text/holdout/apify__crawlee-python__pr_002102/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 87
+}

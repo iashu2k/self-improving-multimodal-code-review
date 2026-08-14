@@ -1,0 +1,43 @@
+{
+  "example_id": "apache__superset__pr_035848",
+  "source": "github-codereview",
+  "repository": "apache/superset",
+  "commit_sha": "ebc2b0cd8e2557d1ce9ca8e52b3744e25bcaedb5",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "fix(db2): update time grain expressions for DAY to use DATE function",
+    "description": "fix(db2): use DATE() function for DAY time grain to fix sqlglot parsing error\r\n\r\n### SUMMARY\r\nFixes the DB2 DAY time grain expression to use the standard `DATE()` function instead of complex timestamp arithmetic that could not be parsed by sqlglot. This resolves chart creation failures when applying daily time grains to timestamp columns in DB2 databases.\r\n\r\n**Problem:**\r\nThe previous implementation used an invalid SQL expression for the DAY time grain:\r\n```sql\r\nCAST({col} as TIMESTAMP) - HOUR({col}) HOURS - MINUTE({col}) MINUTES - SECOND({col}) SECONDS - MICROSECOND({col}) MICROSECONDS\r\n```\r\n\r\nThis syntax could not be parsed by sqlglot, causing `ParseError` exceptions and preventing users from creating charts with daily aggregations on DB2 databases.\r\n\r\n**Solution:**\r\nChanged the `TimeGrain.DAY` expression to use the simpler and more standard:\r\n```sql\r\nDATE({col})\r\n```\r\n\r\nThis approach:\r\n- Is valid DB2 SQL syntax that sqlglot can parse correctly\r\n- Is more efficient and cleaner than the previous implementation\r\n- Follows the same pattern used by MySQL's engine spec\r\n- Maintains compatibility with all DB2 versions\r\n\r\n### BEFORE/AFTER SCREENSHOTS OR ANIMATED GIF\r\nN/A - Backend fix for SQL generation\r\n\r\n### TESTING INSTRUCTIONS\r\n1. Connect Superset to a DB2 database with a table containing timestamp columns\r\n2. Create a chart using a timestamp column\r\n3. Apply a \"Day\" time grain to the timestamp column\r\n4. Verify the chart loads successfully without ParseError\r\n5. Run unit tests: `pytest test_db2.py -v`\r\n6. Verify all 14 tests pass, including the new `test_time_grain_day_parseable` test\r\n\r\n### ADDITIONAL INFORMATION\r\n- [x] Has associated issue: Fixes #35792 \r\n- [ ] Required feature flags:\r\n- [ ] Changes UI\r\n- [ ] Includes DB Migration (follow approval process in [SIP-59](https://github.com/apache/superset/issues/13351))\r\n  - [ ] Migration is atomic, supports rollback & is backwards-compatible\r\n  - [ ] Confirm DB migration upgrade and downgrade tested\r\n  - [ ] Runtime estimates and downtime expectations provided\r\n- [ ] Introduces new feature or API\r\n- [ ] Removes existing feature or API\r\n\r\n**Changes:**\r\n- Modified db2.py - Updated `TimeGrain.DAY` expression\r\n- Enhanced test_db2.py - Added comprehensive time grain tests including sqlglot parsing validation\r\n\r\n**Test Coverage:**\r\n- Added `test_time_grain_expressions` - Validates all time grain SQL expressions\r\n- Added `test_time_grain_day_parseable` - Specifically tests that DAY grain produces parseable SQL\r\n- All existing DB2 tests continue to pass\r\n",
+    "url": "https://github.com/apache/superset/pull/35848"
+  },
+  "changed_files": [
+    "superset/db_engine_specs/db2.py",
+    "tests/unit_tests/db_engine_specs/test_db2.py"
+  ],
+  "diff_path": "text/holdout/apache__superset__pr_035848/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "tests/unit_tests/db_engine_specs/test_db2.py",
+      "line": 143,
+      "category": "security",
+      "severity": "low",
+      "issue_summary": "[nitpick] The `# noqa: S608` comment suppresses a security warning about SQL injection, but this is a false positive since `expression` comes from a static dictionary value, not user input. However, consider using a regular string concatenation or format string without the noqa comment, as the warning suppression is unnecessary and may raise questions during code review. Alternatively, add a comment explaining why the suppression is safe here.",
+      "evidence_requirement": "The added line uses `# noqa: S608` to suppress a Bandit SQL injection warning on a formatted string where the variable comes from a static dictionary lookup, not user input.",
+      "must_not_claim": [
+        "introduces a security vulnerability",
+        "allows SQL injection"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would flag this because the noqa suppression appears unnecessary and may confuse future maintainers; adding a brief inline comment explaining why the suppression is safe would improve code clarity.",
+      "_reviewer_comment_full": "[nitpick] The `# noqa: S608` comment suppresses a security warning about SQL injection, but this is a false positive since `expression` comes from a static dictionary value, not user input. However, consider using a regular string concatenation or format string without the noqa comment, as the warning suppression is unnecessary and may raise questions during code review. Alternatively, add a comment explaining why the suppression is safe here.",
+      "_gold_comment_url": "https://github.com/apache/superset/pull/35848#discussion_r2472584997"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 110
+}

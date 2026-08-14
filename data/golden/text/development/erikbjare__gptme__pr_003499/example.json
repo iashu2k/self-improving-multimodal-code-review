@@ -1,0 +1,24 @@
+{
+  "example_id": "erikbjare__gptme__pr_003499",
+  "source": "github-codereview",
+  "repository": "ErikBjare/gptme",
+  "commit_sha": "480ab92a61a7f127d5b667a598070ebf86a47df3",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "fix(codeblock): normalize CRLF line endings when parsing code blocks",
+    "description": "## Summary\n\nWhen a message contains a code block with CRLF (`\\r\\n`) line endings, `Codeblock.from_markdown` and `_extract_codeblocks` leak carriage returns into the extracted content. For example, parsing `` ```python\\r\\nprint(1)\\r\\n``` `` produced content `'\\r\\nprint(1)\\r\\n'` (from_markdown) or `'print(1)\\r'` (iter_from_markdown) instead of the LF-equivalent `'print(1)\\n'`.\n\nThis is a real correctness issue: extracted content is handed to tools like `shell`, `save`, and `ipython`, so a stray `\\r` can corrupt commands or files written from messages that arrive with Windows line endings (e.g. a CRLF file read into context).\n\n## Change\n\nNormalize `\\r\\n` \u2192 `\\n` (and standalone `\\r` \u2192 `\\n`) at both markdown parsing entry points, so CRLF input produces identical output to LF input. In `_extract_codeblocks` the normalization runs after the no-fence early exit so the scan is skipped for messages without code blocks.\n\n## Tests\n\nAdded 4 regression tests in `tests/test_codeblock.py`:\n- `test_from_markdown_normalizes_crlf` / `test_iter_from_markdown_normalizes_crlf`: CRLF input equals LF input, no `\\r` in content\n- `test_from_markdown_normalizes_standalone_cr` / `test_iter_from_markdown_normalizes_standalone_cr`: standalone `\\r` (old-Mac) line endings handled\n\nVerification: `pytest tests/test_codeblock.py` \u2192 67 passed; parsing-related suites (test_message, test_xml_format, test_tools) \u2192 140 passed. `ruff check`/`format` and `mypy` clean on the touched files.\n\n## Tooling note\n\nImplemented with assistance from an AI coding tool (Claude Code); the two-line change was reviewed and verified against both LF and CRLF inputs.\n",
+    "url": "https://github.com/gptme/gptme/pull/3499"
+  },
+  "changed_files": [
+    "gptme/codeblock.py",
+    "tests/test_codeblock.py"
+  ],
+  "diff_path": "text/development/erikbjare__gptme__pr_003499/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "development",
+  "snapshot_id": 135
+}

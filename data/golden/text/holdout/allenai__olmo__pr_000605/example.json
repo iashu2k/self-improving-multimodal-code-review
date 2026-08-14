@@ -1,0 +1,41 @@
+{
+  "example_id": "allenai__olmo__pr_000605",
+  "source": "github-codereview",
+  "repository": "allenai/OLMo",
+  "commit_sha": "e4d88c1edf596d6cfde47cdc79cc594ee8ed2719",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Add option to record step size metrics from AdamW",
+    "description": "- Adds configuration field `optimizer.record_update_metrics`, which\r\n  defaults to `False`, but when set to `True` will trigger AdamW to\r\n  collect the step size norm and absolute max for each parameter.\r\n- Changes the behavior of the Lion optimizer to only record the update cosine\r\n  similarity when `optimizer.record_update_metrics` is `True` in order to be\r\n  consistent with the API.\r\n\r\n\r\nSee https://wandb.ai/ai2-llm/petew-update-logging?nw=nwuserepwalsh for a comparison of a run with and without optimizer update logging.\r\n",
+    "url": "https://github.com/allenai/OLMo/pull/605"
+  },
+  "changed_files": [
+    "CHANGELOG.md",
+    "olmo/config.py",
+    "olmo/optim.py"
+  ],
+  "diff_path": "text/holdout/allenai__olmo__pr_000605/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "olmo/optim.py",
+      "line": 382,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "It may be better to put `_collecting_metrics` in the `Optimizer` class instead. Then the type checker won't complain in `clip_grads_and_collect_metrics` about it not being defined in `__init__`.",
+      "evidence_requirement": "The comment must cite the line `self._collecting_metrics = False` in `AdamW.__init__` (added at line 382) and note that the type checker may complain about it being undefined in `clip_grads_and_collect_metrics` when called on an `Optimizer` reference.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would raise this to improve type safety and avoid potential mypy/pyright errors when `clip_grads_and_collect_metrics` accesses `_collecting_metrics` on an `Optimizer` instance that might not be an `AdamW`.",
+      "_reviewer_comment_full": "It may be better to put `_collecting_metrics` in the `Optimizer` class instead. Then the type checker won't complain in `clip_grads_and_collect_metrics` about it not being defined in `__init__`.",
+      "_gold_comment_url": "https://github.com/allenai/OLMo/pull/605#discussion_r1660321794"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 160
+}

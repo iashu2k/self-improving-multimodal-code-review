@@ -1,0 +1,24 @@
+{
+  "example_id": "erikbjare__gptme__pr_003501",
+  "source": "github-codereview",
+  "repository": "ErikBjare/gptme",
+  "commit_sha": "5cc4c691d9c91e7e794b678fce2a4a0272df611c",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "test(review): fix brittle live-PR unresolved assertion + add mocked coverage (gptme#3442)",
+    "description": "## Problem\n\nThe test `test_get_github_pr_content_with_unresolved` in `tests/test_util_gh.py` was relying on PR #271 having 4 unresolved review threads from ErikBjare as a \"stable\" test target. Those threads have since been resolved, causing the assertion `assert 'Review Comments (Unresolved)' in content` to fail on every CI run.\n\nThis is part of the review pipeline convergence work (gptme#3442) \u2014 the review-watch tests and shared utilities pass, but this one live-test regression was blocking a clean test run.\n\n## Fix\n\n**`tests/test_util_gh.py`**\n- Rename `test_get_github_pr_content_with_unresolved` \u2192 `test_get_github_pr_content_with_review_comments`\n- Remove the brittle `assert 'Review Comments (Unresolved)' in content` assertion from the live test (live GitHub PR state changes over time; this is not a stable regression target)\n- Keep the remaining assertions that verify basic PR metadata is fetched correctly\n\n**`tests/test_util_gh_mocked.py`**\n- Add `test_unresolved_section_header_present_when_thread_open`: verifies the `## Review Comments (Unresolved)` section appears when at least one thread has `isResolved=False`\n- Add `test_unresolved_section_header_absent_when_all_resolved`: verifies the section is absent when all threads are `isResolved=True`\n- Add the missing `Review Comments (Unresolved)` assertion to the existing `test_no_context_or_suggestion` test (it was already using an unresolved thread but did not assert the section header)\n\nThe mocked tests give stable, deterministic coverage of the section-header logic regardless of GitHub's live PR state.\n\n## Tests\n\n```\nuv run pytest tests/test_util_gh.py tests/test_util_gh_mocked.py tests/test_util_review.py tests/test_util_cli_review_watch.py -q -m 'not slow'\n# 299 passed\n```\n\nCloses gptme#3442 (the remaining non-webhook checklist items are now all implemented and tested \u2014 the webhook/GitHub App integration is explicitly a longer-term follow-up).\n\n<!-- gptme-id:v1:gai_h29F68jalmjSqGhE12n9uhEuRuP2quFxW8ANXQsU4lZ -->",
+    "url": "https://github.com/gptme/gptme/pull/3501"
+  },
+  "changed_files": [
+    "tests/test_util_gh.py",
+    "tests/test_util_gh_mocked.py"
+  ],
+  "diff_path": "text/development/erikbjare__gptme__pr_003501/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "development",
+  "snapshot_id": 136
+}

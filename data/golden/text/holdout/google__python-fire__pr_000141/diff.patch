@@ -1,0 +1,107 @@
+diff --git a/fire/core.py b/fire/core.py
+index 07698e05..656e0f78 100644
+--- a/fire/core.py
++++ b/fire/core.py
+@@ -60,6 +60,7 @@ def main(argv):
+ import shlex
+ import sys
+ import types
++import re
+
+ from fire import completion
+ from fire import decorators
+@@ -750,7 +751,7 @@ def _ParseArgs(fn_args, fn_defaults, num_required_args, kwargs,
+ def _ParseKeywordArgs(args, fn_spec):
+   """Parses the supplied arguments for keyword arguments.
+
+-  Given a list of arguments, finds occurences of --name value, and uses 'name'
++  Given a list of arguments, finds occurrences of --name value, and uses 'name'
+   as the keyword and 'value' as the value. Constructs and returns a dictionary
+   of these keyword arguments, and returns a list of the remaining arguments.
+
+@@ -767,6 +768,9 @@ def _ParseKeywordArgs(args, fn_spec):
+     kwargs: A dictionary mapping keywords to values.
+     remaining_kwargs: A list of the unused kwargs from the original args.
+     remaining_args: A list of the unused arguments from the original args.
++  Raises:
++    FireError: if a boolean shortcut arg is passed that could refer to multiple
++        args
+   """
+   kwargs = {}
+   remaining_kwargs = []
+@@ -791,9 +795,10 @@ def _ParseKeywordArgs(args, fn_spec):
+
+       keyword = argument[2:]
+       contains_equals = '=' in keyword
+-      is_bool_syntax = (
+-          not contains_equals and
+-          (index + 1 == len(args) or args[index + 1].startswith('--')))
++      is_bool_syntax = (not contains_equals and
++                        (index + 1 == len(args) or
++                         args[index + 1].startswith('--') or
++                         re.match('^-[a-z]$', args[index + 1])))
+       if contains_equals:
+         keyword, value = keyword.split('=', 1)
+         got_argument = True
+@@ -828,6 +833,18 @@ def _ParseKeywordArgs(args, fn_spec):
+           if skip_argument:
+             remaining_kwargs.append(args[index + 1])
+
++    # catch boolean shortcut args
++    elif re.match('^-[a-z]$', argument):
++      keychar = argument[1]
++      potential_args = [arg for arg in fn_args if arg[0] == keychar]
++      if len(potential_args) == 1:
++        arg_consumed = True
++        kwargs[potential_args[0]] = 'True'
++      elif len(potential_args) > 1:
++        raise FireError("The argument '{}' is ambiguous as it could "
++                        "refer to any of the following arguments: {}".format(
++                            argument, potential_args))
++
+     if not arg_consumed:
+       # The argument was not consumed, so it is still a remaining argument.
+       remaining_args.append(argument)
+diff --git a/fire/fire_test.py b/fire/fire_test.py
+index dd8527b5..942bfb45 100644
+--- a/fire/fire_test.py
++++ b/fire/fire_test.py
+@@ -385,6 +385,21 @@ def testBoolParsingLessExpectedCases(self):
+         fire.Fire(tc.MixedDefaults, command=r'identity --alpha \"--test\"'),
+         ('--test', '0'))
+
++  def testBoolShortcutParsing(self):
++    self.assertEqual(
++        fire.Fire(tc.MixedDefaults,
++                  command=['identity', '-a']), (True, '0'))
++    self.assertEqual(
++        fire.Fire(tc.MixedDefaults,
++                  command=['identity', '-a', '--beta=10']), (True, 10))
++    self.assertEqual(
++        fire.Fire(tc.MixedDefaults,
++                  command=['identity', '-a', '-b']), (True, True))
++    with self.assertRaisesFireExit(2):
++      # This test attempts to use a boolean shortcut on a function with
++      # a naming conflict for the shortcut, triggering a FireError
++      fire.Fire(tc.SimilarArgNames, command=['identity', '-b'])
++
+   def testBoolParsingWithNo(self):
+     # In these examples --nothing always refers to the nothing argument:
+     def fn1(thing, nothing):
+diff --git a/fire/test_components.py b/fire/test_components.py
+index 7ce52e89..ee687abd 100644
+--- a/fire/test_components.py
++++ b/fire/test_components.py
+@@ -104,6 +104,12 @@ def identity(self, alpha, beta='0'):
+     return alpha, beta
+
+
++class SimilarArgNames(object):
++
++  def identity(self, bool_one=False, bool_two=False):
++    return bool_one, bool_two
++
++
+ class Annotations(object):
+
+   def double(self, count=0):

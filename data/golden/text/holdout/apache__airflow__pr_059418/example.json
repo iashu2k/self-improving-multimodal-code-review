@@ -1,0 +1,40 @@
+{
+  "example_id": "apache__airflow__pr_059418",
+  "source": "github-codereview",
+  "repository": "apache/airflow",
+  "commit_sha": "092695c8fd98330985ea497abe7d486d5639a9fe",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[Chart] Fix rendering condition of \"git_sync_ssh_key_volume\"",
+    "description": "## Issue\r\nThe `pod-template-file.kubernetes-helm-yaml` file provided as the default pod-template is missing a rendering condition for `git_sync_ssh_key_volume` when the SSH key is directly specified in the values (as opposed to using a secret reference).\r\n\r\n## Changes\r\nThis PR adds the missing condition to properly render the git sync SSH key volume in this use case.\r\n",
+    "url": "https://github.com/apache/airflow/pull/59418"
+  },
+  "changed_files": [
+    "chart/files/pod-template-file.kubernetes-helm-yaml",
+    "helm-tests/tests/helm_tests/airflow_aux/test_configmap.py"
+  ],
+  "diff_path": "text/holdout/apache__airflow__pr_059418/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "helm-tests/tests/helm_tests/airflow_aux/test_configmap.py",
+      "line": 323,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "Let's split this test into two test cases based on the settings (`sshKeySecret` or `sshKey`) that we set. It will be more readable, and in general, there should be no logic in tests",
+      "evidence_requirement": "The test `test_pod_template_git_sync_ssh_key_volume` uses a single parametrized method with six test cases covering different combinations of `sshKeySecret` and `sshKey`, contrary to the reviewer's suggestion to split into separate tests.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would leave this comment to improve test maintainability and clarity by separating test concerns into distinct test methods rather than using a single parametrized test with mixed scenarios.",
+      "_reviewer_comment_full": "Let's split this test into two test cases based on the settings (`sshKeySecret` or `sshKey`) that we set. It will be more readable, and in general, there should be no logic in tests",
+      "_gold_comment_url": "https://github.com/apache/airflow/pull/59418#discussion_r2624643825"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 169
+}

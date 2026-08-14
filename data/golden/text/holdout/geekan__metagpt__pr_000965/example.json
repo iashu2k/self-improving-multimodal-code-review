@@ -1,0 +1,40 @@
+{
+  "example_id": "geekan__metagpt__pr_000965",
+  "source": "github-codereview",
+  "repository": "geekan/MetaGPT",
+  "commit_sha": "a5f278c297499fcf596f09d84bb09043ad827dc5",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Improvement made : by automating search engine configuration in example search_in_search_engine.py",
+    "description": "**Features**\r\nThis is a change made for improving new user's experience. When the examples are run there can be some confusion.\r\nSo when I went through the examples\\search_with_specific_engine.py there is a need for adding the api key and cse id explicitly and also need to uncomment and comment the code snippets according to our search engine preference\r\nThrough my updation i have made it easy by just using the config2.yaml configuration and doing the run\r\nThe user just need to run the program no need to bother about the code changes according to configurations. \r\n\r\n**Influence**\r\nIt can make the new users' experience great and ease the usage of examples and understanding the code\r\n",
+    "url": "https://github.com/FoundationAgents/MetaGPT/pull/965"
+  },
+  "changed_files": [
+    "examples/debate.py",
+    "examples/search_with_specific_engine.py"
+  ],
+  "diff_path": "text/holdout/geekan__metagpt__pr_000965/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "examples/search_with_specific_engine.py",
+      "line": 23,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "You can replace these if-else statements with a dict to reduce complexity, like this:\r\n```python\r\nmappings = {\r\n    SearchEngineType.DIRECT_GOOGLE: {\r\n        \"api_key\": search.api_key, \r\n        \"cse_id\": search.cse_id, \r\n        \"proxy\": None, \r\n        \"engine\":SearchEngineType.DIRECT_GOOGLE}, \r\n     ...}\r\nargs = mappings.get(search.api_type)\r\nsearch_engine=SearchEngine(**args)\r\n```\r\n",
+      "evidence_requirement": "The code uses multiple if-elif branches to select a search engine, which the reviewer explicitly suggested replacing with a dictionary lookup to reduce complexity.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The if-else chain increases cyclomatic complexity and is less maintainable than a dictionary-based dispatch, especially as more search engines are added.",
+      "_reviewer_comment_full": "You can replace these if-else statements with a dict to reduce complexity, like this:\r\n```python\r\nmappings = {\r\n    SearchEngineType.DIRECT_GOOGLE: {\r\n        \"api_key\": search.api_key, \r\n        \"cse_id\": search.cse_id, \r\n        \"proxy\": None, \r\n        \"engine\":SearchEngineType.DIRECT_GOOGLE}, \r\n     ...}\r\nargs = mappings.get(search.api_type)\r\nsearch_engine=SearchEngine(**args)\r\n```\r\n",
+      "_gold_comment_url": "https://github.com/FoundationAgents/MetaGPT/pull/965#discussion_r1516045274"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 199
+}

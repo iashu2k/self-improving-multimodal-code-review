@@ -1,0 +1,24 @@
+{
+  "example_id": "chia-network__chia-blockchain__pr_021221",
+  "source": "github-codereview",
+  "repository": "Chia-Network/chia-blockchain",
+  "commit_sha": "3c521f5b7268cb9269a4153cb9a81d0a1414984b",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[CHIA-3966] Use singleton struct from singleton instead of DID innerpuz",
+    "description": "<!-- CURSOR_SUMMARY -->\n> [!NOTE]\n> **Medium Risk**\n> Changes how launcher IDs are derived during wallet sync and NFT minter resolution; incorrect paths could mis-identify DIDs or minters, but the approach matches other singleton types in the codebase.\n> \n> **Overview**\n> DID and NFT wallet parsing no longer takes the **singleton struct** or **launcher ID** from the DID inner puzzle\u2019s curried arguments. Those values now come from the **singleton top-layer** reveal: `singleton_struct` from `uncurried.args.at(\"f\")`, and launcher / minter DID from `uncurried.args.at(\"frf\")`.\n> \n> This affects DID coin ingestion (`coin_added`, `determine_coin_type`), manual DID lookup, lost-DID recovery setup, and NFT **minter DID** resolution when tracing bulk-mint lineage through a parent DID spend.\n> \n> <sup>Reviewed by [Cursor Bugbot](https://cursor.com/bugbot) for commit 3c521f5b7268cb9269a4153cb9a81d0a1414984b. Bugbot is set up for automated code reviews on this repo. Configure [here](https://www.cursor.com/dashboard/bugbot).</sup>\n<!-- /CURSOR_SUMMARY -->",
+    "url": "https://github.com/Chia-Network/chia-blockchain/pull/21221"
+  },
+  "changed_files": [
+    "chia/wallet/did_wallet/did_wallet.py",
+    "chia/wallet/wallet_state_manager.py"
+  ],
+  "diff_path": "text/holdout/chia-network__chia-blockchain__pr_021221/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 95
+}

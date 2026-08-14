@@ -1,0 +1,46 @@
+{
+  "example_id": "apache__superset__pr_038075",
+  "source": "github-codereview",
+  "repository": "apache/superset",
+  "commit_sha": "7a788937969fb168394ac3604ea2d000a6361859",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "feat: Labels for encrypted fields",
+    "description": "### SUMMARY\r\nThis PR adds labels to `encrypted_extra_sensitive_fields`. This is needed to implement support for export/import including `masked_encrypted_extra` (https://github.com/apache/superset/pull/38077 and https://github.com/apache/superset/pull/38078).\r\n\r\n### BEFORE/AFTER SCREENSHOTS OR ANIMATED GIF\r\nNo UI changes.\r\n\r\n### TESTING INSTRUCTIONS\r\nN/A\r\n\r\n### ADDITIONAL INFORMATION\r\n<!--- Check any relevant boxes with \"x\" -->\r\n<!--- HINT: Include \"Fixes #nnn\" if you are fixing an existing issue -->\r\n- [ ] Has associated issue:\r\n- [ ] Required feature flags:\r\n- [ ] Changes UI\r\n- [ ] Includes DB Migration (follow approval process in [SIP-59](https://github.com/apache/superset/issues/13351))\r\n  - [ ] Migration is atomic, supports rollback & is backwards-compatible\r\n  - [ ] Confirm DB migration upgrade and downgrade tested\r\n  - [ ] Runtime estimates and downtime expectations provided\r\n- [ ] Introduces new feature or API\r\n- [ ] Removes existing feature or API\r\n",
+    "url": "https://github.com/apache/superset/pull/38075"
+  },
+  "changed_files": [
+    "superset/db_engine_specs/base.py",
+    "superset/db_engine_specs/bigquery.py",
+    "superset/db_engine_specs/gsheets.py",
+    "superset/db_engine_specs/mysql.py",
+    "superset/db_engine_specs/postgres.py",
+    "superset/db_engine_specs/redshift.py",
+    "superset/db_engine_specs/snowflake.py",
+    "superset/db_engine_specs/ydb.py"
+  ],
+  "diff_path": "text/holdout/apache__superset__pr_038075/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "superset/db_engine_specs/bigquery.py",
+      "line": 197,
+      "category": "maintainability",
+      "severity": "medium",
+      "issue_summary": "I think it would be better to just make `encrypted_extra_sensitive_fields: set[str] | dict[str, str]` for now, and where we consume it we do:\r\n\r\n```python\r\nfields = (\r\n    {field: field for field in encrypted_extra_sensitive_fields}\r\n    if isinstance(encrypted_extra_sensitive_fields, set)\r\n    else encrypted_extra_sensitive_fields\r\n)\r\n```\r\n\r\nThen in 7.0 we make `encrypted_extra_sensitive_fields: dict[str, str]` only.\r\n\r\nOtherwise we need to keep `encrypted_extra_sensitive_fields` and `encrypted",
+      "evidence_requirement": "The added `encrypted_extra_sensitive_field_labels` dictionary must be present without corresponding logic to derive labels from `encrypted_extra_sensitive_fields` or unify them.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Maintaining two separate fields (`encrypted_extra_sensitive_fields` and `encrypted_extra_sensitive_field_labels`) risks inconsistency if keys are not kept in sync, increasing maintenance burden and potential bugs.",
+      "_reviewer_comment_full": "I think it would be better to just make `encrypted_extra_sensitive_fields: set[str] | dict[str, str]` for now, and where we consume it we do:\r\n\r\n```python\r\nfields = (\r\n    {field: field for field in encrypted_extra_sensitive_fields}\r\n    if isinstance(encrypted_extra_sensitive_fields, set)\r\n    else encrypted_extra_sensitive_fields\r\n)\r\n```\r\n\r\nThen in 7.0 we make `encrypted_extra_sensitive_fields: dict[str, str]` only.\r\n\r\nOtherwise we need to keep `encrypted_extra_sensitive_fields` and `encrypted_extra_sensitive_field_labels` in sync, ensuring they have the same keys.\r\n\r\nWe could also be fancy and try to autogenerate a label when `encrypted_extra_sensitive_fields` is a set, like:\r\n\r\n```python\r\ndef generate_field_label(key: str) -> str:\r\n    return \" \".join(part.title() for part in key[2:].replace(\"_\", \" \").split(\".\"))\r\n```\r\n\r\nBut it might not be worth the trouble.",
+      "_gold_comment_url": "https://github.com/apache/superset/pull/38075#discussion_r2824550107"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 178
+}

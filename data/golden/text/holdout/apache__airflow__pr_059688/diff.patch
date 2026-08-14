@@ -1,0 +1,105 @@
+diff --git a/airflow-core/newsfragments/59688.improvement.rst b/airflow-core/newsfragments/59688.improvement.rst
+new file mode 100644
+index 0000000000000..d0d64628c2370
+--- /dev/null
++++ b/airflow-core/newsfragments/59688.improvement.rst
+@@ -0,0 +1 @@
++Add ``proxies`` to ``DEFAULT_SENSITIVE_FIELDS`` in secrets_masker to treat proxy configurations as sensitive by default
+diff --git a/providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/msgraph.py b/providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/msgraph.py
+index 84698c3d6a457..660b3095ed805 100644
+--- a/providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/msgraph.py
++++ b/providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/msgraph.py
+@@ -58,6 +58,12 @@
+     from kiota_abstractions.serialization import ParsableFactory
+
+     from airflow.providers.common.compat.sdk import Connection
++    from airflow.sdk._shared.secrets_masker import redact
++else:
++    try:
++        from airflow.sdk._shared.secrets_masker import redact
++    except ImportError:
++        from airflow.sdk.execution_time.secrets_masker import redact
+
+
+ PaginationCallable = Callable[..., tuple[str, dict[str, Any] | None]]
+@@ -303,7 +309,7 @@ def _build_request_adapter(self, connection) -> tuple[str, RequestAdapter]:
+         self.log.info("Host: %s", host)
+         self.log.info("Base URL: %s", base_url)
+         self.log.info("Client id: %s", client_id)
+-        self.log.info("Client secret: %s", client_secret)
++        self.log.info("Client secret: %s", redact(client_secret, name="client_secret"))
+         self.log.info("API version: %s", api_version)
+         self.log.info("Scope: %s", scopes)
+         self.log.info("Verify: %s", verify)
+@@ -311,8 +317,8 @@ def _build_request_adapter(self, connection) -> tuple[str, RequestAdapter]:
+         self.log.info("Trust env: %s", trust_env)
+         self.log.info("Authority: %s", authority)
+         self.log.info("Allowed hosts: %s", allowed_hosts)
+-        self.log.info("Proxies: %s", proxies)
+-        self.log.info("HTTPX Proxies: %s", httpx_proxies)
++        self.log.info("Proxies: %s", redact(proxies, name="proxies"))
++        self.log.info("HTTPX Proxies: %s", redact(httpx_proxies, name="proxies"))
+         credentials = self.get_credentials(
+             login=connection.login,
+             password=connection.password,
+@@ -433,7 +439,7 @@ def get_credentials(
+         self.log.info("Certificate data: %s", certificate_data is not None)
+         self.log.info("Authority: %s", authority)
+         self.log.info("Disable instance discovery: %s", disable_instance_discovery)
+-        self.log.info("MSAL Proxies: %s", msal_proxies)
++        self.log.info("MSAL Proxies: %s", redact(msal_proxies, name="proxies"))
+         if certificate_path or certificate_data:
+             return CertificateCredential(
+                 tenant_id=tenant_id,
+diff --git a/providers/microsoft/azure/tests/unit/microsoft/azure/hooks/test_msgraph.py b/providers/microsoft/azure/tests/unit/microsoft/azure/hooks/test_msgraph.py
+index f4d8bba7d8ff6..6f6216d8fa9d1 100644
+--- a/providers/microsoft/azure/tests/unit/microsoft/azure/hooks/test_msgraph.py
++++ b/providers/microsoft/azure/tests/unit/microsoft/azure/hooks/test_msgraph.py
+@@ -21,7 +21,7 @@
+ from json import JSONDecodeError
+ from os.path import dirname
+ from typing import TYPE_CHECKING, cast
+-from unittest.mock import Mock
++from unittest.mock import Mock, patch
+
+ import pytest
+ from httpx import Response
+@@ -412,6 +412,26 @@ async def test_paginated_run(self):
+             assert isinstance(actual, list)
+             assert actual == [users, next_users]
+
++    @pytest.mark.asyncio
++    async def test_build_request_adapter_masks_secrets(self):
++        """Test that sensitive data is masked when building request adapter."""
++        with patch_hook(
++            side_effect=lambda conn_id: get_airflow_connection(
++                conn_id=conn_id,
++                password="my_secret_password",
++                proxies={"http": "http://user:pass@proxy:3128"},
++            )
++        ):
++            with patch("airflow.providers.microsoft.azure.hooks.msgraph.redact") as mock_redact:
++                mock_redact.side_effect = lambda x, name=None: "***" if x else x
++
++                hook = KiotaRequestAdapterHook(conn_id="msgraph_api")
++                await hook.get_async_conn()
++
++                assert mock_redact.call_count >= 3
++                mock_redact.assert_any_call({"http": "http://user:pass@proxy:3128"}, name="proxies")
++                mock_redact.assert_any_call("my_secret_password", name="client_secret")
++
+
+ class TestResponseHandler:
+     def test_default_response_handler_when_json(self):
+diff --git a/shared/secrets_masker/src/airflow_shared/secrets_masker/secrets_masker.py b/shared/secrets_masker/src/airflow_shared/secrets_masker/secrets_masker.py
+index bf3fd91ebd7e6..6d4fb18071069 100644
+--- a/shared/secrets_masker/src/airflow_shared/secrets_masker/secrets_masker.py
++++ b/shared/secrets_masker/src/airflow_shared/secrets_masker/secrets_masker.py
+@@ -58,6 +58,7 @@ def to_dict(self) -> dict[str, Any]: ...
+         "passwd",
+         "password",
+         "private_key",
++        "proxies",
+         "secret",
+         "token",
+         "keyfile_dict",

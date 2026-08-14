@@ -1,0 +1,41 @@
+{
+  "example_id": "ansible__awx__pr_015742",
+  "source": "github-codereview",
+  "repository": "ansible/awx",
+  "commit_sha": "3c326eb453e7adc997c260918dcb757e50ab74fb",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "feat: update insights action plugin to handle oauth",
+    "description": "##### SUMMARY\r\n<!--- Describe the change, including rationale and design decisions -->\r\nAdd support for the `service_account` login type for the insights action plugin. First, get the valid authentication URL from the configured OIDC endpoint, then get the token for all API calls to the insights URL.\r\n<!---\r\nIf you are fixing an existing issue, please include \"related #nnn\" in your\r\ncommit message and your description; but you should still explain what\r\nthe change does.\r\n-->\r\n\r\n##### ISSUE TYPE\r\n<!--- Pick one below and delete the rest: -->\r\n - New or Enhanced Feature\r\n\r\n##### COMPONENT NAME\r\n<!--- Name of the module/plugin/module/task -->\r\n - API\r\n\r\n##### AWX VERSION\r\n<!--- Paste verbatim output from `make VERSION` between quotes below -->\r\n```\r\nawx: 24.6.2.dev215+gf2aee7ba06\r\n```\r\n\r\n##### ADDITIONAL INFORMATION\r\n<!---\r\nInclude additional information to help people understand the change here.\r\nFor bugs that don't have a linked bug report, a step-by-step reproduction\r\nof the problem is helpful.\r\n  -->\r\nImplementation based in the RH Developer docs from the Insights API as well as the current implementation to obtain the token from [Ansible Collection for Insights](https://github.com/RedHatInsights/ansible-collections-insights/blob/master/plugins/inventory/insights.py#L200)\r\n<!--- Paste verbatim command output below, e.g. before and after your change -->",
+    "url": "https://github.com/ansible/awx/pull/15742"
+  },
+  "changed_files": [
+    "awx/playbooks/action_plugins/insights.py",
+    "awx/playbooks/project_update.yml"
+  ],
+  "diff_path": "text/holdout/ansible__awx__pr_015742/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "awx/playbooks/action_plugins/insights.py",
+      "line": 90,
+      "category": "security",
+      "severity": "high",
+      "issue_summary": "I don't love passing the dict `result` into `_obtain_auth_token()`. Instead, can `_obtain_auth_token` return a tuple `(token_type, token)` or `None`.\r\n\r\nRight now, with `result` passed in and being returned from the module, I'm thinking the `result['token']` might can end up in the Ansible output long with `msg`. We wouldn't want that behavior.",
+      "evidence_requirement": "The code accesses `result['token']` and `result['token_type']` from the dict returned by `_obtain_auth_token`, which the reviewer explicitly warned could leak credentials into Ansible output.",
+      "must_not_claim": [
+        "claims the token is always printed in plaintext output"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Returning a dict from `_obtain_auth_token` and storing it in `result` risks exposing sensitive token data in Ansible's task output, as `result` is typically returned to the user.",
+      "_reviewer_comment_full": "I don't love passing the dict `result` into `_obtain_auth_token()`. Instead, can `_obtain_auth_token` return a tuple `(token_type, token)` or `None`.\r\n\r\nRight now, with `result` passed in and being returned from the module, I'm thinking the `result['token']` might can end up in the Ansible output long with `msg`. We wouldn't want that behavior.",
+      "_gold_comment_url": "https://github.com/ansible/awx/pull/15742#discussion_r1913603018"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 143
+}

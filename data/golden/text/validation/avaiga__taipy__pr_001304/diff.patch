@@ -1,0 +1,64 @@
+diff --git a/taipy/core/notification/core_event_consumer.py b/taipy/core/notification/core_event_consumer.py
+index 83a5580d55..17e6a9ba06 100644
+--- a/taipy/core/notification/core_event_consumer.py
++++ b/taipy/core/notification/core_event_consumer.py
+@@ -32,10 +32,18 @@ def process_event(self, event: Event):
+             print(f"Received event created at : {event.creation_date}")
+             pass
+
+-    consumer = MyEventConsumer("consumer_1", event_queue)
++    registration_id, registered_queue = Notifier.unregister(
++        entity_type=EventEntityType.CYCLE,
++        entity_id="CYCLE_cycle_1",
++        operation=EventOperation.CREATION
++    )
++
++    consumer = MyEventConsumer("consumer_1", registered_queue)
+     consumer.start()
+     # ...
+     consumer.stop()
++
++    Notifier.unregister(registration_id)
+     ```
+
+     Subclasses should implement the `process_event` method to define their specific event handling behavior.
+diff --git a/taipy/core/notification/notifier.py b/taipy/core/notification/notifier.py
+index 564cbcef14..868a9ce8c9 100644
+--- a/taipy/core/notification/notifier.py
++++ b/taipy/core/notification/notifier.py
+@@ -68,6 +68,16 @@ def register(
+         The topic is defined by the combination of the entity type, the entity id,
+         the operation and the attribute name.
+
++        Example usage:
++
++        ```python
++        registration_id, registered_queue = Notifier.register(
++            entity_type=EventEntityType.CYCLE,
++            entity_id="CYCLE_cycle_1",
++            operation=EventOperation.CREATION
++        )
++        ```
++
+         Parameters:
+             entity_type (Optional[EventEntityType^]): If provided, the listener will
+                 be notified for all events related to this entity type. Otherwise,
+@@ -118,6 +128,18 @@ def register(
+     def unregister(cls, registration_id: str):
+         """Unregister a listener.
+
++        Example usage:
++
++        ```python
++        registration_id, registered_queue = Notifier.unregister(
++            entity_type=EventEntityType.CYCLE,
++            entity_id="CYCLE_cycle_1",
++            operation=EventOperation.CREATION
++        )
++
++        Notifier.unregister(registration_id)
++        ```
++
+         Parameters:
+             registration_id (RegistrationId^): The registration id returned by the `register` method.
+         """

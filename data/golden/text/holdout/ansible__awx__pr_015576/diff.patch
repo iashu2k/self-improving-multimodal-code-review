@@ -1,0 +1,154 @@
+diff --git a/awxkit/awxkit/api/pages/base.py b/awxkit/awxkit/api/pages/base.py
+index ec3fcd085729..171af8acf363 100644
+--- a/awxkit/awxkit/api/pages/base.py
++++ b/awxkit/awxkit/api/pages/base.py
+@@ -1,5 +1,6 @@
+ import collections
+ import logging
++import typing
+
+ from requests.auth import HTTPBasicAuth
+
+@@ -12,6 +13,11 @@
+ log = logging.getLogger(__name__)
+
+
++class AuthUrls(typing.TypedDict):
++    access_token: str
++    personal_token: str
++
++
+ class Base(Page):
+     def silent_delete(self):
+         """Delete the object. If it's already deleted, ignore the error"""
+@@ -141,30 +147,27 @@ def load_authtoken(self, username='', password=''):
+
+     load_default_authtoken = load_authtoken
+
+-    def get_oauth2_token(self, username='', password='', client_id=None, description='AWX CLI', client_secret=None, scope='write'):
+-        default_cred = config.credentials.default
+-        username = username or default_cred.username
+-        password = password or default_cred.password
++    def _request_token(self, auth_urls, username, password, client_id, description, client_secret, scope):
+         req = collections.namedtuple('req', 'headers')({})
+         if client_id and client_secret:
+             HTTPBasicAuth(client_id, client_secret)(req)
+             req.headers['Content-Type'] = 'application/x-www-form-urlencoded'
+             resp = self.connection.post(
+-                f"{config.api_base_path}o/token/",
++                auth_urls["access_token"],
+                 data={"grant_type": "password", "username": username, "password": password, "scope": scope},
+                 headers=req.headers,
+             )
+         elif client_id:
+             req.headers['Content-Type'] = 'application/x-www-form-urlencoded'
+             resp = self.connection.post(
+-                f"{config.api_base_path}o/token/",
++                auth_urls["access_token"],
+                 data={"grant_type": "password", "username": username, "password": password, "client_id": client_id, "scope": scope},
+                 headers=req.headers,
+             )
+         else:
+             HTTPBasicAuth(username, password)(req)
+             resp = self.connection.post(
+-                '{0}v2/users/{1}/personal_tokens/'.format(config.api_base_path, username),
++                auth_urls['personal_token'],
+                 json={"description": description, "application": None, "scope": scope},
+                 headers=req.headers,
+             )
+@@ -177,6 +180,21 @@ def get_oauth2_token(self, username='', password='', client_id=None, description
+         else:
+             raise exception_from_status_code(resp.status_code)
+
++    def get_oauth2_token(self, username='', password='', client_id=None, description='AWX CLI', client_secret=None, scope='write'):
++        default_cred = config.credentials.default
++        username = username or default_cred.username
++        password = password or default_cred.password
++        # Try gateway first, fallback to controller
++        urls: AuthUrls = {"access_token": "/o/token/", "personal_token": f"{config.gateway_base_path}v1/tokens/"}
++        try:
++            return self._request_token(urls, username, password, client_id, description, client_secret, scope)
++        except exc.NotFound:
++            urls: AuthUrls = {
++                "access_token": f"{config.api_base_path}o/token/",
++                "personal_token": f"{config.api_base_path}v2/users/{username}/personal_tokens/",
++            }
++            return self._request_token(urls, username, password, client_id, description, client_secret, scope)
++
+     def load_session(self, username='', password=''):
+         default_cred = config.credentials.default
+         self.connection.login(
+diff --git a/awxkit/awxkit/config.py b/awxkit/awxkit/config.py
+index 81c4d7938b73..c5aee872c323 100644
+--- a/awxkit/awxkit/config.py
++++ b/awxkit/awxkit/config.py
+@@ -33,3 +33,4 @@ def getvalue(self, name):
+ config.prevent_teardown = to_bool(os.getenv('AWXKIT_PREVENT_TEARDOWN', False))
+ config.use_sessions = to_bool(os.getenv('AWXKIT_SESSIONS', False))
+ config.api_base_path = os.getenv('AWXKIT_API_BASE_PATH', '/api/')
++config.gateway_base_path = os.getenv('AWXKIT_GATEWAY_BASE_PATH', '/api/gateway/')
+diff --git a/awxkit/test/api/pages/test_base.py b/awxkit/test/api/pages/test_base.py
+new file mode 100644
+index 000000000000..f8b073035660
+--- /dev/null
++++ b/awxkit/test/api/pages/test_base.py
+@@ -0,0 +1,59 @@
++from unittest.mock import Mock, PropertyMock
++
++from http.client import NOT_FOUND
++import pytest
++
++from awxkit.api.pages import Base
++from awxkit.config import config
++
++
++@pytest.fixture(autouse=True)
++def setup_config():
++    config.credentials = {"default": {"username": "foo", "password": "bar"}}
++    config.base_url = ""
++
++
++@pytest.fixture
++def response():
++    r = Mock()
++    r.status_code = NOT_FOUND
++    r.json.return_value = {
++        "token": "my_personal_token",
++        "access_token": "my_token",
++    }
++    return r
++
++
++@pytest.mark.parametrize(
++    "kwargs,url,token",
++    [
++        ({"client_id": "foo", "client_secret": "bar"}, "/o/token/", "my_token"),
++        ({"client_id": "foo"}, "/o/token/", "my_token"),
++        ({}, "/api/gateway/v1/tokens/", "my_personal_token"),
++    ],
++)
++def test_get_oauth2_token_from_gateway(mocker, response, kwargs, url, token):
++    post = mocker.patch("requests.Session.post", return_value=response)
++    base = Base()
++    ret = base.get_oauth2_token(**kwargs)
++    assert post.call_count == 1
++    assert post.call_args.args[0] == url
++    assert ret == token
++
++
++@pytest.mark.parametrize(
++    "kwargs,url,token",
++    [
++        ({"client_id": "foo", "client_secret": "bar"}, "/api/o/token/", "my_token"),
++        ({"client_id": "foo"}, "/api/o/token/", "my_token"),
++        ({}, "/api/v2/users/foo/personal_tokens/", "my_personal_token"),
++    ],
++)
++def test_get_oauth2_token_from_controller(mocker, response, kwargs, url, token):
++    type(response).ok = PropertyMock(side_effect=[False, True])
++    post = mocker.patch("requests.Session.post", return_value=response)
++    base = Base()
++    ret = base.get_oauth2_token(**kwargs)
++    assert post.call_count == 2
++    assert post.call_args.args[0] == url
++    assert ret == token

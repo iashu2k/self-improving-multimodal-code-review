@@ -1,0 +1,52 @@
+{
+  "example_id": "apache__arrow__pr_048618",
+  "source": "github-codereview",
+  "repository": "apache/arrow",
+  "commit_sha": "c4ecb791d1021261353ba69c8fef35bd83b7e48f",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "GH-49102: [CI] Add type checking infrastructure and CI workflow for type annotations",
+    "description": "### Rationale for this change\r\n\r\nThis is the first in series of PRs adding type annotations to pyarrow and resolving #32609.\r\n\r\n### What changes are included in this PR?\r\n\r\nThis PR establishes infrastructure for type checking:\r\n\r\n- Adds CI workflow for running mypy, pyright, and ty type checkers on linux, macos and windows\r\n- Configures type checkers to validate stub files (excluding source files for now)\r\n- Adds PEP 561 `py.typed` marker to enable type checking\r\n- Updates wheel build scripts to include stub files in distributions\r\n- Creates initial minimal stub directory structure\r\n- Updates developer documentation with type checking workflow\r\n\r\n### Are these changes tested?\r\n\r\nNo. This is mostly a CI change.\r\n\r\n### Are there any user-facing changes?\r\n\r\nThis does not add any actual annotations (only `py.typed` marker) so user should not be affected.\n* GitHub Issue: #32609\n* GitHub Issue: #49102",
+    "url": "https://github.com/apache/arrow/pull/48618"
+  },
+  "changed_files": [
+    ".pre-commit-config.yaml",
+    "ci/conda_env_python.txt",
+    "ci/scripts/python_build.sh",
+    "ci/scripts/python_test_type_annotations.sh",
+    "ci/scripts/python_wheel_validate_contents.py",
+    "compose.yaml",
+    "docs/source/developers/python/development.rst",
+    "python/MANIFEST.in",
+    "python/pyarrow-stubs/pyarrow/__init__.pyi",
+    "python/pyarrow/py.typed",
+    "python/pyproject.toml",
+    "python/requirements-build.txt",
+    "python/requirements-wheel-build.txt",
+    "python/scripts/update_stub_docstrings.py",
+    "python/setup.py"
+  ],
+  "diff_path": "text/holdout/apache__arrow__pr_048618/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "ci/scripts/python_wheel_validate_contents.py",
+      "line": 38,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "Won't this fail also? I don't think we are able to generate those, see the other comment about the missing `dev/update_stub_docstrings.py`\n```suggestion\n    # Validate at least one typing stub has been generated.\n    candidates = [info for info in f.filelist if info.filename.endswith('compute.pyi')]\n```",
+      "evidence_requirement": "The comment must note that the wheel-content validation for typing stubs cannot pass because the stub generator (dev/update_stub_docstrings.py) does not exist at this revision; the TODO(GH-32609) acknowledges the gap without resolving it.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The reviewer correctly noted that the original validation logic would fail if no typing stubs are generated, and suggested a concrete alternative; leaving only a TODO without implementation leaves the validation incomplete.",
+      "_reviewer_comment_full": "Won't this fail also? I don't think we are able to generate those, see the other comment about the missing `dev/update_stub_docstrings.py`\n```suggestion\n    # Validate at least one typing stub has been generated.\n    candidates = [info for info in f.filelist if info.filename.endswith('compute.pyi')]\n```",
+      "_gold_comment_url": "https://github.com/apache/arrow/pull/48618#discussion_r2687782544"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 20
+}

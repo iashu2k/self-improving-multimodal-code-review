@@ -1,0 +1,26 @@
+{
+  "example_id": "apache__airflow__pr_071280",
+  "source": "github-codereview",
+  "repository": "apache/airflow",
+  "commit_sha": "4adbac67c173f86297cc4aaa64f4810c0e2beba9",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Use latest Google Ads API version by default",
+    "description": "This PR uses the latest API version from google-ads when api_version is not specified in operator's call. For user there is still possibility to pass desired version by using API_VERSION parameter. \r\n\r\n<!-- SPDX-License-Identifier: Apache-2.0\r\n      https://www.apache.org/licenses/LICENSE-2.0 -->\r\n\r\n<!--\r\nThank you for contributing!\r\n\r\nPlease provide above a brief description of the changes made in this pull request.\r\nWrite a good git commit message following this guide: https://chris.beams.io/posts/git-commit/\r\n\r\nPlease make sure that your code changes are covered with tests.\r\nAnd in case of new features or big changes remember to adjust the documentation.\r\n\r\nFor user-facing UI changes, please attach before/after screenshots (or a short\r\nscreen recording) so reviewers can assess the visual impact.\r\n\r\nFeel free to ping (in general) for the review if you do not see reaction for a few days\r\n(72 Hours is the minimum reaction time you can expect from volunteers) - we sometimes miss notifications.\r\n\r\nIn case of an existing issue, reference it using one of the following:\r\n\r\n* closes: #ISSUE\r\n* related: #ISSUE\r\n-->\r\n\r\n---\r\n\r\n##### Was generative AI tooling used to co-author this PR?\r\n\r\n<!--\r\nIf generative AI tooling has been used in the process of authoring this PR, please\r\nchange below checkbox to `[X]` followed by the name of the tool, uncomment the \"Generated-by\".\r\n-->\r\n\r\n- [ ] Yes (please specify the tool below)\r\n\r\n<!--\r\nGenerated-by: [Tool Name] following [the guidelines](https://github.com/apache/airflow/blob/main/contributing-docs/05_pull_requests.rst#gen-ai-assisted-contributions)\r\n-->\r\n\r\n---\r\n\r\n* Read the **[Pull Request Guidelines](https://github.com/apache/airflow/blob/main/contributing-docs/05_pull_requests.rst#pull-request-guidelines)** for more information. Note: commit author/co-author name and email in commits become permanently public when merged.\r\n* For fundamental code changes, an Airflow Improvement Proposal ([AIP](https://cwiki.apache.org/confluence/display/AIRFLOW/Airflow+Improvement+Proposals)) is needed.\r\n* When adding dependency, check compliance with the [ASF 3rd Party License Policy](https://www.apache.org/legal/resolved.html#category-x).\r\n* For significant user-facing changes create newsfragment: `{pr_number}.significant.rst`, in [airflow-core/newsfragments](https://github.com/apache/airflow/tree/main/airflow-core/newsfragments). You can add this file in a follow-up commit after the PR is created so you know the PR number.\r\n",
+    "url": "https://github.com/apache/airflow/pull/71280"
+  },
+  "changed_files": [
+    "providers/google/src/airflow/providers/google/ads/hooks/ads.py",
+    "providers/google/src/airflow/providers/google/ads/operators/ads.py",
+    "providers/google/src/airflow/providers/google/ads/transfers/ads_to_gcs.py",
+    "providers/google/tests/unit/google/ads/hooks/test_ads.py"
+  ],
+  "diff_path": "text/holdout/apache__airflow__pr_071280/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 84
+}

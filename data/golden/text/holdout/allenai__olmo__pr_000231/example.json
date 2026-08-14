@@ -1,0 +1,23 @@
+{
+  "example_id": "allenai__olmo__pr_000231",
+  "source": "github-codereview",
+  "repository": "allenai/OLMo",
+  "commit_sha": "4f1ee6caafea3cf818e707f8cc5dd4620b2c9d11",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Use numpy for shuffling instead of torch",
+    "description": "Randomness with torch:\r\n![image](https://github.com/allenai/LLM/assets/920638/7b15a787-b52f-4c42-a815-982eaf127ab5)\r\n\r\nRandomness with numpy:\r\n![image](https://github.com/allenai/LLM/assets/920638/2d8dbd8e-a028-45f9-a130-2dd061aa93e9)\r\n",
+    "url": "https://github.com/allenai/OLMo/pull/231"
+  },
+  "changed_files": [
+    "olmo/data/iterable_dataset.py"
+  ],
+  "diff_path": "text/holdout/allenai__olmo__pr_000231/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 148
+}

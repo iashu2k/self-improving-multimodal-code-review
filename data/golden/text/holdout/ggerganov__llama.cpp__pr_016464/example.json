@@ -1,0 +1,45 @@
+{
+  "example_id": "ggerganov__llama.cpp__pr_016464",
+  "source": "github-codereview",
+  "repository": "ggerganov/llama.cpp",
+  "commit_sha": "fe3b8129c2568aa59ecbecbe429896664afb4450",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "llama : support LiquidAI LFM2-MoE hybrid model",
+    "description": "Add support for [LiquidAI/LFM2-8B-A1B](https://huggingface.co/LiquidAI/LFM2-8B-A1B) model.\r\n\r\nFor more information about the model, please read [the blog post](https://www.liquid.ai/blog/lfm2-8b-a1b-an-efficient-on-device-mixture-of-experts).\r\n[HF PR](https://github.com/huggingface/transformers/pull/41401) is merged.\r\n[GGUFs](https://huggingface.co/LiquidAI/LFM2-8B-A1B-GGUF) are uploaded and available for testing.\r\n",
+    "url": "https://github.com/ggml-org/llama.cpp/pull/16464"
+  },
+  "changed_files": [
+    "convert_hf_to_gguf.py",
+    "gguf-py/gguf/constants.py",
+    "gguf-py/gguf/tensor_mapping.py",
+    "src/llama-arch.cpp",
+    "src/llama-arch.h",
+    "src/llama-model.cpp",
+    "src/llama-model.h"
+  ],
+  "diff_path": "text/holdout/ggerganov__llama.cpp__pr_016464/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "convert_hf_to_gguf.py",
+      "line": 8889,
+      "category": "performance",
+      "severity": "medium",
+      "issue_summary": "```suggestion\r\n            experts_cache = self._experts_cache.setdefault(bid, {})\r\n            experts_cache[name] = data_torch\r\n            expert_weights = [\"w1\", \"w2\", \"w3\"]\r\n\r\n            # not enough expert weights to merge\r\n            if len(experts_cache) < n_experts * len(expert_weights):\r\n                return []\r\n\r\n            tensors: list[tuple[str, Tensor]] = []\r\n            for w_name in expert_weights:\r\n                datas: list[Tensor] = []\r\n\r\n                for xid in rang",
+      "evidence_requirement": "The comment must note that expert weights should be cached per block (e.g. via setdefault) and merged only once all expected weights (w1/w2/w3 per expert) are present, rather than deleting cache entries eagerly.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Using the shared class attribute `_experts_cache` directly in a multi-step process without local reference risks inconsistent state if the method is re-entered or called concurrently, and the reviewer's suggestion explicitly introduces a local variable to avoid this.",
+      "_reviewer_comment_full": "```suggestion\r\n            experts_cache = self._experts_cache.setdefault(bid, {})\r\n            experts_cache[name] = data_torch\r\n            expert_weights = [\"w1\", \"w2\", \"w3\"]\r\n\r\n            # not enough expert weights to merge\r\n            if len(experts_cache) < n_experts * len(expert_weights):\r\n                return []\r\n\r\n            tensors: list[tuple[str, Tensor]] = []\r\n            for w_name in expert_weights:\r\n                datas: list[Tensor] = []\r\n\r\n                for xid in range(n_experts):\r\n                    ename = f\"model.layers.{bid}.feed_forward.experts.{xid}.{w_name}.weight\"\r\n                    datas.append(experts_cache[ename])\r\n                    del experts_cache[ename]\r\n```",
+      "_gold_comment_url": "https://github.com/ggml-org/llama.cpp/pull/16464#discussion_r2411190755"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 201
+}

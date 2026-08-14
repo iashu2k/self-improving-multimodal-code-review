@@ -1,0 +1,38 @@
+{
+  "example_id": "apache__kafka__pr_020004",
+  "source": "github-codereview",
+  "repository": "apache/kafka",
+  "commit_sha": "24400d1e7fba438555f9097f2f93f9cd5cd1fd0f",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "KAFKA-19422: Deflake streams_application_upgrade_test",
+    "description": "In this upgrade test, applications sometimes crash before the upgrade,\nso it's actually triggering a bug in several older versions (2.x and\npossibly others). It seems to be a rare race condition that has been\nhappening since 2022. Since we are not going to roll out a patch release\nfor Kafka Streams 2.x, we should just allow applications to crash before\nthe upgrade.\n\nReviewers: Matthias J. Sax <matthias@confluent.io>\n",
+    "url": "https://github.com/apache/kafka/pull/20004"
+  },
+  "changed_files": [
+    "tests/kafkatest/tests/streams/streams_application_upgrade_test.py"
+  ],
+  "diff_path": "text/validation/apache__kafka__pr_020004/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "tests/kafkatest/tests/streams/streams_application_upgrade_test.py",
+      "line": 169,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "[nitpick] Consider extracting the regex pattern 'SMOKE-TEST-CLIENT-(EXCEPTION|CLOSED)' into a constant variable to reduce duplication and simplify future updates in this test.\n```suggestion\n        self.wait_for_verification(self.processor1, self.SMOKE_TEST_CLIENT_EXCEPTION_OR_CLOSED, self.processor1.STDOUT_FILE)\n        self.wait_for_verification(self.processor2, self.SMOKE_TEST_CLIENT_EXCEPTION_OR_CLOSED, self.processor2.STDOUT_FILE)\n        self.wait_for_verification(self.processor3, self.SMO",
+      "evidence_requirement": "The diff shows repeated inline use of the regex string 'SMOKE-TEST-CLIENT-(EXCEPTION|CLOSED)' in multiple wait_for_verification and ssh_capture calls without defining a class or module-level constant for it.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would raise this to improve maintainability by avoiding regex duplication and reducing risk of inconsistency if the pattern ever needs updating.",
+      "_reviewer_comment_full": "[nitpick] Consider extracting the regex pattern 'SMOKE-TEST-CLIENT-(EXCEPTION|CLOSED)' into a constant variable to reduce duplication and simplify future updates in this test.\n```suggestion\n        self.wait_for_verification(self.processor1, self.SMOKE_TEST_CLIENT_EXCEPTION_OR_CLOSED, self.processor1.STDOUT_FILE)\n        self.wait_for_verification(self.processor2, self.SMOKE_TEST_CLIENT_EXCEPTION_OR_CLOSED, self.processor2.STDOUT_FILE)\n        self.wait_for_verification(self.processor3, self.SMOKE_TEST_CLIENT_EXCEPTION_OR_CLOSED, self.processor3.STDOUT_FILE)\n```",
+      "_gold_comment_url": "https://github.com/apache/kafka/pull/20004#discussion_r2158445181"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 48
+}

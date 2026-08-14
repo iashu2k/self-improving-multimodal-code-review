@@ -1,0 +1,134 @@
+diff --git a/colossalai/shardformer/modeling/llama.py b/colossalai/shardformer/modeling/llama.py
+new file mode 100644
+index 000000000000..2238b7d248f5
+--- /dev/null
++++ b/colossalai/shardformer/modeling/llama.py
+@@ -0,0 +1,78 @@
++from typing import Optional, Tuple
++
++import torch
++
++__all__ = ['llama_flash_attention_forward']
++
++
++def rotate_half(x):
++    """Rotates half the hidden dims of the input."""
++    x1 = x[..., :x.shape[-1] // 2]
++    x2 = x[..., x.shape[-1] // 2:]
++    return torch.cat((-x2, x1), dim=-1)
++
++
++def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
++    # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
++    cos = cos.squeeze(1).squeeze(0)    # [seq_len, dim]
++    sin = sin.squeeze(1).squeeze(0)    # [seq_len, dim]
++    cos = cos[position_ids].unsqueeze(1)    # [bs, 1, seq_len, dim]
++    sin = sin[position_ids].unsqueeze(1)    # [bs, 1, seq_len, dim]
++    q_embed = (q * cos) + (rotate_half(q) * sin)
++    k_embed = (k * cos) + (rotate_half(k) * sin)
++    return q_embed, k_embed
++
++
++def llama_flash_attention_forward(
++    self,
++    hidden_states: torch.Tensor,
++    attention_mask: Optional[torch.Tensor] = None,
++    position_ids: Optional[torch.LongTensor] = None,
++    past_key_value: Optional[Tuple[torch.Tensor]] = None,
++    output_attentions: bool = False,
++    use_cache: bool = False,
++) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
++    bsz, q_len, _ = hidden_states.size()
++
++    query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
++    key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
++    value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
++
++    kv_seq_len = key_states.shape[-2]
++    if past_key_value is not None:
++        kv_seq_len += past_key_value[0].shape[-2]
++
++    cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
++    query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
++
++    if past_key_value is not None:
++        # reuse k, v, self_attention
++        key_states = torch.cat([past_key_value[0], key_states], dim=2)
++        value_states = torch.cat([past_key_value[1], value_states], dim=2)
++
++    past_key_value = (key_states, value_states) if use_cache else None
++
++    me_input_shape = (bsz, q_len, self.num_heads, self.head_dim)
++    query_states = query_states.transpose(1, 2).contiguous().view(*me_input_shape)
++    key_states = key_states.transpose(1, 2).contiguous().view(*me_input_shape)
++    value_states = value_states.transpose(1, 2).contiguous().view(*me_input_shape)
++
++    if attention_mask != None:
++        if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
++            raise ValueError(
++                f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}")
++        attention_mask = attention_mask.expand(bsz, self.num_heads, q_len, kv_seq_len).contiguous()
++
++    try:
++        from xformers.ops import memory_efficient_attention as me_attention
++    except:
++        raise ImportError("Error: xformers module is not installed. Please install it to use flash attention.")
++
++    attn_output = me_attention(query_states, key_states, value_states, attn_bias=attention_mask)
++    if attn_output.size() != (bsz, q_len, self.num_heads, self.head_dim):
++        raise ValueError(f"`attn_output` should be of size {(bsz, q_len, self.num_heads, self.head_dim)}, but is"
++                         f" {attn_output.size()}")
++    attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
++    attn_output = self.o_proj(attn_output)
++
++    return attn_output, None, past_key_value
+diff --git a/colossalai/shardformer/policies/llama.py b/colossalai/shardformer/policies/llama.py
+index 157785bdcf13..38d25536934b 100644
+--- a/colossalai/shardformer/policies/llama.py
++++ b/colossalai/shardformer/policies/llama.py
+@@ -5,6 +5,7 @@
+ from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, VocabParallelEmbedding1D
+
+ from .basepolicy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
++from ..modeling.llama import llama_flash_attention_forward
+
+ __all__ = ['LlamaPolicy', 'LlamaForCausalLMPolicy', 'LlamaForSequenceClassificationPolicy']
+
+@@ -26,7 +27,7 @@ def preprocess(self):
+         return self.model
+
+     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
+-        from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaModel
++        from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaModel, LlamaAttention
+
+         policy = {}
+
+@@ -98,6 +99,11 @@ def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
+             ),
+                                                         policy=policy,
+                                                         target_key=LlamaModel)
++
++        if self.shard_config.enable_flash_attention:
++            policy[LlamaAttention] = ModulePolicyDescription(method_replacement={
++                'forward': llama_flash_attention_forward,
++            })
+
+         return policy
+
+diff --git a/tests/test_shardformer/test_model/test_shard_llama.py b/tests/test_shardformer/test_model/test_shard_llama.py
+index 74b5fdd18af8..3a1dcdc88627 100644
+--- a/tests/test_shardformer/test_model/test_shard_llama.py
++++ b/tests/test_shardformer/test_model/test_shard_llama.py
+@@ -72,10 +72,11 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
+
+ @parameterize('enable_fused_normalization', [True, False])
+ @parameterize('enable_tensor_parallelism', [True, False])
+-def run_gpt2_llama(enable_fused_normalization, enable_tensor_parallelism):
++@parameterize('enable_flash_attention', [True, False])
++def run_gpt2_llama(enable_fused_normalization, enable_tensor_parallelism, enable_flash_attention):
+     sub_model_zoo = model_zoo.get_sub_registry('transformers_llama')
+     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+-        org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism)
++        org_model, sharded_model = build_model(model_fn, enable_fused_normalization, enable_tensor_parallelism, enable_flash_attention)
+         check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn)
+     torch.cuda.empty_cache()

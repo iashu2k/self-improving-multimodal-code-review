@@ -1,0 +1,41 @@
+{
+  "example_id": "apache__superset__pr_034051",
+  "source": "github-codereview",
+  "repository": "apache/superset",
+  "commit_sha": "d3c4cac300eab099f75f4c816b4180833ce4b3aa",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "fix(translations): Fix translation of time-related strings like \"7 seconds ago\", \"a minute ago\", etc",
+    "description": "### SUMMARY\r\n**Issue Description**\r\nSwitching the language to English does not fully apply, leaving some time-related strings in the previous language. All untranslated time-related strings are created by dayjs and humanize libraries.\r\n\r\n**Solution**\r\nFix dayjs strings: move all dayjs locale imports from `useLocale.ts` hook to `preamble.ts`. Without them, `dayjs.locale()` calls have no effect, leaving dates/times in the default language.\r\nFix humanized strings: translate `changed_on_humanized` and `created_on_humanized` using current locale from flask_babel.\r\n\r\nfixes: #33630\r\nfixes: #7792\r\n\r\n### BEFORE/AFTER SCREENSHOTS OR ANIMATED GIF\r\n![screenshot3](https://github.com/user-attachments/assets/2464d9fb-f43c-4e0e-8bc0-f81ebbd8a61c)\r\n![screenshot4](https://github.com/user-attachments/assets/8b50411b-19f0-4fea-b806-5c0a03c26b09)\r\n\r\n### TESTING INSTRUCTIONS\r\n1. Add next lines to config file:\r\n```py\r\nBABEL_DEFAULT_LOCALE` = \"ru\"\r\nLANGUAGES = {\r\n  \"ru\": {\"flag\": \"ru\", \"name\": \"\u0420\u0443\u0441\u0441\u043a\u0438\u0439\"},\r\n  \"en\": {\"flag\": \"us\", \"name\": \"English\"}\r\n}\r\n```\r\n2. Start the application.\r\n3. Switch the interface language to English.\r\n4. Verify the translations.\r\n\r\n### ADDITIONAL INFORMATION\r\n- [x] Has associated issue: Fixes #33630, #7792\r\n- [ ] Required feature flags:\r\n- [ ] Changes UI\r\n- [ ] Includes DB Migration (follow approval process in [SIP-59](https://github.com/apache/superset/issues/13351))\r\n  - [ ] Migration is atomic, supports rollback & is backwards-compatible\r\n  - [ ] Confirm DB migration upgrade and downgrade tested\r\n  - [ ] Runtime estimates and downtime expectations provided\r\n- [ ] Introduces new feature or API\r\n- [ ] Removes existing feature or API\r\n",
+    "url": "https://github.com/apache/superset/pull/34051"
+  },
+  "changed_files": [
+    "superset-frontend/src/hooks/useLocale.ts",
+    "superset-frontend/src/preamble.ts",
+    "superset/models/helpers.py"
+  ],
+  "diff_path": "text/holdout/apache__superset__pr_034051/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "superset/models/helpers.py",
+      "line": 555,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "Are we expecting this to fail? In what cases? Not sure if swallowing anything/everything is best here, often if we know something might fail we'd try to swallow just that one particular exception, and maybe `logging.exception(e)` to handle the rest of the pessimisticism, so it's unexcpected, handled - but **logged** somewhere. \r\n\r\nOtherwise you may just never know that say your particular locale isn't handled by `humanize`.",
+      "evidence_requirement": "The added `except:` block at line 555 swallows all exceptions without logging or specific exception handling.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A bare `except:` can hide unexpected errors (e.g., unsupported locale, humanize internal failures), making debugging difficult and potentially causing incorrect fallback behavior.",
+      "_reviewer_comment_full": "Are we expecting this to fail? In what cases? Not sure if swallowing anything/everything is best here, often if we know something might fail we'd try to swallow just that one particular exception, and maybe `logging.exception(e)` to handle the rest of the pessimisticism, so it's unexcpected, handled - but **logged** somewhere. \r\n\r\nOtherwise you may just never know that say your particular locale isn't handled by `humanize`.",
+      "_gold_comment_url": "https://github.com/apache/superset/pull/34051#discussion_r2186033702"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 175
+}

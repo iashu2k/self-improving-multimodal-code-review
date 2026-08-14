@@ -1,0 +1,47 @@
+{
+  "example_id": "genesis-embodied-ai__genesis__pr_000961",
+  "source": "github-codereview",
+  "repository": "Genesis-Embodied-AI/Genesis",
+  "commit_sha": "5a55d37e7163f303a904b1c7e42df03e7094687e",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[FEATURE] Add suction cup",
+    "description": "<!--  Thanks for sending a pull request!  Please:\r\n\r\n1. Follow our contributor guidelines: \r\n   https://github.com/Genesis-Embodied-AI/Genesis/blob/main/.github/CONTRIBUTING.md\r\n2. Prepare your PR according to the \"Submitting Code Changes\" \r\n   section of https://github.com/Genesis-Embodied-AI/Genesis/blob/main/.github/CONTRIBUTING.md\r\n3. Provide a concise summary of your changes in the Title above\r\n4. Prefix the title according to the type of issue you are addressing. Use:\r\n    - [BUG FIX] for non-breaking changes which fix an issue\r\n    - [FEATURE] for non-breaking changes which add functionality\r\n    - [MISC] for minor changes such as improved inline documentation or fixing typos\r\n    - [BREAKING] **in addition to the above** for breaking changes, i.e., a fix or feature that would cause existing APIs or functionality to change\r\n-->\r\n\r\n## Description\r\n<!--- Describe your changes in detail -->\r\n\r\nAdd suction cup such that two links can be attached together \r\n\r\nFor example, attach cube and Franka's hand\r\n```\r\n    rigid = scene.sim.rigid_solver\r\n    link_cube = np.array([cube.get_link(\"box_baselink\").idx], dtype=gs.np_int)\r\n    link_franka = np.array([franka.get_link(\"hand\").idx], dtype=gs.np_int)\r\n    rigid.add_weld_constraint(link_cube, link_franka)\r\n\r\n```\r\n\r\nRelease\r\n```\r\n    rigid.delete_weld_constraint(link_cube, link_franka)\r\n```\r\n\r\nThe entire example: \r\n```\r\npython examples/rigid/suction_cup.py\r\n```\r\n\r\n\r\n## Related Issue\r\n<!--- This project only accepts pull requests related to open issues.\r\nIf suggesting a new feature or change, please discuss it in an issue first.\r\nIf fixing a bug, there should be an issue describing it with steps to reproduce.\r\n\r\nPlease link to the relevant issue here, e.g. via `Resolves <issue-url>`.\r\nCf. https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue -->\r\n\r\n#291 \r\n#435 \r\n#681 \r\n\r\n## Motivation and Context\r\n<!--- Why is this change required? What problem does it solve? -->\r\n\r\n## How Has This Been / Can This Be Tested?\r\n<!--- Please describe in detail how you tested your changes.\r\nInclude details of your testing environment, and the tests you ran to\r\nsee how your change affects other areas of the code, etc. -->\r\n\r\n## Screenshots (if appropriate):\r\n\r\n## Checklist:\r\n<!--- Go over all the following points, and put an `x` in all the boxes that apply. -->\r\n- [x] I read the **CONTRIBUTING** document.\r\n- [x] I followed the `Submitting Code Changes` section of **CONTRIBUTING** document.\r\n- [x] I tagged the title correctly (including BUG FIX/FEATURE/MISC/BREAKING)\r\n- [x] I updated the [documentation](https://github.com/Genesis-Embodied-AI/genesis-doc) accordingly or no change is needed.\r\n- [x] I tested my changes and added instructions on how to test it for reviewers.\r\n\r\n<!--- Optionally -->\r\n- [x] I have added tests to cover my changes.\r\n- [ ] All new and existing tests passed.\r\n",
+    "url": "https://github.com/Genesis-Embodied-AI/genesis-world/pull/961"
+  },
+  "changed_files": [
+    "examples/rigid/suction_cup.py",
+    "genesis/engine/solvers/rigid/constraint_solver_decomp.py",
+    "genesis/engine/solvers/rigid/rigid_solver_decomp.py",
+    "genesis/options/solvers.py",
+    "genesis/utils/geom.py",
+    "tests/test_rigid_physics.py"
+  ],
+  "diff_path": "text/validation/genesis-embodied-ai__genesis__pr_000961/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "tests/test_rigid_physics.py",
+      "line": 468,
+      "category": "maintainability",
+      "severity": "high",
+      "issue_summary": "There appear to be duplicate calls to 'add_weld_constraint' in the suction branch. Consider removing the redundant call to ensure the constraint is added only once.\n```suggestion\n\n```",
+      "evidence_requirement": "The added code at tests/test_rigid_physics.py:462 calls `rigid.add_weld_constraint(link_cube, link_franka)` without a matching `delete_weld_constraint` call in the release section, leaving the constraint active after release.",
+      "must_not_claim": [
+        "breaks functionality",
+        "causes crash",
+        "exposes secrets"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A weld constraint added during grasping must be explicitly removed during release to avoid unintended physical coupling between objects.",
+      "_reviewer_comment_full": "There appear to be duplicate calls to 'add_weld_constraint' in the suction branch. Consider removing the redundant call to ensure the constraint is added only once.\n```suggestion\n\n```",
+      "_gold_comment_url": "https://github.com/Genesis-Embodied-AI/genesis-world/pull/961#discussion_r2020474937"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 60
+}

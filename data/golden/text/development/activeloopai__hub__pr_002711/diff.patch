@@ -1,0 +1,40 @@
+diff --git a/deeplake/api/tests/test_pickle.py b/deeplake/api/tests/test_pickle.py
+index 64c1296e6c..a274c9dabf 100644
+--- a/deeplake/api/tests/test_pickle.py
++++ b/deeplake/api/tests/test_pickle.py
+@@ -53,3 +53,15 @@ def test_dataset(ds):
+         np.testing.assert_array_equal(
+             ds.label[i].numpy(), unpickled_ds.label[i].numpy()
+         )
++
++
++def test_no_chunks_present(local_ds):
++    with local_ds as ds:
++        ds.create_tensor("abc")
++        ds.abc.append([1, 2, 3, 4, 5])
++
++    size = len(pickle.dumps(ds))
++
++    ds.abc.append([1, 2, 3, 4, 5])
++
++    assert len(pickle.dumps(ds)) == size
+diff --git a/deeplake/core/chunk_engine.py b/deeplake/core/chunk_engine.py
+index 312d50e898..50804c81d9 100644
+--- a/deeplake/core/chunk_engine.py
++++ b/deeplake/core/chunk_engine.py
+@@ -3095,3 +3095,15 @@ def get_avg_chunk_size(self):
+         nbytes = nbytes * np.dtype(dtype).itemsize
+         avg_chunk_size = nbytes / num_chunks
+         return avg_chunk_size
++
++    def __getstate__(self):
++        state = self.__dict__
++
++        # remove cached chunks
++        state["_active_appended_chunk"] = None
++        state["_active_updated_chunk"] = None
++
++        return state
++
++    def __setstate__(self, state):
++        self.__dict__.update(state)

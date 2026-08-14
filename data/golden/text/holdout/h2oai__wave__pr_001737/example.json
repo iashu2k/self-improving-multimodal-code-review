@@ -1,0 +1,49 @@
+{
+  "example_id": "h2oai__wave__pr_001737",
+  "source": "github-codereview",
+  "repository": "h2oai/wave",
+  "commit_sha": "b4054e73945a8bf45dceefc50bd5e29381d03fd4",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "feat: Add \u201calign\u201d parameter for ui.inline #1535",
+    "description": "This PR adds a new `align` parameter to `ui.inline` that allows users to specify the vertical alignment of the items.\r\n\r\nThe API is updated as follows:\r\n\r\n```diff\r\n interface Inline {\r\n   /** The components laid out inline. */\r\n   items: Component[]\r\n   /** Specifies how to lay out the individual components. Defaults to 'start'. */\r\n   justify?: 'start' | 'end' | 'center' | 'between' | 'around'\r\n+  /** Specifies how the individual components are aligned on the vertical axis. Defaults to 'center'. */\r\n+  align?: 'start' | 'end' | 'center' | 'baseline' | 'stretch'\r\n   /** Whether to display the components inset from the parent form, with a contrasting background. */\r\n   inset?: B\r\n }\r\n```\r\n\r\nThe PR also adds a new example showing how values for the `justify` and `align` parameters of `ui.inline` work:\r\n<video src=\"https://user-images.githubusercontent.com/7029582/205581533-c932cbdb-a2ae-4265-a4d2-8fcc076bbdcb.mov\">\r\n\r\nI also renamed the `alignment` parameter of the internal function `XComponents` to `justify` (more details here: 08d6813fe66bc1b316f00d93010e40095fb26331).\r\n\r\nCloses #1535.\r\n",
+    "url": "https://github.com/h2oai/wave/pull/1737"
+  },
+  "changed_files": [
+    "py/examples/inline.py",
+    "py/examples/tour.conf",
+    "py/h2o_wave/types.py",
+    "py/h2o_wave/ui.py",
+    "r/R/ui.R",
+    "tools/intellij-plugin/src/main/resources/templates/wave-components.xml",
+    "tools/vscode-extension/component-snippets.json",
+    "ui/src/form.tsx",
+    "ui/src/message_bar.tsx",
+    "ui/src/notification_bar.tsx",
+    "ui/src/section.tsx"
+  ],
+  "diff_path": "text/holdout/h2oai__wave__pr_001737/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "py/examples/inline.py",
+      "line": 16,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "Since `all_*` lists are hardcoded, you can be sure that `q.args` value, if specified, is within the list. You can further simplify:\r\n\r\n```suggestion\r\n    justify_current = q.args.justify if q.args.justify else 'start'\r\n    align_current = q.args.align if q.args.align else 'center'\r\n```",
+      "evidence_requirement": "The added line `align_current = q.args.align if q.args.align in all_align else 'center'` (line 16) uses an unnecessary membership check against a hardcoded list.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Since `all_align` is a hardcoded list and the choice_group only offers values from that list, the membership check is redundant and the code can be simplified as suggested by the reviewer.",
+      "_reviewer_comment_full": "Since `all_*` lists are hardcoded, you can be sure that `q.args` value, if specified, is within the list. You can further simplify:\r\n\r\n```suggestion\r\n    justify_current = q.args.justify if q.args.justify else 'start'\r\n    align_current = q.args.align if q.args.align else 'center'\r\n```",
+      "_gold_comment_url": "https://github.com/h2oai/wave/pull/1737#discussion_r1041817186"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 206
+}

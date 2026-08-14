@@ -1,0 +1,276 @@
+diff --git a/src/crawlee/_request.py b/src/crawlee/_request.py
+index cce5dd063f..647e64d0fa 100644
+--- a/src/crawlee/_request.py
++++ b/src/crawlee/_request.py
+@@ -61,6 +61,9 @@ class CrawleeRequestData(BaseModel):
+     forefront: Annotated[bool, Field()] = False
+     """Indicate whether the request should be enqueued at the front of the queue."""
+
++    crawl_depth: Annotated[int, Field(alias='crawlDepth')] = 0
++    """The depth of the request in the crawl tree."""
++
+
+ class UserData(BaseModel, MutableMapping[str, JsonSerializable]):
+     """Represents the `user_data` part of a Request.
+@@ -360,6 +363,11 @@ def crawlee_data(self) -> CrawleeRequestData:
+
+         return user_data.crawlee_data
+
++    @property
++    def crawl_depth(self) -> int:
++        """The depth of the request in the crawl tree."""
++        return self.crawlee_data.crawl_depth
++
+     @property
+     def state(self) -> RequestState | None:
+         """Crawlee-specific request handling state."""
+diff --git a/src/crawlee/basic_crawler/_basic_crawler.py b/src/crawlee/basic_crawler/_basic_crawler.py
+index 98af31d036..6a3a680192 100644
+--- a/src/crawlee/basic_crawler/_basic_crawler.py
++++ b/src/crawlee/basic_crawler/_basic_crawler.py
+@@ -120,6 +120,9 @@ class BasicCrawlerOptions(TypedDict, Generic[TCrawlingContext]):
+     configure_logging: NotRequired[bool]
+     """If True, the crawler will set up logging infrastructure automatically."""
+
++    max_crawl_depth: NotRequired[int | None]
++    """Maximum crawl depth. If set, the crawler will stop crawling after reaching this depth."""
++
+     _context_pipeline: NotRequired[ContextPipeline[TCrawlingContext]]
+     """Enables extending the request lifecycle and modifying the crawling context. Intended for use by
+     subclasses rather than direct instantiation of `BasicCrawler`."""
+@@ -174,6 +177,7 @@ def __init__(
+         statistics: Statistics | None = None,
+         event_manager: EventManager | None = None,
+         configure_logging: bool = True,
++        max_crawl_depth: int | None = None,
+         _context_pipeline: ContextPipeline[TCrawlingContext] | None = None,
+         _additional_context_managers: Sequence[AsyncContextManager] | None = None,
+         _logger: logging.Logger | None = None,
+@@ -201,6 +205,7 @@ def __init__(
+             statistics: A custom `Statistics` instance, allowing the use of non-default configuration.
+             event_manager: A custom `EventManager` instance, allowing the use of non-default configuration.
+             configure_logging: If True, the crawler will set up logging infrastructure automatically.
++            max_crawl_depth: Maximum crawl depth. If set, the crawler will stop crawling after reaching this depth.
+             _context_pipeline: Enables extending the request lifecycle and modifying the crawling context.
+                 Intended for use by subclasses rather than direct instantiation of `BasicCrawler`.
+             _additional_context_managers: Additional context managers used throughout the crawler lifecycle.
+@@ -283,6 +288,7 @@ def __init__(
+
+         self._running = False
+         self._has_finished_before = False
++        self._max_crawl_depth = max_crawl_depth
+
+     @property
+     def log(self) -> logging.Logger:
+diff --git a/src/crawlee/beautifulsoup_crawler/_beautifulsoup_crawler.py b/src/crawlee/beautifulsoup_crawler/_beautifulsoup_crawler.py
+index b970388b7a..2261ed0251 100644
+--- a/src/crawlee/beautifulsoup_crawler/_beautifulsoup_crawler.py
++++ b/src/crawlee/beautifulsoup_crawler/_beautifulsoup_crawler.py
+@@ -9,7 +9,7 @@
+ from typing_extensions import Unpack
+
+ from crawlee import EnqueueStrategy
+-from crawlee._request import BaseRequestData
++from crawlee._request import BaseRequestData, CrawleeRequestData
+ from crawlee._utils.blocked import RETRY_CSS_SELECTORS
+ from crawlee._utils.urls import convert_to_absolute_url, is_url_absolute
+ from crawlee.basic_crawler import BasicCrawler, BasicCrawlerOptions, ContextPipeline
+@@ -181,6 +181,12 @@ async def enqueue_links(
+         ) -> None:
+             kwargs.setdefault('strategy', EnqueueStrategy.SAME_HOSTNAME)
+
++            if self._max_crawl_depth is not None and context.request.crawl_depth + 1 > self._max_crawl_depth:
++                context.log.info(
++                    f'Skipping enqueue_links for URL "{context.request.url}" due to the maximum crawl depth limit.'
++                )
++                return
++
+             requests = list[BaseRequestData]()
+             user_data = user_data or {}
+
+@@ -191,6 +197,9 @@ async def enqueue_links(
+                 if label is not None:
+                     link_user_data.setdefault('label', label)
+
++                data = {'crawlDepth': context.request.crawl_depth + 1}
++                link_user_data.setdefault('__crawlee', CrawleeRequestData(**data))
++
+                 if (url := link.attrs.get('href')) is not None:
+                     url = url.strip()
+
+diff --git a/src/crawlee/parsel_crawler/_parsel_crawler.py b/src/crawlee/parsel_crawler/_parsel_crawler.py
+index 0af7d4e412..ca58208e6e 100644
+--- a/src/crawlee/parsel_crawler/_parsel_crawler.py
++++ b/src/crawlee/parsel_crawler/_parsel_crawler.py
+@@ -9,7 +9,7 @@
+ from typing_extensions import Unpack
+
+ from crawlee import EnqueueStrategy
+-from crawlee._request import BaseRequestData
++from crawlee._request import BaseRequestData, CrawleeRequestData
+ from crawlee._utils.blocked import RETRY_CSS_SELECTORS
+ from crawlee._utils.urls import convert_to_absolute_url, is_url_absolute
+ from crawlee.basic_crawler import BasicCrawler, BasicCrawlerOptions, ContextPipeline
+@@ -180,6 +180,12 @@ async def enqueue_links(
+         ) -> None:
+             kwargs.setdefault('strategy', EnqueueStrategy.SAME_HOSTNAME)
+
++            if self._max_crawl_depth is not None and context.request.crawl_depth + 1 > self._max_crawl_depth:
++                context.log.info(
++                    f'Skipping enqueue_links for URL "{context.request.url}" due to the maximum crawl depth limit.'
++                )
++                return
++
+             requests = list[BaseRequestData]()
+             user_data = user_data or {}
+
+@@ -190,6 +196,9 @@ async def enqueue_links(
+                 if label is not None:
+                     link_user_data.setdefault('label', label)
+
++                data = {'crawlDepth': context.request.crawl_depth + 1}
++                link_user_data.setdefault('__crawlee', CrawleeRequestData(**data))
++
+                 if (url := link.xpath('@href').get()) is not None:
+                     url = url.strip()
+
+diff --git a/src/crawlee/playwright_crawler/_playwright_crawler.py b/src/crawlee/playwright_crawler/_playwright_crawler.py
+index 67f0041ec5..d0370f6ad1 100644
+--- a/src/crawlee/playwright_crawler/_playwright_crawler.py
++++ b/src/crawlee/playwright_crawler/_playwright_crawler.py
+@@ -7,7 +7,7 @@
+ from typing_extensions import Unpack
+
+ from crawlee import EnqueueStrategy
+-from crawlee._request import BaseRequestData
++from crawlee._request import BaseRequestData, CrawleeRequestData
+ from crawlee._utils.blocked import RETRY_CSS_SELECTORS
+ from crawlee._utils.urls import convert_to_absolute_url, is_url_absolute
+ from crawlee.basic_crawler import BasicCrawler, BasicCrawlerOptions, ContextPipeline
+@@ -168,6 +168,12 @@ async def enqueue_links(
+                 requests = list[BaseRequestData]()
+                 user_data = user_data or {}
+
++                if self._max_crawl_depth is not None and context.request.crawl_depth + 1 > self._max_crawl_depth:
++                    context.log.info(
++                        f'Skipping enqueue_links for URL "{context.request.url}" due to the maximum crawl depth limit.'
++                    )
++                    return
++
+                 elements = await context.page.query_selector_all(selector)
+
+                 for element in elements:
+@@ -184,6 +190,9 @@ async def enqueue_links(
+                         if label is not None:
+                             link_user_data.setdefault('label', label)
+
++                        data = {'crawlDepth': context.request.crawl_depth + 1}
++                        link_user_data.setdefault('__crawlee', CrawleeRequestData(**data))
++
+                         try:
+                             request = BaseRequestData.from_url(url, user_data=link_user_data)
+                         except ValidationError as exc:
+diff --git a/tests/unit/beautifulsoup_crawler/test_beautifulsoup_crawler.py b/tests/unit/beautifulsoup_crawler/test_beautifulsoup_crawler.py
+index c1049c109a..c89593df18 100644
+--- a/tests/unit/beautifulsoup_crawler/test_beautifulsoup_crawler.py
++++ b/tests/unit/beautifulsoup_crawler/test_beautifulsoup_crawler.py
+@@ -7,7 +7,7 @@
+ import respx
+ from httpx import Response
+
+-from crawlee import ConcurrencySettings
++from crawlee import ConcurrencySettings, Glob
+ from crawlee.beautifulsoup_crawler import BeautifulSoupCrawler
+ from crawlee.storages import RequestList
+
+@@ -165,3 +165,19 @@ async def test_handle_blocked_request(server: respx.MockRouter) -> None:
+     stats = await crawler.run()
+     assert server['incapsula_endpoint'].called
+     assert stats.requests_failed == 1
++
++
++async def test_enqueue_links_skips_when_crawl_depth_exceeded() -> None:
++    crawler = BeautifulSoupCrawler(max_crawl_depth=0)
++    visit = mock.Mock()
++
++    @crawler.router.default_handler
++    async def request_handler(context: BeautifulSoupCrawlingContext) -> None:
++        visit(context.request.url)
++        await context.enqueue_links(include=[Glob('https://crawlee.dev/docs/examples/**')])
++
++    await crawler.run(['https://crawlee.dev/docs/examples'])
++
++    visited = {call[0][0] for call in visit.call_args_list}
++
++    assert len(visited) == 1
+diff --git a/tests/unit/parsel_crawler/test_parsel_crawler.py b/tests/unit/parsel_crawler/test_parsel_crawler.py
+index 7ffb7953a6..312f5969bc 100644
+--- a/tests/unit/parsel_crawler/test_parsel_crawler.py
++++ b/tests/unit/parsel_crawler/test_parsel_crawler.py
+@@ -8,8 +8,8 @@
+ import respx
+ from httpx import Response
+
+-from crawlee import ConcurrencySettings
+-from crawlee._request import BaseRequestData
++from crawlee import ConcurrencySettings, Glob
++from crawlee._request import BaseRequestData, CrawleeRequestData
+ from crawlee.parsel_crawler import ParselCrawler
+ from crawlee.storages import RequestList
+
+@@ -171,7 +171,10 @@ async def request_handler(context: ParselCrawlingContext) -> None:
+     }
+
+     assert from_url.call_count == 1
+-    assert from_url.call_args == (('https://test.io/asdf',), {'user_data': {'label': 'foo'}})
++    assert from_url.call_args == (
++        ('https://test.io/asdf',),
++        {'user_data': {'label': 'foo', '__crawlee': CrawleeRequestData(crawlDepth=1)}},
++    )
+
+
+ async def test_enqueue_links_with_max_crawl(server: respx.MockRouter) -> None:
+@@ -281,3 +284,19 @@ async def request_handler(context: ParselCrawlingContext) -> None:
+     assert handler.called
+
+     assert handler.call_args[0][0] == ['<hello>world</hello>']
++
++
++async def test_enqueue_links_skips_when_crawl_depth_exceeded() -> None:
++    crawler = ParselCrawler(max_crawl_depth=0)
++    visit = mock.Mock()
++
++    @crawler.router.default_handler
++    async def request_handler(context: ParselCrawlingContext) -> None:
++        visit(context.request.url)
++        await context.enqueue_links(include=[Glob('https://crawlee.dev/docs/examples/**')])
++
++    await crawler.run(['https://crawlee.dev/docs/examples'])
++
++    visited = {call[0][0] for call in visit.call_args_list}
++
++    assert len(visited) == 1
+diff --git a/tests/unit/playwright_crawler/test_playwright_crawler.py b/tests/unit/playwright_crawler/test_playwright_crawler.py
+index a5ec65e3b7..f8905e4be4 100644
+--- a/tests/unit/playwright_crawler/test_playwright_crawler.py
++++ b/tests/unit/playwright_crawler/test_playwright_crawler.py
+@@ -146,3 +146,19 @@ async def request_handler(_context: PlaywrightCrawlingContext) -> None:
+     await crawler.run(['https://example.com', 'https://httpbin.org'])
+
+     assert mock_hook.call_count == 2
++
++
++async def test_enqueue_links_skips_when_crawl_depth_exceeded() -> None:
++    crawler = PlaywrightCrawler(max_crawl_depth=0)
++    visit = mock.Mock()
++
++    @crawler.router.default_handler
++    async def request_handler(context: PlaywrightCrawlingContext) -> None:
++        visit(context.request.url)
++        await context.enqueue_links(include=[Glob('https://crawlee.dev/docs/examples/**')])
++
++    await crawler.run(['https://crawlee.dev/docs/examples'])
++
++    visited = {call[0][0] for call in visit.call_args_list}
++
++    assert len(visited) == 1

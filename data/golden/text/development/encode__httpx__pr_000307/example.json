@@ -1,0 +1,43 @@
+{
+  "example_id": "encode__httpx__pr_000307",
+  "source": "github-codereview",
+  "repository": "encode/httpx",
+  "commit_sha": "bb461141373bde268d30ec1e8056dbd03e7796c8",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Added support ssl cert file environment",
+    "description": "Closes #306 ",
+    "url": "https://github.com/encode/httpx/pull/307"
+  },
+  "changed_files": [
+    "docs/environment_variables.md",
+    "httpx/config.py",
+    "httpx/utils.py",
+    "tests/test_config.py",
+    "tests/test_utils.py"
+  ],
+  "diff_path": "text/development/encode__httpx__pr_000307/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "httpx/config.py",
+      "line": 94,
+      "category": "maintainability",
+      "severity": "medium",
+      "issue_summary": "Can we move this section into the `load_ssl_context_verify()`? Since we're only doing the loading if we've got verify active anyways.\r\n\r\nAlso is there any harm in having `SSLConfig.verify` default to `True` in the constructor? It defaults to `True` on the client anyways.",
+      "evidence_requirement": "The added block at lines 94\u201399 in httpx/config.py performs env-based cert loading outside `load_ssl_context_verify()`, contrary to the reviewer's suggestion to move it inside.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The reviewer explicitly asked to move the `trust_env` logic into `load_ssl_context_verify()` to consolidate verification-related loading; keeping it separate reduces cohesion and may obscure the relationship between env-based cert loading and verification.",
+      "_reviewer_comment_full": "Can we move this section into the `load_ssl_context_verify()`? Since we're only doing the loading if we've got verify active anyways.\r\n\r\nAlso is there any harm in having `SSLConfig.verify` default to `True` in the constructor? It defaults to `True` on the client anyways.",
+      "_gold_comment_url": "https://github.com/encode/httpx/pull/307#discussion_r321714538"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "development",
+  "snapshot_id": 197
+}

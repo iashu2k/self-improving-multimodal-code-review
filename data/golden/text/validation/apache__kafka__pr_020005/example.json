@@ -1,0 +1,43 @@
+{
+  "example_id": "apache__kafka__pr_020005",
+  "source": "github-codereview",
+  "repository": "apache/kafka",
+  "commit_sha": "62a65caa5f49a46f5d363c971d8470465c81a61f",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "KAFKA-19423: Deflake streams_broker_bounce_test",
+    "description": "The test is resizing the `__consumer_offset` topic after broker start.\nThis seems to be completely unsupported. The group coordinator fetches\nthe number of partitions for the consumer offset topic once and never\nupdates it. So we can be in a state where two brokers have a different\nunderstanding of how `__consumer_offsets` are partitioned.\n\nThe result in this test can be that two group coordinators both think\nthey own a certain group. The test is resizing `__consumer_offsets`\nright after start-up from 3 to 50. Before the broker bounce, the GC\noperates on only three partitions (0-2). During the bounce, we get new\nbrokers that operate on (0-49). This means that two brokers can both\nthink, at the same time, that they own a group.\n\nReviewers: Matthias J. Sax <matthias@confluent.io>\n",
+    "url": "https://github.com/apache/kafka/pull/20005"
+  },
+  "changed_files": [
+    "tests/kafkatest/tests/streams/streams_broker_bounce_test.py"
+  ],
+  "diff_path": "text/validation/apache__kafka__pr_020005/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "tests/kafkatest/tests/streams/streams_broker_bounce_test.py",
+      "line": 115,
+      "category": "bug_risk",
+      "severity": "high",
+      "issue_summary": "Changing the partitions from a hardcoded value (50) to self.partitions helps avoid inconsistencies across brokers. This resolves a bug where brokers could have a different understanding of the number of partitions.",
+      "evidence_requirement": "The diff must show that hardcoded partition count (50) for __consumer_offsets topic is replaced with self.partitions variable in all locations where it appears, and that broker configuration overrides are added to enforce consistency.",
+      "must_not_claim": [
+        "causes data loss",
+        "exposes credentials",
+        "breaks all tests"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Hardcoding __consumer_offsets partitions to 50 while other topics use self.partitions causes broker disagreement on partition count, leading to flaky test failures during broker bounces.",
+      "_reviewer_comment_full": "Changing the partitions from a hardcoded value (50) to self.partitions helps avoid inconsistencies across brokers. This resolves a bug where brokers could have a different understanding of the number of partitions.",
+      "_gold_comment_url": "https://github.com/apache/kafka/pull/20005#discussion_r2158510091"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 23
+}

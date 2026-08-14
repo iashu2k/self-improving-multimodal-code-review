@@ -1,0 +1,42 @@
+{
+  "example_id": "apache__airflow__pr_059688",
+  "source": "github-codereview",
+  "repository": "apache/airflow",
+  "commit_sha": "e6276ea5ce3e4eed1022151a30924ea71cd55c49",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Prevent client secrets and proxy credentials from being logged in Microsoft Graph hook logs",
+    "description": "<!--\r\n Licensed to the Apache Software Foundation (ASF) under one\r\n or more contributor license agreements.  See the NOTICE file\r\n distributed with this work for additional information\r\n regarding copyright ownership.  The ASF licenses this file\r\n to you under the Apache License, Version 2.0 (the\r\n \"License\"); you may not use this file except in compliance\r\n with the License.  You may obtain a copy of the License at\r\n\r\n   http://www.apache.org/licenses/LICENSE-2.0\r\n\r\n Unless required by applicable law or agreed to in writing,\r\n software distributed under the License is distributed on an\r\n \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\r\n KIND, either express or implied.  See the License for the\r\n specific language governing permissions and limitations\r\n under the License.\r\n -->\r\n## Problem\r\nThe `KiotaRequestAdapterHook` was logging sensitive information at INFO level:\r\n- Client secrets\r\n- Proxy URLs with embedded credentials (e.g., `http://user:pass@proxy.example.com:3128`) were logged in plain text\r\n\r\n## Fix\r\n\r\n- Add \"proxies\" to `DEFAULT_SENSITIVE_FIELDS` in the shared secrets_masker\r\n- Use `redact(proxies, name=\"proxies\")` to automatically mask proxy configurations containing credentials\r\n- Use `redact(client_secret, name=\"client_secret\")` to mask client secrets\r\n\r\n## Testing\r\n\r\n- Added unit tests to verify\r\n- Manually tested with a custom DAG using `KiotaRequestAdapterHook` and following is the screenshot of the task logs:\r\n<img width=\"1722\" height=\"941\" alt=\"Screenshot 2025-12-22 at 2 49 25\u202fAM\" src=\"https://github.com/user-attachments/assets/0582505e-a4bc-4bc6-8815-f16190e68ded\" />\r\n\r\n\r\n\r\n<!--\r\nThank you for contributing! Please make sure that your code changes\r\nare covered with tests. And in case of new features or big changes\r\nremember to adjust the documentation.\r\n\r\nFeel free to ping committers for the review!\r\n\r\nIn case of an existing issue, reference it using one of the following:\r\n\r\ncloses: #ISSUE\r\nrelated: #ISSUE\r\n\r\nHow to write a good git commit message:\r\nhttp://chris.beams.io/posts/git-commit/\r\n-->\r\n\r\n\r\n\r\n<!-- Please keep an empty line above the dashes. -->\r\n---\r\n**^ Add meaningful description above**\r\nRead the **[Pull Request Guidelines](https://github.com/apache/airflow/blob/main/contributing-docs/05_pull_requests.rst#pull-request-guidelines)** for more information.\r\nIn case of fundamental code changes, an Airflow Improvement Proposal ([AIP](https://cwiki.apache.org/confluence/display/AIRFLOW/Airflow+Improvement+Proposals)) is needed.\r\nIn case of a new dependency, check compliance with the [ASF 3rd Party License Policy](https://www.apache.org/legal/resolved.html#category-x).\r\nIn case of backwards incompatible changes please leave a note in a newsfragment file, named `{pr_number}.significant.rst` or `{issue_number}.significant.rst`, in [airflow-core/newsfragments](https://github.com/apache/airflow/tree/main/airflow-core/newsfragments).\r\n",
+    "url": "https://github.com/apache/airflow/pull/59688"
+  },
+  "changed_files": [
+    "airflow-core/newsfragments/59688.improvement.rst",
+    "providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/msgraph.py",
+    "providers/microsoft/azure/tests/unit/microsoft/azure/hooks/test_msgraph.py",
+    "shared/secrets_masker/src/airflow_shared/secrets_masker/secrets_masker.py"
+  ],
+  "diff_path": "text/holdout/apache__airflow__pr_059688/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/msgraph.py",
+      "line": 66,
+      "category": "maintainability",
+      "severity": "medium",
+      "issue_summary": "Hmm, a provider is not supposed to import from an underscore module (private), or from `execution_time`. Maybe we should expose `secrets_masker` at the top sdk namespace like `timezone`?",
+      "evidence_requirement": "The code must import `redact` from a public SDK namespace (e.g., `airflow.sdk.secrets_masker`) instead of private paths like `airflow.sdk._shared.secrets_masker` or `airflow.sdk.execution_time.secrets_masker`.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Importing from underscore-prefixed modules violates module encapsulation and risks breakage when internal APIs change; the reviewer correctly flagged this as a structural concern.",
+      "_reviewer_comment_full": "Hmm, a provider is not supposed to import from an underscore module (private), or from `execution_time`. Maybe we should expose `secrets_masker` at the top sdk namespace like `timezone`?",
+      "_gold_comment_url": "https://github.com/apache/airflow/pull/59688#discussion_r2638562944"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 171
+}

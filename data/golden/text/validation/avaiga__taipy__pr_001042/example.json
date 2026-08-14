@@ -1,0 +1,43 @@
+{
+  "example_id": "avaiga__taipy__pr_001042",
+  "source": "github-codereview",
+  "repository": "Avaiga/taipy",
+  "commit_sha": "6b53d0ffb48510926ae12f692cfcb00948a705e3",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Feature/#392 - Sort mechanism for `get_primary_scenarios()` and `get_scenarios()` API",
+    "description": "",
+    "url": "https://github.com/Avaiga/taipy/pull/1042"
+  },
+  "changed_files": [
+    "contributors.txt",
+    "taipy/core/scenario/_scenario_manager.py",
+    "taipy/core/taipy.py",
+    "tests/core/scenario/test_scenario_manager.py",
+    "tests/core/test_taipy.py"
+  ],
+  "diff_path": "text/validation/avaiga__taipy__pr_001042/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "taipy/core/taipy.py",
+      "line": 536,
+      "category": "bug_risk",
+      "severity": "low",
+      "issue_summary": "```suggestion\r\n        If no filtering criterion is provided, this method returns all existing scenarios.\r\n        If is_sorted is set to true, the scenarios are sorted by sort_key. If an incorrect\r\n        or no sort_key is provided, the scenarios are sorted by name.\r\n```",
+      "evidence_requirement": "The docstring for get_scenarios() must explicitly state that when is_sorted is true, scenarios are sorted by sort_key (defaulting to 'name' if invalid/missing), but currently it only says 'If is_sorted is set to true, but an incorrect or no sort_key is provided, then the scenarios are sorted by name' in the Returns section.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would want the docstring to clearly explain the sorting behavior upfront rather than burying it in the Returns section, especially since the function signature now includes is_sorted and sort_key parameters.",
+      "_reviewer_comment_full": "```suggestion\r\n        If no filtering criterion is provided, this method returns all existing scenarios.\r\n        If is_sorted is set to true, the scenarios are sorted by sort_key. If an incorrect\r\n        or no sort_key is provided, the scenarios are sorted by name.\r\n```",
+      "_gold_comment_url": "https://github.com/Avaiga/taipy/pull/1042#discussion_r1547439128"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 186
+}

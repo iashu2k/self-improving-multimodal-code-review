@@ -1,0 +1,46 @@
+{
+  "example_id": "ansible__awx__pr_012073",
+  "source": "github-codereview",
+  "repository": "ansible/awx",
+  "commit_sha": "20b855a3e270502ad322bb37d3d4d944a29ed128",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "SCM inv source should trigger project update",
+    "description": "<!--- changelog-entry\r\n# Fill in 'msg' below to have an entry automatically added to the next release changelog.\r\n# Leaving 'msg' blank will not generate a changelog entry for this PR.\r\n# Please ensure this is a simple (and readable) one-line string.\r\n---\r\nmsg: \"scm-based inventory will trigger the project update before running the inventory update.\"\r\n-->\r\n\r\n##### SUMMARY\r\n<!--- Describe the change, including rationale and design decisions -->\r\nscm based inventory sources should launch project updates prior to running inventory updates for that source (if update_on_launch is True for the project)\r\n\r\n#### Implementation\r\n\r\nThe key change is to allow dependencies to have their own dependencies. A number of changes are needed to make that possible.\r\n\r\n1. Turn off symmetry for `dependent_jobs` M2M field\r\nIt's better that this field capture some directionality of the relationship. This will help when we need to determine whether a job is blocked because a dependency has yet to run.\r\n\r\nWith change,\r\n```python\r\njob.dependent_jobs.add(proj)\r\n\r\njob.dependent_jobs.all() # returns [proj]\r\nproj.dependent_jobs.all() # returns []\r\nproj.unifiedjobs_blocked_by.all() # returns [job]\r\n```\r\n\r\n2. Split up `generate_dependencies()` for Job and InventoryUpdate\r\nThis keeps the code cleaner and easier to read \r\n\r\n```python\r\nif type(task) is Job:\r\n    created_dependencies += self.gen_dep_for_job(task)\r\nelif type(task) is InventoryUpdate:\r\n    created_dependencies += self.gen_dep_for_inventory_update(task)\r\n```\r\n\r\n3. Call `generate_dependencies()` twice\r\nNow that dependencies can have their own dependencies, we need to call generate_dependencies() a second time in the task manager loop. This need not be recursive, because the depth is only going to be a max of 2 (JobA > Inventory UpdateA > Project Update A)\r\n\r\nImportantly, this all applies if you start an inventory source update manually. It doesn't have to be in the context of of a job launch. If a project `update_on_launch` is True, the project will be updated if corresponding job or inventory source is launched.\r\n\r\n<!---\r\nIf you are fixing an existing issue, please include \"related #nnn\" in your\r\ncommit message and your description; but you should still explain what\r\nthe change does.\r\n-->\r\n\r\n##### ISSUE TYPE\r\n<!--- Pick one below and delete the rest: -->\r\n - Feature Pull Request\r\n\r\n##### COMPONENT NAME\r\n<!--- Name of the module/plugin/module/task -->\r\n - API\r\n\r\n##### AWX VERSION\r\n<!--- Paste verbatim output from `make VERSION` between quotes below -->\r\n```\r\nawx: 20.0.2.dev249+g38ab7fc48c\r\n```",
+    "url": "https://github.com/ansible/awx/pull/12073"
+  },
+  "changed_files": [
+    "awx/main/migrations/0161_alter_unifiedjob_dependent_jobs.py",
+    "awx/main/models/mixins.py",
+    "awx/main/models/unified_jobs.py",
+    "awx/main/scheduler/dependency_graph.py",
+    "awx/main/scheduler/task_manager.py",
+    "awx/main/tests/functional/task_management/test_scheduler.py"
+  ],
+  "diff_path": "text/holdout/ansible__awx__pr_012073/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "awx/main/scheduler/task_manager.py",
+      "line": 305,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "this was kind of misnamed -- our mixins have the method `get_jobs_fail_chain()` that is unique to types of tasks (ProjectUpdate, InventoryUpdate, Job, etc).\r\n\r\nin essence all this method does is **add dependencies** with activity stream off, so that is what we should call it.",
+      "evidence_requirement": "The comment must note that the method is misnamed: it only adds task dependencies with activity stream disabled, so the name should say that rather than implying failure-chain capture.",
+      "must_not_claim": [
+        "claims dependencies are lost or broken"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The original method added bidirectional dependencies (task \u2192 deps and deps \u2192 [task + other deps]), but the refactored version only adds unidirectional dependencies (task \u2192 deps), which may break expected dependency propagation semantics.",
+      "_reviewer_comment_full": "this was kind of misnamed -- our mixins have the method `get_jobs_fail_chain()` that is unique to types of tasks (ProjectUpdate, InventoryUpdate, Job, etc).\r\n\r\nin essence all this method does is **add dependencies** with activity stream off, so that is what we should call it.",
+      "_gold_comment_url": "https://github.com/ansible/awx/pull/12073#discussion_r861886179"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 161
+}

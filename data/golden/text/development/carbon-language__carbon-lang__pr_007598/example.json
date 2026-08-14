@@ -1,0 +1,23 @@
+{
+  "example_id": "carbon-language__carbon-lang__pr_007598",
+  "source": "github-codereview",
+  "repository": "carbon-language/carbon-lang",
+  "commit_sha": "d550e67e7196cbf78ca57d14d1a211fdbbca7631",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Fix create_compdb.py.",
+    "description": "pathlib's suffix includes a `.`, so make sure we include one when validating the suffix. Otherwise, most files are missing from the database!",
+    "url": "https://github.com/carbon-language/carbon-lang/pull/7598"
+  },
+  "changed_files": [
+    "scripts/create_compdb.py"
+  ],
+  "diff_path": "text/development/carbon-language__carbon-lang__pr_007598/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "development",
+  "snapshot_id": 92
+}

@@ -1,0 +1,59 @@
+diff --git a/openhands/core/config/openhands_config.py b/openhands/core/config/openhands_config.py
+index 24990bc7704b..02e24ae9063b 100644
+--- a/openhands/core/config/openhands_config.py
++++ b/openhands/core/config/openhands_config.py
+@@ -112,6 +112,10 @@ class OpenHandsConfig(BaseModel):
+     max_concurrent_conversations: int = Field(
+         default=3
+     )  # Maximum number of concurrent agent loops allowed per user
++    client_wait_timeout: int = Field(
++        default=30,
++        description='Timeout in seconds for waiting for websocket client connection during initialization',
++    )
+     mcp_host: str = Field(default=f'localhost:{os.getenv("port", 3000)}')
+     mcp: MCPConfig = Field(default_factory=MCPConfig)
+     kubernetes: KubernetesConfig = Field(default_factory=KubernetesConfig)
+diff --git a/openhands/server/session/session.py b/openhands/server/session/session.py
+index 46638e15b780..c676d3115136 100644
+--- a/openhands/server/session/session.py
++++ b/openhands/server/session/session.py
+@@ -390,9 +390,15 @@ async def _send(self, data: dict[str, object]) -> bool:
+             _waiting_times = 1
+
+             if self.sio:
++                # Get timeout from configuration, default to 30 seconds
++                client_wait_timeout = self.config.client_wait_timeout
++                self.logger.debug(
++                    f'Using client wait timeout: {client_wait_timeout}s for session {self.sid}'
++                )
++
+                 # Wait once during initialization to avoid event push failures during websocket connection intervals
+                 while self._wait_websocket_initial_complete and (
+-                    time.time() - _start_time < 2
++                    time.time() - _start_time < client_wait_timeout
+                 ):
+                     if bool(
+                         self.sio.manager.rooms.get('/', {}).get(
+@@ -400,12 +406,18 @@ async def _send(self, data: dict[str, object]) -> bool:
+                         )
+                     ):
+                         break
+-                    self.logger.warning(
+-                        f'There is no listening client in the current room,'
+-                        f' waiting for the {_waiting_times}th attempt: {self.sid}'
+-                    )
++
++                    # Progressive backoff: start with 0.1s, increase to 1s after 10 attempts
++                    sleep_duration = 0.1 if _waiting_times <= 10 else 1.0
++
++                    # Log every 2 seconds to reduce spam
++                    if _waiting_times % (20 if sleep_duration == 0.1 else 2) == 0:
++                        self.logger.warning(
++                            f'There is no listening client in the current room,'
++                            f' waiting for the {_waiting_times}th attempt (timeout: {client_wait_timeout}s): {self.sid}'
++                        )
+                     _waiting_times += 1
+-                    await asyncio.sleep(0.1)
++                    await asyncio.sleep(sleep_duration)
+                 self._wait_websocket_initial_complete = False
+                 await self.sio.emit('oh_event', data, to=ROOM_KEY.format(sid=self.sid))

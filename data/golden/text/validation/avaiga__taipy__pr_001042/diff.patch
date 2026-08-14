@@ -1,0 +1,262 @@
+diff --git a/contributors.txt b/contributors.txt
+index 600daf7485..0c6fbdd083 100644
+--- a/contributors.txt
++++ b/contributors.txt
+@@ -14,3 +14,4 @@ enarroied
+ bobbyshermi
+ Forchapeatl
+ yarikoptic
++Luke-0162
+diff --git a/taipy/core/scenario/_scenario_manager.py b/taipy/core/scenario/_scenario_manager.py
+index 515fa5bbb5..cba98de0c7 100644
+--- a/taipy/core/scenario/_scenario_manager.py
++++ b/taipy/core/scenario/_scenario_manager.py
+@@ -11,7 +11,7 @@
+
+ import datetime
+ from functools import partial
+-from typing import Any, Callable, List, Optional, Union
++from typing import Any, Callable, List, Literal, Optional, Union
+
+ from taipy.config import Config
+
+@@ -270,6 +270,24 @@ def _get_all_by_cycle(cls, cycle: Cycle) -> List[Scenario]:
+     def _get_primary_scenarios(cls) -> List[Scenario]:
+         return [scenario for scenario in cls._get_all() if scenario.is_primary]
+
++    @classmethod
++    def _sort_scenarios(
++        cls,
++        scenarios: List[Scenario],
++        descending: Optional[bool] = False,
++        sort_key: Optional[Literal["name", "id", "config_id", "creation_date", "tags"]] = "name",
++    ) -> List[Scenario]:
++        if sort_key in ["name", "config_id", "creation_date", "tags"]:
++            if sort_key == "tags":
++                scenarios.sort(key=lambda x: (tuple(sorted(x.tags)), x.id), reverse=descending)
++            else:
++                scenarios.sort(key=lambda x: (getattr(x, sort_key), x.id), reverse=descending)
++        elif sort_key == "id":
++            scenarios.sort(key=lambda x: x.id, reverse=descending)
++        else:
++            scenarios.sort(key=lambda x: (x.name, x.id), reverse=descending)
++        return scenarios
++
+     @classmethod
+     def _is_promotable_to_primary(cls, scenario: Union[Scenario, ScenarioId]) -> bool:
+         if isinstance(scenario, str):
+diff --git a/taipy/core/taipy.py b/taipy/core/taipy.py
+index d21fdbc87e..7996d9c7e4 100644
+--- a/taipy/core/taipy.py
++++ b/taipy/core/taipy.py
+@@ -12,7 +12,7 @@
+ import pathlib
+ import shutil
+ from datetime import datetime
+-from typing import Any, Callable, Dict, List, Optional, Set, Union, overload
++from typing import Any, Callable, Dict, List, Literal, Optional, Set, Union, overload
+
+ from taipy.config.common.scope import Scope
+ from taipy.logger._taipy_logger import _TaipyLogger
+@@ -505,7 +505,13 @@ def delete(entity_id: Union[TaskId, DataNodeId, SequenceId, ScenarioId, JobId, C
+     raise ModelNotFound("NOT_DETERMINED", entity_id)
+
+
+-def get_scenarios(cycle: Optional[Cycle] = None, tag: Optional[str] = None) -> List[Scenario]:
++def get_scenarios(
++    cycle: Optional[Cycle] = None,
++    tag: Optional[str] = None,
++    is_sorted: Optional[bool] = False,
++    descending: Optional[bool] = False,
++    sort_key: Optional[Literal["name", "id", "config_id", "creation_date", "tags"]] = "name",
++) -> List[Scenario]:
+     """Retrieve a list of existing scenarios filtered by cycle or tag.
+
+     This function allows you to retrieve a list of scenarios based on optional
+@@ -516,22 +522,44 @@ def get_scenarios(cycle: Optional[Cycle] = None, tag: Optional[str] = None) -> L
+     Parameters:
+          cycle (Optional[Cycle^]): The optional `Cycle^` to filter scenarios by.
+          tag (Optional[str]): The optional tag to filter scenarios by.
++         is_sorted (Optional[bool]): The option to sort scenarios. The default sorting key is name.
++         descending (Optional[bool]): The option to sort scenarios on the sorting key in descending order.
++         sort_key (Optional[Literal["name", "id", "creation_date", "tags"]]): The optiononal sort_key to decide upon
++         what key scenarios are sorted. The sorting is in increasing order for dates, in alphabetical order for name
++         and id, in lexographical order for tags.
+
+     Returns:
+-        The list of scenarios filtered by cycle or tag. If no filtering criteria
+-            are provided, this method returns all existing scenarios.
++        The list of scenarios filtered by cycle or tag and optionally sorted by name, id, creation_date or tags.
++        If no filtering criteria are provided, this method returns all existing scenarios.
++        If is_sorted is set to true, but an incorrect or no sort_key is provided, then the scenarios are sorted by name.
++        If the attribute sort_key of some scenarios are equivalent, a second criteria is used.
++        In this case, these scenarios are sorted by their unique id's.
+     """
+     scenario_manager = _ScenarioManagerFactory._build_manager()
+     if not cycle and not tag:
+-        return scenario_manager._get_all()
+-    if cycle and not tag:
+-        return scenario_manager._get_all_by_cycle(cycle)
+-    if not cycle and tag:
+-        return scenario_manager._get_all_by_tag(tag)
+-    if cycle and tag:
++        scenarios = scenario_manager._get_all()
++    elif cycle and not tag:
++        scenarios = scenario_manager._get_all_by_cycle(cycle)
++    elif not cycle and tag:
++        scenarios = scenario_manager._get_all_by_tag(tag)
++    elif cycle and tag:
+         cycles_scenarios = scenario_manager._get_all_by_cycle(cycle)
+-        return [scenario for scenario in cycles_scenarios if scenario.has_tag(tag)]
+-    return []
++        scenarios = [scenario for scenario in cycles_scenarios if scenario.has_tag(tag)]
++    else:
++        scenarios = []
++
++    if is_sorted:
++        if sort_key in ["name", "config_id", "creation_date", "tags"]:
++            if sort_key == "tags":
++                scenarios.sort(key=lambda x: (tuple(sorted(x.tags)), x.id), reverse=descending)
++            else:
++                scenarios.sort(key=lambda x: (getattr(x, sort_key), x.id), reverse=descending)
++        elif sort_key == "id":
++            scenarios.sort(key=lambda x: x.id, reverse=descending)
++        else:
++            scenarios.sort(key=lambda x: (x.name, x.id), reverse=descending)
++
++    return scenarios
+
+
+ def get_primary(cycle: Cycle) -> Optional[Scenario]:
+@@ -547,13 +575,23 @@ def get_primary(cycle: Cycle) -> Optional[Scenario]:
+     return _ScenarioManagerFactory._build_manager()._get_primary(cycle)
+
+
+-def get_primary_scenarios() -> List[Scenario]:
++def get_primary_scenarios(
++    sorted: Optional[bool] = False, sort_key: Optional[Literal["name", "id", "creation_date", "tags"]] = "name"
++) -> List[Scenario]:
+     """Retrieve a list of all primary scenarios.
+
++    Parameters:
++         sorted (Optional[bool]): The option to sort scenarios. The default sorting key is name.
++         sort_key (Optional[Literal["name", "id", "creation_date", "tags"]]): The optiononal sort_key to decide
++         upon what key scenarios are sorted.
++
+     Returns:
+-        A list containing all primary scenarios.
++        The list containing all primary scenarios, optionally sorted by name, id, creation_date or tags.
++        The sorting is in increasing order for dates, in alphabetical order for name and id
++        and in lexographical order for tags.
++        If sorted is set to true, but an incorrect or no sort_key is provided, then the scenarios are sorted by name.
+     """
+-    return _ScenarioManagerFactory._build_manager()._get_primary_scenarios()
++    return _ScenarioManagerFactory._build_manager()._get_primary_scenarios(sorted, sort_key)
+
+
+ def is_promotable(scenario: Union[Scenario, ScenarioId]) -> bool:
+diff --git a/tests/core/scenario/test_scenario_manager.py b/tests/core/scenario/test_scenario_manager.py
+index 01ecdd8b1b..74bad47158 100644
+--- a/tests/core/scenario/test_scenario_manager.py
++++ b/tests/core/scenario/test_scenario_manager.py
+@@ -813,6 +813,50 @@ def test_get_set_primary_scenario():
+     assert _ScenarioManager._get_primary(cycle_1) == scenario_2
+
+
++def test_get_primary_scenarios_sorted():
++    scenario_1_cfg = Config.configure_scenario(id="scenario_1", frequency=Frequency.DAILY)
++    scenario_2_cfg = Config.configure_scenario(id="scenario_2", frequency=Frequency.DAILY)
++
++    scenario_1 = _ScenarioManager._create(scenario_1_cfg, name="B_scenario")
++    scenario_2 = _ScenarioManager._create(scenario_2_cfg, name="A_scenario", creation_date=datetime.now() + timedelta(days=2))
++    scenario_3 = _ScenarioManager._create(scenario_2_cfg, name="C_scenario", creation_date=datetime.now() + timedelta(days=4))
++
++    _ScenarioManager._set_primary(scenario_1)
++    scenario_1.tags = ["banana", "kiwi"]
++    _ScenarioManager._set_primary(scenario_2)
++    scenario_2.tags = ["apple", "banana"]
++    _ScenarioManager._set_primary(scenario_3)
++    scenario_3.tags = ["banana", "kiwi"]
++
++    primary_scenarios = _ScenarioManager._get_primary_scenarios()
++
++    primary_scenarios_sorted_by_name = [scenario_2, scenario_1, scenario_3]
++    assert primary_scenarios_sorted_by_name == _ScenarioManager._sort_scenarios(primary_scenarios, sort_key="name")
++
++    scenarios_with_same_config_id = [scenario_2, scenario_3]
++    scenarios_with_same_config_id.sort(key=lambda x: x.id)
++    primary_scenarios_sorted_by_config_id = [scenario_1, scenarios_with_same_config_id[0], scenarios_with_same_config_id[1]]
++    assert primary_scenarios_sorted_by_config_id == _ScenarioManager._sort_scenarios(primary_scenarios, sort_key="config_id")
++
++    scenarios_sorted_by_id = [scenario_1, scenario_2, scenario_3]
++    scenarios_sorted_by_id.sort(key=lambda x: x.id)
++    assert scenarios_sorted_by_id == _ScenarioManager._sort_scenarios(primary_scenarios, sort_key="id")
++
++    primary_scenarios_sorted_by_creation_date = [scenario_1, scenario_2, scenario_3]
++    assert primary_scenarios_sorted_by_creation_date == _ScenarioManager._sort_scenarios(primary_scenarios,
++                                                                                         sort_key="creation_date")
++
++    scenarios_with_same_tags = [scenario_1, scenario_3]
++    scenarios_with_same_tags.sort(key=lambda x: x.id)
++    primary_scenarios_sorted_by_tags = [scenario_2, scenarios_with_same_tags[0], scenarios_with_same_tags[1]]
++    assert primary_scenarios_sorted_by_tags == _ScenarioManager._sort_scenarios(primary_scenarios, sort_key="tags")
++
++    primary_scenarios_sorted_by_name_descending_order = [scenario_3, scenario_1, scenario_2]
++    assert primary_scenarios_sorted_by_name_descending_order == _ScenarioManager._sort_scenarios(
++        primary_scenarios, descending=True, sort_key="name"
++    )
++
++
+ def test_hard_delete_one_single_scenario_with_scenario_data_nodes():
+     dn_input_config = Config.configure_data_node("my_input", "in_memory", scope=Scope.SCENARIO, default_data="testing")
+     dn_output_config = Config.configure_data_node("my_output", "in_memory", scope=Scope.SCENARIO)
+diff --git a/tests/core/test_taipy.py b/tests/core/test_taipy.py
+index b4e92238cc..3ed55723d6 100644
+--- a/tests/core/test_taipy.py
++++ b/tests/core/test_taipy.py
+@@ -435,6 +435,45 @@ def test_get_scenarios(self, cycle):
+             tp.get_scenarios(tag="tag")
+             mck.assert_called_once_with("tag")
+
++    def test_get_scenarios_sorted(self):
++        scenario_1_cfg = Config.configure_scenario(id="scenario_3")
++        scenario_2_cfg = Config.configure_scenario(id="scenario_1")
++
++        scenario_1 = _ScenarioManager._create(scenario_1_cfg, name="B_scenario")
++        scenario_2 = _ScenarioManager._create(scenario_2_cfg, name="C_scenario")
++        scenario_3 = _ScenarioManager._create(scenario_2_cfg, name="A_scenario")
++
++        _ScenarioManager._tag(scenario_1, "banana")
++        _ScenarioManager._tag(scenario_1, "kiwi")    # scenario_1 now has tags {"banana", "kiwi"}
++        _ScenarioManager._tag(scenario_2, "apple")
++        _ScenarioManager._tag(scenario_2, "banana")  # scenario_2 now has tags {"banana", "apple"}
++        _ScenarioManager._tag(scenario_3, "apple")
++        _ScenarioManager._tag(scenario_3, "kiwi")    # scenario_2 now has tags {"kiwi", "apple"}
++
++        scenarios_sorted_by_name = [scenario_3, scenario_1, scenario_2]
++        assert scenarios_sorted_by_name == tp.get_scenarios(is_sorted=True, sort_key="name")
++        assert scenarios_sorted_by_name == tp.get_scenarios(is_sorted=True, sort_key="wrong_sort_key")
++
++        scenarios_with_same_config_id = [scenario_2, scenario_3]
++        scenarios_with_same_config_id.sort(key=lambda x: x.id)
++        scenarios_sorted_by_config_id = [scenarios_with_same_config_id[0], scenarios_with_same_config_id[1], scenario_1]
++        assert scenarios_sorted_by_config_id == tp.get_scenarios(is_sorted=True, sort_key="config_id")
++
++        scenarios_sorted_by_id = [scenario_1, scenario_2, scenario_3]
++        scenarios_sorted_by_id.sort(key=lambda x: x.id)
++        assert scenarios_sorted_by_id == tp.get_scenarios(is_sorted=True, sort_key="id")
++
++        scenarios_sorted_by_creation_date = [scenario_1, scenario_2, scenario_3]
++        assert scenarios_sorted_by_creation_date == tp.get_scenarios(is_sorted=True, sort_key="creation_date")
++
++        scenarios_sorted_by_tag = [scenario_2, scenario_3, scenario_1]
++        assert scenarios_sorted_by_tag == tp.get_scenarios(is_sorted=True, sort_key="tags")
++
++        scenarios_sorted_by_name_descending_order = [scenario_2, scenario_1, scenario_3]
++        assert scenarios_sorted_by_name_descending_order == tp.get_scenarios(
++            is_sorted=True, descending=True, sort_key="name"
++        )
++
+     def test_get_scenario(self, scenario):
+         with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._get") as mck:
+             scenario_id = ScenarioId("SCENARIO_id")

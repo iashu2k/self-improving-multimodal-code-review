@@ -1,0 +1,38 @@
+{
+  "example_id": "firecracker-microvm__firecracker__pr_005137",
+  "source": "github-codereview",
+  "repository": "firecracker-microvm/firecracker",
+  "commit_sha": "1b3d0f1eff3b7b3f73d4d50794db81daeebb6353",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "CI: Reshuffle perf steps a bit to better utilize workers",
+    "description": "Move the network latency test onto the same worker as the throughput test, and split the snapshot tests across two workers, to optimize pipeline runtime by loading all workers roughly equally.\r\n\r\n## License Acceptance\r\n\r\nBy submitting this pull request, I confirm that my contribution is made under\r\nthe terms of the Apache 2.0 license. For more information on following Developer\r\nCertificate of Origin and signing off your commits, please check\r\n[`CONTRIBUTING.md`][3].\r\n\r\n## PR Checklist\r\n\r\n- [ ] I have read and understand [CONTRIBUTING.md][3].\r\n- [ ] I have run `tools/devtool checkstyle` to verify that the PR passes the\r\n  automated style checks.\r\n- [ ] I have described what is done in these changes, why they are needed, and\r\n  how they are solving the problem in a clear and encompassing way.\r\n- [ ] I have updated any relevant documentation (both in code and in the docs)\r\n  in the PR.\r\n- [ ] I have mentioned all user-facing changes in `CHANGELOG.md`.\r\n- [ ] If a specific issue led to this PR, this PR closes the issue.\r\n- [ ] When making API changes, I have followed the\r\n  [Runbook for Firecracker API changes][2].\r\n- [ ] I have tested all new and changed functionalities in unit tests and/or\r\n  integration tests.\r\n- [ ] I have linked an issue to every new `TODO`.\r\n\r\n______________________________________________________________________\r\n\r\n- [ ] This functionality cannot be added in [`rust-vmm`][1].\r\n\r\n[1]: https://github.com/rust-vmm\r\n[2]: https://github.com/firecracker-microvm/firecracker/blob/main/docs/api-change-runbook.md\r\n[3]: https://github.com/firecracker-microvm/firecracker/blob/main/CONTRIBUTING.md\r\n",
+    "url": "https://github.com/firecracker-microvm/firecracker/pull/5137"
+  },
+  "changed_files": [
+    ".buildkite/pipeline_perf.py"
+  ],
+  "diff_path": "text/holdout/firecracker-microvm__firecracker__pr_005137/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": ".buildkite/pipeline_perf.py",
+      "line": 40,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "The test_path field now includes two test targets separated by a space. Please confirm that the test runner supports this format for specifying multiple tests; if not, consider using a comma or another documented delimiter.\n```suggestion\n        \"test_path\": \"integration_tests/performance/test_snapshot_ab.py::test_restore_latency,integration_tests/performance/test_snapshot_ab.py::test_post_restore_latency\",\n```",
+      "evidence_requirement": "The added line at .buildkite/pipeline_perf.py:40 uses a space to separate two test targets in test_path, which may not be supported by the test runner.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A space delimiter in test_path is ambiguous and may cause the test runner to misinterpret the path or fail to execute both tests, leading to incomplete performance coverage.",
+      "_reviewer_comment_full": "The test_path field now includes two test targets separated by a space. Please confirm that the test runner supports this format for specifying multiple tests; if not, consider using a comma or another documented delimiter.\n```suggestion\n        \"test_path\": \"integration_tests/performance/test_snapshot_ab.py::test_restore_latency,integration_tests/performance/test_snapshot_ab.py::test_post_restore_latency\",\n```",
+      "_gold_comment_url": "https://github.com/firecracker-microvm/firecracker/pull/5137#discussion_r2028557464"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 72
+}

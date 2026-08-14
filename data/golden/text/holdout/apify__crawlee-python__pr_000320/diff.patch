@@ -1,0 +1,142 @@
+diff --git a/docs/guides/proxy_management.mdx b/docs/guides/proxy_management.mdx
+index 95a9e5dff8..0f456e7679 100644
+--- a/docs/guides/proxy_management.mdx
++++ b/docs/guides/proxy_management.mdx
+@@ -21,6 +21,9 @@ import SessionPlaywrightSource from '!!raw-loader!./proxy_management_examples/se
+ import InspectionBeautifulSoupSource from '!!raw-loader!./proxy_management_examples/inspecting_beautifulsoup.py';
+ import InspectionPlaywrightSource from '!!raw-loader!./proxy_management_examples/inspecting_playwright.py';
+
++import TiersBeautifulSoupSource from '!!raw-loader!./proxy_management_examples/tiers_beautifulsoup.py';
++import TiersPlaywrightSource from '!!raw-loader!./proxy_management_examples/tiers_playwright.py';
++
+ [IP address blocking](https://en.wikipedia.org/wiki/IP_address_blocking) is one of the oldest and most effective ways of preventing access to a website. It is therefore paramount for a good web scraping library to provide easy to use but powerful tools which can work around IP blocking. The most powerful weapon in our anti IP blocking arsenal is a [proxy server](https://en.wikipedia.org/wiki/Proxy_server).
+
+ With Crawlee we can use our own proxy servers or proxy servers acquired from third-party providers.
+@@ -81,6 +84,25 @@ When no `session_id` is provided, our proxy URLs are rotated round-robin.
+     </TabItem>
+ </Tabs>
+
++### Tiered proxies
++
++When you use HTTP proxies in real world crawling scenarios, you have to decide which type of proxy to use to reach the sweet spot between cost efficiency and reliably avoiding blocking. Some websites may allow crawling with no proxy, on some you may get away with using datacenter proxies, which are cheap but likely to get blocked, and sometimes you need to use expensive residential proxies.
++
++To take the guesswork out of this process, Crawlee allows you to configure multiple tiers of proxy URLs. When crawling, it will automatically pick the left-most tier where it doesn't encounter blocking. If you organize your proxy server URLs in tiers so that the left-most tier contains the cheapest, least reliable ones and each higher tier contains more expensive, more reliable ones, you will get an optimal anti-blocking performance.
++
++<Tabs>
++    <TabItem value="BeautifulSoupCrawler" label="BeautifulSoupCrawler">
++        <CodeBlock className="language-python">
++            {TiersBeautifulSoupSource}
++        </CodeBlock>
++    </TabItem>
++    <TabItem value="PlaywrightCrawler" label="PlaywrightCrawler">
++        <CodeBlock className="language-python">
++            {TiersPlaywrightSource}
++        </CodeBlock>
++    </TabItem>
++</Tabs>
++
+ ## Inspecting current proxy in crawlers
+
+ The `BeautifulSoupCrawler` and `PlaywrightCrawler` provide access to information about the currently used proxy via the request handler using a <ApiLink to="class/ProxyInfo">`proxy_info`</ApiLink> object. This object allows easy access to the proxy URL.
+diff --git a/docs/guides/proxy_management_examples/tiers_beautifulsoup.py b/docs/guides/proxy_management_examples/tiers_beautifulsoup.py
+new file mode 100644
+index 0000000000..55ef6976f3
+--- /dev/null
++++ b/docs/guides/proxy_management_examples/tiers_beautifulsoup.py
+@@ -0,0 +1,28 @@
++import asyncio
++
++from crawlee.beautifulsoup_crawler import BeautifulSoupCrawler, BeautifulSoupCrawlingContext
++from crawlee.proxy_configuration import ProxyConfiguration
++
++
++async def main() -> None:
++    # Create a ProxyConfiguration object and pass it to the crawler.
++    proxy_configuration = ProxyConfiguration(
++        tiered_proxy_urls=[
++            ['http://cheap-datacenter-proxy-1.com/', 'http://cheap-datacenter-proxy-2.com/'],
++            ['http://expensive-residential-proxy-1.com/', 'http://expensive-residential-proxy-2.com/'],
++        ]
++    )
++    crawler = BeautifulSoupCrawler(proxy_configuration=proxy_configuration)
++
++    # Define the default request handler, which will be called for every request.
++    @crawler.router.default_handler
++    async def default_handler(context: BeautifulSoupCrawlingContext) -> None:
++        # Log the proxy used for the current request.
++        context.log.info(f'Proxy for the current request: {context.proxy_info}')
++
++    # Run the crawler with the initial list of requests.
++    await crawler.run(['https://crawlee.dev/'])
++
++
++if __name__ == '__main__':
++    asyncio.run(main())
+diff --git a/docs/guides/proxy_management_examples/tiers_playwright.py b/docs/guides/proxy_management_examples/tiers_playwright.py
+new file mode 100644
+index 0000000000..3cc686ac4e
+--- /dev/null
++++ b/docs/guides/proxy_management_examples/tiers_playwright.py
+@@ -0,0 +1,28 @@
++import asyncio
++
++from crawlee.playwright_crawler import PlaywrightCrawler, PlaywrightCrawlingContext
++from crawlee.proxy_configuration import ProxyConfiguration
++
++
++async def main() -> None:
++    # Create a ProxyConfiguration object and pass it to the crawler.
++    proxy_configuration = ProxyConfiguration(
++        tiered_proxy_urls=[
++            ['http://cheap-datacenter-proxy-1.com/', 'http://cheap-datacenter-proxy-2.com/'],
++            ['http://expensive-residential-proxy-1.com/', 'http://expensive-residential-proxy-2.com/'],
++        ]
++    )
++    crawler = PlaywrightCrawler(proxy_configuration=proxy_configuration)
++
++    # Define the default request handler, which will be called for every request.
++    @crawler.router.default_handler
++    async def default_handler(context: PlaywrightCrawlingContext) -> None:
++        # Log the proxy used for the current request.
++        context.log.info(f'Proxy for the current request: {context.proxy_info}')
++
++    # Run the crawler with the initial list of requests.
++    await crawler.run(['https://crawlee.dev/'])
++
++
++if __name__ == '__main__':
++    asyncio.run(main())
+diff --git a/src/crawlee/proxy_configuration.py b/src/crawlee/proxy_configuration.py
+index 8599db509c..775229f062 100644
+--- a/src/crawlee/proxy_configuration.py
++++ b/src/crawlee/proxy_configuration.py
+@@ -11,7 +11,6 @@
+ from typing_extensions import Protocol
+
+ from crawlee._utils.crypto import crypto_random_object_id
+-from crawlee.configuration import Configuration
+
+ if TYPE_CHECKING:
+     from collections.abc import Awaitable, Sequence
+@@ -113,9 +112,19 @@ def __init__(
+         proxy_urls: list[str] | None = None,
+         new_url_function: NewUrlFunction | None = None,
+         tiered_proxy_urls: list[list[str]] | None = None,
+-        configuration: Configuration | None = None,
+     ) -> None:
+-        self._configuration = configuration or Configuration.get_global_configuration()
++        """Initialize a proxy configuration object.
++
++        Exactly one of `proxy_urls`, `tiered_proxy_urls` or `new_url_function` must be specified.
++
++        Args:
++            proxy_urls: A list of URLs of proxies that will be rotated in a round-robin fashion
++            tiered_proxy_urls: A list of URL tiers (where a tier is a list of proxy URLs). Crawlers will automatically
++                try to use the left-most (lowest index) tier where blocking does not happen. The proxy URLs in
++                the selected tier will be rotated in a round-robin fashion.
++            new_url_function: A function that returns a proxy URL for a given Request. This provides full control over
++                the proxy selection mechanism.
++        """
+         self._next_custom_url_index = 0
+         self._used_proxy_urls = dict[str, URL]()
+         self._url_validator = TypeAdapter(AnyHttpUrl)

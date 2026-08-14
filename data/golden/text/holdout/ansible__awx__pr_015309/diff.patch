@@ -1,0 +1,67 @@
+diff --git a/awx/api/views/__init__.py b/awx/api/views/__init__.py
+index fe116afb984f..da523b4dc5d3 100644
+--- a/awx/api/views/__init__.py
++++ b/awx/api/views/__init__.py
+@@ -3111,6 +3111,14 @@ class WorkflowJobTemplateList(ListCreateAPIView):
+     serializer_class = serializers.WorkflowJobTemplateSerializer
+     always_allow_superuser = False
+
++    def check_permissions(self, request):
++        if request.method == 'POST':
++            can_access, messages = request.user.can_access_with_errors(self.model, 'add', request.data)
++            if not can_access:
++                self.permission_denied(request, message=messages)
++
++        super(WorkflowJobTemplateList, self).check_permissions(request)
++
+
+ class WorkflowJobTemplateDetail(RelatedJobsPreventDeleteMixin, RetrieveUpdateDestroyAPIView):
+     model = models.WorkflowJobTemplate
+diff --git a/awx/main/access.py b/awx/main/access.py
+index 9819f9d9aa07..c663b158f351 100644
+--- a/awx/main/access.py
++++ b/awx/main/access.py
+@@ -2092,11 +2092,20 @@ def can_add(self, data):
+         if not data:  # So the browseable API will work
+             return Organization.accessible_objects(self.user, 'workflow_admin_role').exists()
+
+-        return bool(
+-            self.check_related('organization', Organization, data, role_field='workflow_admin_role', mandatory=True)
+-            and self.check_related('inventory', Inventory, data, role_field='use_role')
+-            and self.check_related('execution_environment', ExecutionEnvironment, data, role_field='read_role')
+-        )
++        if not self.check_related('organization', Organization, data, role_field='workflow_admin_role', mandatory=True):
++            if data.get('organization', None) is None:
++                self.messages['organization'] = [_('An organization is required to create a workflow job template for normal user')]
++            return False
++
++        if not self.check_related('inventory', Inventory, data, role_field='use_role'):
++            self.messages['inventory'] = [_('You do not have use_role to the inventory')]
++            return False
++
++        if not self.check_related('execution_environment', ExecutionEnvironment, data, role_field='read_role'):
++            self.messages['execution_environment'] = [_('You do not have read_role to the execution environment')]
++            return False
++
++        return True
+
+     def can_copy(self, obj):
+         if self.save_messages:
+diff --git a/awx/main/tests/functional/test_rbac_workflow.py b/awx/main/tests/functional/test_rbac_workflow.py
+index 0143399ba645..4814e3212cc4 100644
+--- a/awx/main/tests/functional/test_rbac_workflow.py
++++ b/awx/main/tests/functional/test_rbac_workflow.py
+@@ -35,6 +35,13 @@ def test_org_workflow_admin_role_inheritance(self, wfjt, org_member):
+         assert org_member in wfjt.execute_role
+         assert org_member in wfjt.read_role
+
++    def test_non_super_admin_no_add_without_org(self, wfjt, organization, rando):
++        organization.member_role.members.add(rando)
++        wfjt.admin_role.members.add(rando)
++        access = WorkflowJobTemplateAccess(rando, save_messages=True)
++        assert not access.can_add({'name': 'without org'})
++        assert 'An organization is required to create a workflow job template for normal user' in access.messages['organization']
++
+
+ @pytest.mark.django_db
+ class TestWorkflowJobTemplateNodeAccess:

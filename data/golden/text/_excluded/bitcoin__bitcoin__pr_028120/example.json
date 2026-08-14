@@ -1,0 +1,39 @@
+{
+  "example_id": "bitcoin__bitcoin__pr_028120",
+  "source": "github-codereview",
+  "repository": "bitcoin/bitcoin",
+  "commit_sha": "c5b5843d8f10d96f76ee6b95f2b1b1b4ce755f75",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "p2p: make block download logic aware of limited peers threshold",
+    "description": "Even when the node believes it has IBD completed, need to avoid\r\nrequesting historical blocks from network-limited peers.\r\nOtherwise, the limited peer will disconnect right away.\r\n\r\nThe simplest scenario could be a node that gets synced, drops\r\nconnections, and stays inactive for a while. Then, once it re-connects\r\n(IBD stays completed), the node tries to fetch all the missing blocks\r\nfrom any peer, getting disconnected by the limited ones.\r\n\r\nNote:\r\nCan verify the behavior by cherry-picking the test commit alone on\r\nmaster. It will fail there.",
+    "url": "https://github.com/bitcoin/bitcoin/pull/28120"
+  },
+  "changed_files": [
+    "src/net_processing.cpp",
+    "test/functional/p2p_node_network_limited.py"
+  ],
+  "diff_path": "text/holdout/bitcoin__bitcoin__pr_028120/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "test/functional/p2p_node_network_limited.py",
+      "line": 61,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "The test would fail if run standalone without the preceding tests. The failure is on line 78: `self.sync_blocks([miner, pruned_node])`. That is because the test relies on the pruned node being connected to the miner which is indeed the case - some leftover from previous tests. This diff makes it succeed when run standalone:\r\n\r\n```diff\r\n--- i/test/functional/p2p_node_network_limited.py\r\n+++ w/test/functional/p2p_node_network_limited.py\r\n@@ -54,25 +54,24 @@ class NodeNetworkLimitedTest(BitcoinTest",
+      "evidence_requirement": "TODO: what the agent must cite to get credit",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "TODO: why this gold issue is valid",
+      "_reviewer_comment_full": "The test would fail if run standalone without the preceding tests. The failure is on line 78: `self.sync_blocks([miner, pruned_node])`. That is because the test relies on the pruned node being connected to the miner which is indeed the case - some leftover from previous tests. This diff makes it succeed when run standalone:\r\n\r\n```diff\r\n--- i/test/functional/p2p_node_network_limited.py\r\n+++ w/test/functional/p2p_node_network_limited.py\r\n@@ -54,25 +54,24 @@ class NodeNetworkLimitedTest(BitcoinTestFramework):\r\n         # The request of blocks further than the NETWORK_NODE_LIMITED threshold causes a direct disconnection.\r\n         pruned_node = self.nodes[0]\r\n         miner = self.nodes[1]\r\n         full_node = self.nodes[2]\r\n \r\n         # Connect and generate block to ensure IBD=false\r\n+        self.connect_nodes(0, 1)\r\n         self.connect_nodes(1, 2)\r\n-        self.connect_nodes(0, 2)\r\n         self.generate(miner, 1, sync_fun=self.no_op)\r\n \r\n         # Verify all peers are at the same height\r\n         self.sync_blocks([miner, pruned_node])\r\n                                      \r\n         # Verify peers are out of IBD\r\n         for node in self.nodes:\r\n             assert not node.getblockchaininfo()['initialblockdownload']    \r\n \r\n         # Disconnect full_node from the other two peers (the node will remain out of IBD)\r\n-        self.disconnect_nodes(0, 2)\r\n         self.disconnect_nodes(1, 2)                                       \r\n         assert_equal(len(full_node.getpeerinfo()), 0)                     \r\n \r\n         # Mine blocks and sync the pruned node. Surpass the NETWORK_NODE_LIMITED threshold.\r\n```\r\n\r\nIt is also shorter and I think more clear.",
+      "_gold_comment_url": "https://github.com/bitcoin/bitcoin/pull/28120#discussion_r1389526651"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 102
+}

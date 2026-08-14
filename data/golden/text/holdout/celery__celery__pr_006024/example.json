@@ -1,0 +1,41 @@
+{
+  "example_id": "celery__celery__pr_006024",
+  "source": "github-codereview",
+  "repository": "celery/celery",
+  "commit_sha": "dfedf3dc3f51899b3074b68366cc7b384961dbdd",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Clean TraceBack to reduce memory leaks for exception task",
+    "description": "*Note*: Before submitting this pull request, please review our [contributing\r\nguidelines](https://docs.celeryproject.org/en/master/contributing.html).\r\n\r\n## Description\r\n\r\n<!-- Please describe your pull request.\r\n\r\nNOTE: All patches should be made against master, not a maintenance branch like\r\n3.1, 2.5, etc.  That is unless the bug is already fixed in master, but not in\r\nthat version series.\r\n\r\nIf it fixes a bug or resolves a feature request,\r\nbe sure to link to that issue via (Fixes #4412) for example.\r\n-->\r\nFixes: #6023\r\n\r\nIt seems that a frame leak is occurring in the use of the e value returned by 'Execption as e'. Del tb is not enough. So we clean up the traceback in the last part that can be explicit.",
+    "url": "https://github.com/celery/celery/pull/6024"
+  },
+  "changed_files": [
+    "celery/app/trace.py",
+    "celery/backends/base.py",
+    "t/unit/backends/test_base.py",
+    "t/unit/tasks/test_trace.py"
+  ],
+  "diff_path": "text/holdout/celery__celery__pr_006024/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "celery/backends/base.py",
+      "line": 262,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "Sorry I'm a little \"late to the party\" here, but if I may, I want to forward a couple of question for @heedong-jung (perhaps for a future improvement):\r\n\r\n1. Could we use [`traceback.clear_frames()`][1], introduced in python 3.4, to avoid manually iterating over and clearing the frame data above?\r\n\r\n2. Are we not able to add an integration test, to more explicitly check for memory leaks over task execution?\r\n\r\n3. Would it be possible to reuse the code in `traceback_clear`, eeither by allowing pa",
+      "evidence_requirement": "The added code uses a manual while loop with tb.tb_frame.clear() instead of the simpler traceback.clear_frames(tb) function introduced in Python 3.4.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Using traceback.clear_frames() is more concise, idiomatic, and less error-prone than manually iterating over traceback frames.",
+      "_reviewer_comment_full": "Sorry I'm a little \"late to the party\" here, but if I may, I want to forward a couple of question for @heedong-jung (perhaps for a future improvement):\r\n\r\n1. Could we use [`traceback.clear_frames()`][1], introduced in python 3.4, to avoid manually iterating over and clearing the frame data above?\r\n\r\n2. Are we not able to add an integration test, to more explicitly check for memory leaks over task execution?\r\n\r\n3. Would it be possible to reuse the code in `traceback_clear`, eeither by allowing passing a traceback object, or perhaps by splitting into separate \"extract traceback from exception\" and \"clear traceback frames\"?\r\n\r\n4. Do you believe it's related to (or resolves) issue #6058 ?\r\n\r\nI believe that with the above information, I can start working on improvements where needed.\r\n\r\n[1]: https://docs.python.org/3.5/library/traceback.html#traceback.clear_frames",
+      "_gold_comment_url": "https://github.com/celery/celery/pull/6024#discussion_r422469173"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 67
+}

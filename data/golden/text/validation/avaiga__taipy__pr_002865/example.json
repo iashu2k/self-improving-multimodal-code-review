@@ -1,0 +1,25 @@
+{
+  "example_id": "avaiga__taipy__pr_002865",
+  "source": "github-codereview",
+  "repository": "Avaiga/taipy",
+  "commit_sha": "d4187668688a4e35ce3764d5e3d62c8b6a9a5da7",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Documentation error in decimator usage.",
+    "description": "## What type of PR is this? (Check all that apply)\r\n\r\n- [ ] \ud83d\udee0 Refactor\r\n- [ ] \u2728 Feature\r\n- [ ] \ud83d\udc1b Bug Fix\r\n- [ ] \u26a1 Optimization\r\n- [x] \ud83d\udcdd Documentation Update\r\n\r\n## Description\r\n\r\nChart's decimator property is not properly documented.\r\n\r\n\r\n## How to reproduce the issue\r\n\r\n<!-- Provide step-by-step instructions to reproduce the issue or test the feature. -->\r\n\r\n## Backporting\r\n\r\nThis change should be backported to Taipy 4.1.\r\n\r\n## Checklist\r\n_We encourage keeping the code coverage percentage at **80% or above**._\r\n\r\n- [x] \u2705 This solution meets the acceptance criteria of the related issue.\r\n- [x] \ud83d\udcda The **documentation** has been updated, or a dedicated issue has been created.\r\n",
+    "url": "https://github.com/Avaiga/taipy/pull/2865"
+  },
+  "changed_files": [
+    "frontend/taipy-gui/extension-index.md",
+    "taipy/gui/gui.py",
+    "taipy/gui/viselements.json"
+  ],
+  "diff_path": "text/validation/avaiga__taipy__pr_002865/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "validation",
+  "snapshot_id": 90
+}

@@ -1,0 +1,543 @@
+diff --git a/.changeset/thin-mails-behave.md b/.changeset/thin-mails-behave.md
+new file mode 100644
+index 00000000000..f0eaba0c1f8
+--- /dev/null
++++ b/.changeset/thin-mails-behave.md
+@@ -0,0 +1,6 @@
++---
++"@gradio/core": minor
++"gradio": minor
++---
++
++feat:Display performance metrics for API/MCP requests in View API page
+diff --git a/gradio/mcp.py b/gradio/mcp.py
+index 5723118084f..c5ab8cb2ba8 100644
+--- a/gradio/mcp.py
++++ b/gradio/mcp.py
+@@ -845,6 +845,7 @@ async def get_complete_schema(self, request) -> JSONResponse:
+                 "description": description,
+                 "inputSchema": schema,
+                 "meta": meta,
++                "endpoint_name": block_fn.api_name,
+             }
+             schemas.append(info)
+
+diff --git a/gradio/queueing.py b/gradio/queueing.py
+index 79a42770080..9b595574f25 100644
+--- a/gradio/queueing.py
++++ b/gradio/queueing.py
+@@ -12,6 +12,9 @@
+ from typing import TYPE_CHECKING, Literal, cast
+
+ import fastapi
++import numpy as np
++import pandas as pd
++from anyio.to_thread import run_sync
+
+ from gradio import route_utils, routes, wasm_utils
+ from gradio.data_classes import (
+@@ -137,6 +140,39 @@ def __init__(
+             default_concurrency_limit
+         )
+         self.event_analytics: dict[str, dict[str, float | str | None]] = {}
++        self.cached_event_analytics_summary = {"functions": {}}
++        self.n_events_since_last_analytics_cache = 0
++        self.ANAYLTICS_CACHE_FREQUENCY = int(
++            os.getenv("GRADIO_ANALYTICS_CACHE_FREQUENCY", "10")
++        )
++
++    def compute_analytics_summary(self, event_analytics):
++        if (
++            len(event_analytics) - self.n_events_since_last_analytics_cache
++            >= self.ANAYLTICS_CACHE_FREQUENCY
++        ):
++            df = pd.DataFrame(list(event_analytics.values()))
++            self.n_events_since_last_analytics_cache = len(event_analytics)
++            grouped = df.groupby("function")
++            metrics = {"functions": {}}
++            for fn_name, fn_df in grouped:
++                status = fn_df["status"].values
++                success = np.sum(status == "success")
++                failure = np.sum(status == "failure")
++                total = success + failure
++                success_rate = success / total if total > 0 else None
++                percentiles = np.percentile(fn_df["process_time"].values, [50, 90, 99])  # type: ignore
++                metrics["functions"][fn_name] = {
++                    "success_rate": success_rate,
++                    "process_time_percentiles": {
++                        "50th": percentiles[0],  # type: ignore
++                        "90th": percentiles[1],  # type: ignore
++                        "99th": percentiles[2],  # type: ignore
++                    },
++                    "total_requests": fn_df.shape[0],
++                }
++            self.cached_event_analytics_summary = metrics
++        return self.cached_event_analytics_summary
+
+     def start(self):
+         self.active_jobs = [None] * self.max_thread_count
+@@ -799,6 +835,7 @@ async def process_events(
+                     )
+                 else:
+                     self.event_analytics[event._id]["status"] = "cancelled"
++                await run_sync(self.compute_analytics_summary, self.event_analytics)
+
+     async def reset_iterators(self, event_id: str):
+         # Do the same thing as the /reset route
+diff --git a/gradio/routes.py b/gradio/routes.py
+index 27dbf7e5fd8..d30715b32a6 100644
+--- a/gradio/routes.py
++++ b/gradio/routes.py
+@@ -1835,6 +1835,10 @@ async def analytics_login(request: fastapi.Request):
+             print(f"* Monitoring URL: {monitoring_url} *")
+             return HTMLResponse("See console for monitoring URL.")
+
++        @app.get("/monitoring/summary")
++        async def _():
++            return app.get_blocks()._queue.cached_event_analytics_summary
++
+         @app.get("/monitoring/{key}")
+         async def analytics_dashboard(key: str):
+             if not blocks.enable_monitoring:
+diff --git a/js/core/src/api_docs/ApiDocs.svelte b/js/core/src/api_docs/ApiDocs.svelte
+index 99024a2e800..849ec3b63a7 100644
+--- a/js/core/src/api_docs/ApiDocs.svelte
++++ b/js/core/src/api_docs/ApiDocs.svelte
+@@ -99,6 +99,7 @@
+ 	};
+
+ 	let js_info: Record<string, any>;
++	let analytics: Record<string, any>;
+
+ 	get_info().then((data) => {
+ 		info = data;
+@@ -108,6 +109,18 @@
+ 		js_info = js_api_info;
+ 	});
+
++	async function get_summary(): Promise<{
++		functions: any;
++	}> {
++		let response = await fetch(root.replace(/\/$/, "") + "/monitoring/summary");
++		let data = await response.json();
++		return data;
++	}
++
++	get_summary().then((summary) => {
++		analytics = summary.functions;
++	});
++
+ 	const dispatch = createEventDispatcher();
+
+ 	$: selected_tools_array = Array.from(selected_tools);
+@@ -149,6 +162,7 @@
+ 			mcp_type: "tool" | "resource" | "prompt";
+ 			file_data_present: boolean;
+ 		};
++		endpoint_name: string;
+ 	}
+
+ 	let tools: Tool[] = [];
+@@ -192,7 +206,8 @@
+ 				description: tool.description || "",
+ 				parameters: tool.inputSchema?.properties || {},
+ 				meta: tool.meta,
+-				expanded: false
++				expanded: false,
++				endpoint_name: tool.endpoint_name
+ 			}));
+ 			selected_tools = new Set(tools.map((tool) => tool.name));
+ 			headers = schema.map((tool: any) => tool.meta?.headers || []).flat();
+@@ -260,6 +275,9 @@
+ 	}
+
+ 	onMount(() => {
++		const controller = new AbortController();
++		const signal = controller.signal;
++
+ 		document.body.style.overflow = "hidden";
+ 		if ("parentIFrame" in window) {
+ 			window.parentIFrame?.scrollTo(0, 0);
+@@ -271,7 +289,7 @@
+ 		}
+
+ 		// Check MCP server status and fetch tools if active
+-		fetch(mcp_server_url)
++		fetch(mcp_server_url, { signal: signal })
+ 			.then((response) => {
+ 				mcp_server_active = response.ok;
+ 				if (mcp_server_active) {
+@@ -284,6 +302,7 @@
+ 						current_language = "python";
+ 					}
+ 				}
++				controller.abort();
+ 			})
+ 			.catch(() => {
+ 				mcp_server_active = false;
+@@ -295,7 +314,7 @@
+ 	});
+ </script>
+
+-{#if info}
++{#if info && analytics}
+ 	{#if api_count}
+ 		<div class="banner-wrap">
+ 			<ApiBanner
+@@ -385,6 +404,7 @@
+ 								{mcp_json_stdio}
+ 								{file_data_present}
+ 								{mcp_docs}
++								{analytics}
+ 							/>
+ 						{:else}
+ 							1. Confirm that you have cURL installed on your system.
+@@ -461,6 +481,7 @@
+ 									api_description={info.named_endpoints[
+ 										"/" + dependency.api_name
+ 									].description}
++									{analytics}
+ 								/>
+
+ 								<ParametersSnippet
+diff --git a/js/core/src/api_docs/CodeSnippet.svelte b/js/core/src/api_docs/CodeSnippet.svelte
+index ae46f888f05..9f79584c614 100644
+--- a/js/core/src/api_docs/CodeSnippet.svelte
++++ b/js/core/src/api_docs/CodeSnippet.svelte
+@@ -22,6 +22,7 @@
+ 	export let username: string | null;
+ 	export let current_language: "python" | "javascript" | "bash";
+ 	export let api_description: string | null = null;
++	export let analytics: Record<string, any>;
+
+ 	let python_code: HTMLElement;
+ 	let js_code: HTMLElement;
+@@ -44,6 +45,7 @@
+ 	<EndpointDetail
+ 		api_name={dependency.api_name}
+ 		description={api_description}
++		{analytics}
+ 	/>
+ 	{#if current_language === "python"}
+ 		<Block>
+@@ -56,13 +58,13 @@
+ 							class="highlight">import</span
+ 						> Client{#if has_file_path}, handle_file{/if}
+
+-client = Client(<span class="token string">"{space_id || root}"</span
++	client = Client(<span class="token string">"{space_id || root}"</span
+ 						>{#if username !== null}, auth=("{username}", **password**){/if})
+-result = client.<span class="highlight">predict</span
++	result = client.<span class="highlight">predict</span
+ 						>(<!--
+--->{#each endpoint_parameters as { python_type, example_input, parameter_name, parameter_has_default, parameter_default }, i}<!--
+-        -->
+-		{parameter_name
++	-->{#each endpoint_parameters as { python_type, example_input, parameter_name, parameter_has_default, parameter_default }, i}<!--
++			-->
++			{parameter_name
+ 								? parameter_name + "="
+ 								: ""}<span
+ 								>{represent_value(
+@@ -72,11 +74,11 @@ result = client.<span class="highlight">predict</span
+ 								)}</span
+ 							>,{/each}<!--
+
+-		-->
+-		api_name=<span class="api-name">"/{dependency.api_name}"</span><!--
+-		-->
+-)
+-<span class="highlight">print</span>(result)</pre>
++			-->
++			api_name=<span class="api-name">"/{dependency.api_name}"</span><!--
++			-->
++	)
++	<span class="highlight">print</span>(result)</pre>
+ 				</div>
+ 			</code>
+ 		</Block>
+@@ -88,44 +90,44 @@ result = client.<span class="highlight">predict</span
+ 				</div>
+ 				<div bind:this={js_code}>
+ 					<pre>import &lbrace; Client &rbrace; from "@gradio/client";
+-{#each blob_examples as { component, example_input }, i}<!--
+--->
+-const response_{i} = await fetch("{example_input.url}");
+-const example{component} = await response_{i}.blob();
++	{#each blob_examples as { component, example_input }, i}<!--
++	-->
++	const response_{i} = await fetch("{example_input.url}");
++	const example{component} = await response_{i}.blob();
+ 						{/each}<!--
+--->
+-const client = await Client.connect(<span class="token string"
++	-->
++	const client = await Client.connect(<span class="token string"
+ 							>"{space_id || root}"</span
+ 						>{#if username !== null}, &lbrace;auth: ["{username}", **password**]&rbrace;{/if});
+-const result = await client.predict(<span class="api-name"
++	const result = await client.predict(<span class="api-name"
+ 							>"/{dependency.api_name}"</span
+ 						>, &lbrace; <!--
+--->{#each endpoint_parameters as { label, parameter_name, type, python_type, component, example_input, serializer }, i}<!--
+-		-->{#if blob_components.includes(component)}<!--
+-	-->
+-				<span
++	-->{#each endpoint_parameters as { label, parameter_name, type, python_type, component, example_input, serializer }, i}<!--
++			-->{#if blob_components.includes(component)}<!--
++		-->
++					<span
+ 									class="example-inputs"
+ 									>{parameter_name}: example{component}</span
+ 								>, <!--
+-		--><span class="desc"><!--
+-		--></span
++			--><span class="desc"><!--
++			--></span
+ 								><!--
+-		-->{:else}<!--
+-	-->
+-		<span class="example-inputs"
++			-->{:else}<!--
++		-->
++			<span class="example-inputs"
+ 									>{parameter_name}: {represent_value(
+ 										example_input,
+ 										python_type.type,
+ 										"js"
+ 									)}</span
+ 								>, <!--
+---><!--
+--->{/if}
++	--><!--
++	-->{/if}
+ 						{/each}
+-&rbrace;);
++	&rbrace;);
+
+-console.log(result.data);
+-</pre>
++	console.log(result.data);
++	</pre>
+ 				</div>
+ 			</code>
+ 		</Block>
+@@ -138,18 +140,18 @@ console.log(result.data);
+
+ 				<div bind:this={bash_post_code}>
+ 					<pre>curl -X POST {normalised_root}{normalised_api_prefix}/call/{dependency.api_name} -s -H "Content-Type: application/json" -d '{"{"}
+-  "data": [{#each endpoint_parameters as { label, parameter_name, type, python_type, component, example_input, serializer }, i}
++	"data": [{#each endpoint_parameters as { label, parameter_name, type, python_type, component, example_input, serializer }, i}
+ 							<!--
+--->{represent_value(
++	-->{represent_value(
+ 								example_input,
+ 								python_type.type,
+ 								"bash"
+ 							)}{#if i < endpoint_parameters.length - 1},
+ 							{/if}
+ 						{/each}
+-]{"}"}' \
+-  | awk -F'"' '{"{"} print $4{"}"}'  \
+-  | read EVENT_ID; curl -N {normalised_root}{normalised_api_prefix}/call/{dependency.api_name}/$EVENT_ID</pre>
++	]{"}"}' \
++	| awk -F'"' '{"{"} print $4{"}"}'  \
++	| read EVENT_ID; curl -N {normalised_root}{normalised_api_prefix}/call/{dependency.api_name}/$EVENT_ID</pre>
+ 				</div>
+ 			</code>
+ 		</Block>
+diff --git a/js/core/src/api_docs/EndpointDetail.svelte b/js/core/src/api_docs/EndpointDetail.svelte
+index 4b8697cdfb7..6e6ade56ef2 100644
+--- a/js/core/src/api_docs/EndpointDetail.svelte
++++ b/js/core/src/api_docs/EndpointDetail.svelte
+@@ -1,12 +1,26 @@
+ <script lang="ts">
+ 	export let api_name: string | null = null;
+ 	export let description: string | null = null;
++	export let analytics: Record<string, any>;
++	import { format_latency } from "./utils";
+ </script>
+
+ <h3>
+ 	API name:
+ 	<span class="post">{"/" + api_name}</span>
+ 	<span class="desc">{description}</span>
++	{#if analytics && api_name && analytics[api_name]}
++		<span class="analytics">
++			Success: {Math.round(analytics[api_name].success_rate * 100)}%
++			&nbsp;|&nbsp; Total: {analytics[api_name].total_requests}
++			&nbsp;|&nbsp; p50/p90/p99:
++			{format_latency(analytics[api_name].process_time_percentiles["50th"])}
++			/
++			{format_latency(analytics[api_name].process_time_percentiles["90th"])}
++			/
++			{format_latency(analytics[api_name].process_time_percentiles["99th"])}
++		</span>
++	{/if}
+ </h3>
+
+ <style>
+@@ -28,8 +42,13 @@
+ 		font-weight: var(--weight-semibold);
+ 	}
+
+-	.desc {
++	.analytics {
+ 		color: var(--body-text-color-subdued);
++		margin-top: var(--size-1);
++	}
++
++	.desc {
++		color: var(--body-text-color);
+ 		font-size: var(--text-lg);
+ 		margin-top: var(--size-1);
+ 	}
+diff --git a/js/core/src/api_docs/MCPSnippet.svelte b/js/core/src/api_docs/MCPSnippet.svelte
+index 5c2b99bdd1b..e8dced931f6 100644
+--- a/js/core/src/api_docs/MCPSnippet.svelte
++++ b/js/core/src/api_docs/MCPSnippet.svelte
+@@ -2,6 +2,7 @@
+ 	import { Block } from "@gradio/atoms";
+ 	import CopyButton from "./CopyButton.svelte";
+ 	import { Tool, Prompt, Resource } from "@gradio/icons";
++	import { format_latency } from "./utils";
+
+ 	export let mcp_server_active: boolean;
+ 	export let mcp_server_url: string;
+@@ -13,6 +14,7 @@
+ 	export let mcp_json_stdio: any;
+ 	export let file_data_present: boolean;
+ 	export let mcp_docs: string;
++	export let analytics: Record<string, any>;
+
+ 	interface ToolParameter {
+ 		title?: string;
+@@ -31,6 +33,7 @@
+ 			mcp_type: "tool" | "resource" | "prompt";
+ 			file_data_present: boolean;
+ 		};
++		endpoint_name: string;
+ 	}
+
+ 	type Transport = "streamable_http" | "sse" | "stdio";
+@@ -220,6 +223,35 @@
+ 									? tool.description
+ 									: "⚠︎ No description provided in function docstring"}
+ 							</span>
++							{#if analytics[tool.endpoint_name]}
++								<span
++									class="tool-analytics"
++									style="color: var(--body-text-color-subdued); margin-left: 1em;"
++								>
++									Success: {Math.round(
++										analytics[tool.endpoint_name].success_rate * 100
++									)}% &nbsp;|&nbsp; Total: {analytics[tool.endpoint_name]
++										.total_requests}
++									&nbsp;|&nbsp; p50/p90/p99:
++									{format_latency(
++										analytics[tool.endpoint_name].process_time_percentiles[
++											"50th"
++										]
++									)}
++									/
++									{format_latency(
++										analytics[tool.endpoint_name].process_time_percentiles[
++											"90th"
++										]
++									)}
++									/
++									{format_latency(
++										analytics[tool.endpoint_name].process_time_percentiles[
++											"99th"
++										]
++									)}
++								</span>
++							{/if}
+ 						</span>
+ 						<span class="tool-arrow">{tool.expanded ? "▼" : "▶"}</span>
+ 					</button>
+@@ -344,6 +376,10 @@
+ {/if}
+
+ <style>
++	.tool-analytics {
++		font-size: 0.95em;
++		color: var(--body-text-color-subdued);
++	}
+ 	.transport-selection {
+ 		margin-bottom: var(--size-4);
+ 	}
+diff --git a/js/core/src/api_docs/utils.ts b/js/core/src/api_docs/utils.ts
+index ed4c8b234ac..974cec43f12 100644
+--- a/js/core/src/api_docs/utils.ts
++++ b/js/core/src/api_docs/utils.ts
+@@ -141,3 +141,8 @@ function stringify_except_file_function(obj: any): string {
+ 	const regexNone = /"UNQUOTEDNone"/g;
+ 	return jsonString.replace(regexNone, "None");
+ }
++
++export function format_latency(val: number): string {
++	if (val < 1) return `${Math.round(val * 1000)} ms`;
++	return `${val.toFixed(2)} s`;
++}
+diff --git a/test/test_mcp.py b/test/test_mcp.py
+index e3711b6560d..01c823bed9d 100644
+--- a/test/test_mcp.py
++++ b/test/test_mcp.py
+@@ -186,6 +186,7 @@ def test_mcp_sse_transport(test_mcp_app):
+             {
+                 "name": "test_tool",
+                 "description": "This is a test tool. Returns: - the original value as a string",
++                "endpoint_name": "test_tool",
+                 "inputSchema": {
+                     "type": "object",
+                     "properties": {"x": {"type": "string", "description": ""}},
+diff --git a/test/test_queueing.py b/test/test_queueing.py
+index d6a4314c986..bd61124fe1c 100644
+--- a/test/test_queueing.py
++++ b/test/test_queueing.py
+@@ -108,3 +108,44 @@ def add(x, y):
+
+         add_job_statuses = [add_job_1.status(), add_job_2.status(), add_job_3.status()]
+         assert sorted([s.code.value for s in add_job_statuses]) == statuses
++
++
++def test_analytics_summary(monkeypatch):
++    """Test that the analytics summary endpoint is correctly being computed every N requests,
++    where N is set by the GRADIO_ANALYTICS_CACHE_FREQUENCY environment variable."""
++    monkeypatch.setenv("GRADIO_ANALYTICS_CACHE_FREQUENCY", 2)
++    with gr.Blocks() as demo:
++        name = gr.Textbox()
++        output = gr.Textbox()
++
++        def greet(x):
++            return f"Hello, {x}!"
++
++        name.submit(greet, name, output, api_name="predict")
++
++    _, local_url, _ = demo.launch(prevent_thread_lock=True)
++    test_client = TestClient(demo.app)
++    client = grc.Client(local_url)
++    with test_client as tc:
++        event_analytics = tc.get("/monitoring/summary").json()
++        assert event_analytics == {"functions": {}}
++        client.predict(
++            "a",
++            api_name="/predict",
++        )
++        client.predict(
++            "a",
++            api_name="/predict",
++        )
++        event_analytics = tc.get("/monitoring/summary").json()
++        print("event_analytics", event_analytics)
++        assert "predict" in event_analytics["functions"]
++        assert event_analytics["functions"]["predict"]["total_requests"] == 2
++        client.predict("a", api_name="/predict")
++        event_analytics = tc.get("/monitoring/summary").json()
++        assert "predict" in event_analytics["functions"]
++        assert event_analytics["functions"]["predict"]["total_requests"] == 2
++        client.predict("a", api_name="/predict")
++        event_analytics = tc.get("/monitoring/summary").json()
++        assert "predict" in event_analytics["functions"]
++        assert event_analytics["functions"]["predict"]["total_requests"] == 4

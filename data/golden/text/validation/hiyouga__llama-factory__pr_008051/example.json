@@ -1,0 +1,39 @@
+{
+  "example_id": "hiyouga__llama-factory__pr_008051",
+  "source": "github-codereview",
+  "repository": "hiyouga/LLaMA-Factory",
+  "commit_sha": "f7cce02628f34f782a9edcfb84dbfe4e5d4b1b8c",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[infer] Modify vllm_infer.py to batch preprocess to avoid too much files opened error",
+    "description": "# What does this PR do?\r\n\r\nFixes #7513 \r\n\r\n## Before submitting\r\n\r\n- [x] Did you read the [contributor guideline](https://github.com/hiyouga/LLaMA-Factory/blob/main/.github/CONTRIBUTING.md)?\r\n- [x] Did you write any new necessary tests?\r\n",
+    "url": "https://github.com/hiyouga/LlamaFactory/pull/8051"
+  },
+  "changed_files": [
+    "scripts/vllm_infer.py"
+  ],
+  "diff_path": "text/validation/hiyouga__llama-factory__pr_008051/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "scripts/vllm_infer.py",
+      "line": 130,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "```suggestion\r\nfor i in tqdm(range(0, len(train_dataset), batch_size), desc=\"Processing batches\"):\r\n```\r\nwe can use tqdm here",
+      "evidence_requirement": "The code at line 129 uses `for i in range(0, len(train_dataset), batch_size):` without `tqdm`, despite the reviewer explicitly suggesting to wrap the range with `tqdm(..., desc='Processing batches')`.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would leave this comment to improve user experience by adding a progress bar during long-running batch processing, making the script's execution more transparent.",
+      "_reviewer_comment_full": "```suggestion\r\nfor i in tqdm(range(0, len(train_dataset), batch_size), desc=\"Processing batches\"):\r\n```\r\nwe can use tqdm here",
+      "_gold_comment_url": "https://github.com/hiyouga/LlamaFactory/pull/8051#discussion_r2088041430"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 207
+}

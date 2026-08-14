@@ -1,0 +1,119 @@
+diff --git a/superset/db_engine_specs/base.py b/superset/db_engine_specs/base.py
+index 51a6a8778ba4..5ee83128585b 100644
+--- a/superset/db_engine_specs/base.py
++++ b/superset/db_engine_specs/base.py
+@@ -537,6 +537,11 @@ class BaseEngineSpec:  # pylint: disable=too-many-public-methods
+     # pylint: disable=invalid-name
+     encrypted_extra_sensitive_fields: set[str] = {"$.*"}
+
++    # Labels for sensitive fields in `encrypted_extra`, mapping
++    # JSONPath → display label. Used in import validation error messages
++    # so the UI can show a human-readable name instead of a raw JSONPath.
++    encrypted_extra_sensitive_field_labels: dict[str, str] = {}
++
+     # Whether the engine supports file uploads
+     # if True, database will be listed as option in the upload file form
+     supports_file_upload = True
+diff --git a/superset/db_engine_specs/bigquery.py b/superset/db_engine_specs/bigquery.py
+index 1284464ab7c9..290011530398 100644
+--- a/superset/db_engine_specs/bigquery.py
++++ b/superset/db_engine_specs/bigquery.py
+@@ -192,6 +192,9 @@ class BigQueryEngineSpec(BaseEngineSpec):  # pylint: disable=too-many-public-met
+     # when editing the database, mask this field in `encrypted_extra`
+     # pylint: disable=invalid-name
+     encrypted_extra_sensitive_fields = {"$.credentials_info.private_key"}
++    encrypted_extra_sensitive_field_labels = {
++        "$.credentials_info.private_key": "Service Account Private Key",
++    }
+
+     """
+     https://www.python.org/dev/peps/pep-0249/#arraysize
+diff --git a/superset/db_engine_specs/gsheets.py b/superset/db_engine_specs/gsheets.py
+index 780f92cc750f..00b3fbd9618a 100644
+--- a/superset/db_engine_specs/gsheets.py
++++ b/superset/db_engine_specs/gsheets.py
+@@ -133,6 +133,10 @@ class GSheetsEngineSpec(ShillelaghEngineSpec):
+         "$.service_account_info.private_key",
+         "$.oauth2_client_info.secret",
+     }
++    encrypted_extra_sensitive_field_labels = {
++        "$.service_account_info.private_key": "Service Account Private Key",
++        "$.oauth2_client_info.secret": "OAuth2 Client Secret",
++    }
+
+     custom_errors: dict[Pattern[str], tuple[str, SupersetErrorType, dict[str, Any]]] = {
+         SYNTAX_ERROR_REGEX: (
+diff --git a/superset/db_engine_specs/mysql.py b/superset/db_engine_specs/mysql.py
+index b6cba3906a6e..0438964ce506 100644
+--- a/superset/db_engine_specs/mysql.py
++++ b/superset/db_engine_specs/mysql.py
+@@ -310,6 +310,10 @@ class MySQLEngineSpec(BasicParametersMixin, BaseEngineSpec):
+         "$.aws_iam.external_id",
+         "$.aws_iam.role_arn",
+     }
++    encrypted_extra_sensitive_field_labels = {
++        "$.aws_iam.external_id": "AWS IAM External ID",
++        "$.aws_iam.role_arn": "AWS IAM Role ARN",
++    }
+
+     @staticmethod
+     def update_params_from_encrypted_extra(
+diff --git a/superset/db_engine_specs/postgres.py b/superset/db_engine_specs/postgres.py
+index c407e3d7fb15..c95323be3573 100644
+--- a/superset/db_engine_specs/postgres.py
++++ b/superset/db_engine_specs/postgres.py
+@@ -467,6 +467,10 @@ class PostgresEngineSpec(BasicParametersMixin, PostgresBaseEngineSpec):
+         "$.aws_iam.external_id",
+         "$.aws_iam.role_arn",
+     }
++    encrypted_extra_sensitive_field_labels = {
++        "$.aws_iam.external_id": "AWS IAM External ID",
++        "$.aws_iam.role_arn": "AWS IAM Role ARN",
++    }
+
+     column_type_mappings = (
+         (
+diff --git a/superset/db_engine_specs/redshift.py b/superset/db_engine_specs/redshift.py
+index fcdfab16967e..b2400e699c8f 100644
+--- a/superset/db_engine_specs/redshift.py
++++ b/superset/db_engine_specs/redshift.py
+@@ -209,6 +209,10 @@ def normalize_table_name_for_upload(
+         "$.aws_iam.external_id",
+         "$.aws_iam.role_arn",
+     }
++    encrypted_extra_sensitive_field_labels = {
++        "$.aws_iam.external_id": "AWS IAM External ID",
++        "$.aws_iam.role_arn": "AWS IAM Role ARN",
++    }
+
+     @staticmethod
+     def update_params_from_encrypted_extra(
+diff --git a/superset/db_engine_specs/snowflake.py b/superset/db_engine_specs/snowflake.py
+index 3f541699f055..094078c4bd18 100644
+--- a/superset/db_engine_specs/snowflake.py
++++ b/superset/db_engine_specs/snowflake.py
+@@ -154,6 +154,10 @@ class SnowflakeEngineSpec(PostgresBaseEngineSpec):
+         "$.auth_params.privatekey_body",
+         "$.auth_params.privatekey_pass",
+     }
++    encrypted_extra_sensitive_field_labels = {
++        "$.auth_params.privatekey_body": "Private Key Body",
++        "$.auth_params.privatekey_pass": "Private Key Password",
++    }
+
+     _time_grain_expressions = {
+         None: "{col}",
+diff --git a/superset/db_engine_specs/ydb.py b/superset/db_engine_specs/ydb.py
+index 07c0b3d5571d..4689fe2e0d98 100755
+--- a/superset/db_engine_specs/ydb.py
++++ b/superset/db_engine_specs/ydb.py
+@@ -44,6 +44,10 @@ class YDBEngineSpec(BaseEngineSpec):
+
+     # pylint: disable=invalid-name
+     encrypted_extra_sensitive_fields = {"$.connect_args.credentials", "$.credentials"}
++    encrypted_extra_sensitive_field_labels = {
++        "$.connect_args.credentials": "Connection Credentials",
++        "$.credentials": "Credentials",
++    }
+
+     disable_ssh_tunneling = False

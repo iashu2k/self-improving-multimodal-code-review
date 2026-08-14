@@ -1,0 +1,44 @@
+{
+  "example_id": "apache__superset__pr_033626",
+  "source": "github-codereview",
+  "repository": "apache/superset",
+  "commit_sha": "4913e23fbdec6747c975c6c5fcf71b5bde5d3ef9",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "fix: Update dataset's last modified date from column/metric update",
+    "description": "### SUMMARY\r\nThe `last_modified` value for datasets was not getting updated in case only metric(s) and/or column(s) changed. I suspect the issue started with the introduction of the `@transaction` decorator + the way we handle these updates:\r\n- Before [SIP-99B](https://github.com/apache/superset/issues/25108), we would `commit` after these changes -- [ref](https://github.com/apache/superset/commit/8fb8199a55257ae5121300aa3bd28d14d327bc33#diff-1fabcc7af69ff8ee94b640857ad3552402286c735a5a770b9d14f204774c8f60L269-L322).\r\n- We're currently using `bulk_insert_mappings` for the update which does not integrate well with SQLAlchemy's state management (and therefore does not trigger an `after_update`) -- [ref](https://github.com/apache/superset/blob/master/superset/daos/dataset.py#L233-L256).\r\n\r\n### BEFORE/AFTER SCREENSHOTS OR ANIMATED GIF\r\n\r\n**Before**\r\n\r\nhttps://github.com/user-attachments/assets/9187b29a-bc63-4c6e-9ee7-8db8254cd4bd\r\n\r\n**After**\r\n\r\nhttps://github.com/user-attachments/assets/67a82bcc-0f57-4450-a540-1968c1526201\r\n\r\n\r\n\r\n### TESTING INSTRUCTIONS\r\n1. Apply a label to a column, and confirm the `last_modified` value for the dataset gets updated.\r\n\r\n### ADDITIONAL INFORMATION\r\n<!--- Check any relevant boxes with \"x\" -->\r\n<!--- HINT: Include \"Fixes #nnn\" if you are fixing an existing issue -->\r\n- [ ] Has associated issue:\r\n- [ ] Required feature flags:\r\n- [ ] Changes UI\r\n- [ ] Includes DB Migration (follow approval process in [SIP-59](https://github.com/apache/superset/issues/13351))\r\n  - [ ] Migration is atomic, supports rollback & is backwards-compatible\r\n  - [ ] Confirm DB migration upgrade and downgrade tested\r\n  - [ ] Runtime estimates and downtime expectations provided\r\n- [ ] Introduces new feature or API\r\n- [ ] Removes existing feature or API\r\n",
+    "url": "https://github.com/apache/superset/pull/33626"
+  },
+  "changed_files": [
+    "superset/connectors/sqla/models.py",
+    "superset/daos/dataset.py",
+    "tests/integration_tests/datasets/api_tests.py",
+    "tests/integration_tests/query_context_tests.py",
+    "tests/unit_tests/commands/dataset/update_test.py",
+    "tests/unit_tests/dao/dataset_test.py"
+  ],
+  "diff_path": "text/holdout/apache__superset__pr_033626/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "tests/integration_tests/datasets/api_tests.py",
+      "line": 1194,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "Optional: You can use `freezegun` to control time and make tests more accurate and efficient.\r\n\r\n```\r\nfrom freezegun import freeze_time\r\n\r\nwith freeze_time(\"2021-01-01T00:00:00Z\"):\r\n   ...\r\n```",
+      "evidence_requirement": "The test uses time.sleep(3) to wait for changed_on to update instead of using freezegun to control time deterministically.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Using real sleep makes tests slower and flaky; freezegun would make them faster and deterministic by mocking time.",
+      "_reviewer_comment_full": "Optional: You can use `freezegun` to control time and make tests more accurate and efficient.\r\n\r\n```\r\nfrom freezegun import freeze_time\r\n\r\nwith freeze_time(\"2021-01-01T00:00:00Z\"):\r\n   ...\r\n```",
+      "_gold_comment_url": "https://github.com/apache/superset/pull/33626#discussion_r2123503618"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 174
+}

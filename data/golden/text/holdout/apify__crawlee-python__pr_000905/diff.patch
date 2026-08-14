@@ -1,0 +1,230 @@
+diff --git a/src/crawlee/http_clients/_httpx.py b/src/crawlee/http_clients/_httpx.py
+index 439b6ea775..49de303075 100644
+--- a/src/crawlee/http_clients/_httpx.py
++++ b/src/crawlee/http_clients/_httpx.py
+@@ -125,10 +125,22 @@ def __init__(
+         )
+         self._http1 = http1
+         self._http2 = http2
+-        self._verify = verify
++
+         self._async_client_kwargs = async_client_kwargs
+         self._header_generator = header_generator
+
++        self._ssl_context = httpx.create_ssl_context(verify=verify)
++
++        # Configure connection pool limits and keep-alive connections for transport
++        limits = async_client_kwargs.get('limits', httpx.Limits(max_connections=1000, max_keepalive_connections=200))
++
++        self._transport = _HttpxTransport(
++            http1=http1,
++            http2=http2,
++            verify=self._ssl_context,
++            limits=limits,
++        )
++
+         self._client_by_proxy_url = dict[Optional[str], httpx.AsyncClient]()
+
+     @override
+@@ -222,18 +234,21 @@ def _get_client(self, proxy_url: str | None) -> httpx.AsyncClient:
+         if proxy_url not in self._client_by_proxy_url:
+             # Prepare a default kwargs for the new client.
+             kwargs: dict[str, Any] = {
+-                'transport': _HttpxTransport(
+-                    proxy=proxy_url, http1=self._http1, http2=self._http2, verify=self._verify
+-                ),
+                 'proxy': proxy_url,
+                 'http1': self._http1,
+                 'http2': self._http2,
+-                'verify': self._verify,
+             }
+
+             # Update the default kwargs with any additional user-provided kwargs.
+             kwargs.update(self._async_client_kwargs)
+
++            kwargs.update(
++                {
++                    'transport': self._transport,
++                    'verify': self._ssl_context,
++                }
++            )
++
+             client = httpx.AsyncClient(**kwargs)
+             self._client_by_proxy_url[proxy_url] = client
+
+diff --git a/src/crawlee/proxy_configuration.py b/src/crawlee/proxy_configuration.py
+index 9abcd552db..e41a8e4b48 100644
+--- a/src/crawlee/proxy_configuration.py
++++ b/src/crawlee/proxy_configuration.py
+@@ -118,6 +118,7 @@ async def new_proxy_info(
+
+         If called repeatedly with the same request, it is assumed that the request is being retried.
+         If a previously used session ID is received, it will return the same proxy url.
++        If neither session_id nor request is provided, a new proxy url will be returned on each call.
+         """
+         if self._proxy_tier_tracker is not None and session_id is None:
+             session_id = crypto_random_object_id(6)
+@@ -157,6 +158,7 @@ async def new_url(
+
+         If called repeatedly with the same request, it is assumed that the request is being retried.
+         If a previously used session ID is received, it will return the same proxy url.
++        If neither session_id nor request is provided, a new proxy url will be returned on each call.
+         """
+         proxy_info = await self.new_proxy_info(session_id, request, proxy_tier)
+         return proxy_info.url if proxy_info else None
+@@ -197,7 +199,7 @@ async def _pick_url(
+         else:
+             raise RuntimeError('Invalid state')
+
+-        if session_id is None or request is not None:
++        if session_id is None:
+             url = urls[self._next_custom_url_index % len(urls)]
+             self._next_custom_url_index += 1
+             return url, proxy_tier
+diff --git a/tests/unit/proxy_configuration/test_new_proxy_info.py b/tests/unit/proxy_configuration/test_new_proxy_info.py
+index c7e6eca1c0..8c0fa3497d 100644
+--- a/tests/unit/proxy_configuration/test_new_proxy_info.py
++++ b/tests/unit/proxy_configuration/test_new_proxy_info.py
+@@ -1,15 +1,12 @@
+ from __future__ import annotations
+
+ from itertools import cycle
+-from typing import TYPE_CHECKING
+
+ import pytest
+
++from crawlee import Request
+ from crawlee.proxy_configuration import ProxyConfiguration
+
+-if TYPE_CHECKING:
+-    from crawlee import Request
+-
+
+ async def test_returns_proxy_info() -> None:
+     """Test that proxy_urls can return contain both string and None."""
+@@ -89,6 +86,7 @@ async def test_rotates_proxies() -> None:
+
+ async def test_rotates_proxies_with_sessions() -> None:
+     proxy_urls: list[str | None] = ['http://proxy:1111', 'http://proxy:2222', 'http://proxy:3333']
++    request = Request(url='http://some.domain/abc', unique_key='1', id='1')
+     sessions = [f'session_{i}' for i in range(6)]
+
+     config = ProxyConfiguration(proxy_urls=proxy_urls)
+@@ -106,12 +104,20 @@ async def test_rotates_proxies_with_sessions() -> None:
+     assert info is not None
+     assert info.url == proxy_urls[0]
+
++    info = await config.new_proxy_info(sessions[0], request, None)
++    assert info is not None
++    assert info.url == proxy_urls[0]
++
++    info = await config.new_proxy_info(sessions[0], request, None)
++    assert info is not None
++    assert info.url == proxy_urls[0]
++
+     # Different sessions should get rotated proxies
+     info = await config.new_proxy_info(sessions[1], None, None)
+     assert info is not None
+     assert info.url == proxy_urls[1]
+
+-    info = await config.new_proxy_info(sessions[2], None, None)
++    info = await config.new_proxy_info(sessions[2], request, None)
+     assert info is not None
+     assert info.url == proxy_urls[2]
+
+@@ -123,10 +129,31 @@ async def test_rotates_proxies_with_sessions() -> None:
+     assert info is not None
+     assert info.url == proxy_urls[1]
+
+-    info = await config.new_proxy_info(sessions[5], None, None)
++    info = await config.new_proxy_info(sessions[5], request, None)
+     assert info is not None
+     assert info.url == proxy_urls[2]
+
++    # Without sessions should get rotated proxies
++    info = await config.new_proxy_info(None, None, None)
++    assert info is not None
++    assert info.url == proxy_urls[0]
++
++    info = await config.new_proxy_info(None, request, None)
++    assert info is not None
++    assert info.url == proxy_urls[1]
++
++    info = await config.new_proxy_info(None, None, None)
++    assert info is not None
++    assert info.url == proxy_urls[2]
++
++    info = await config.new_proxy_info(None, None, None)
++    assert info is not None
++    assert info.url == proxy_urls[0]
++
++    info = await config.new_proxy_info(None, request, None)
++    assert info is not None
++    assert info.url == proxy_urls[1]
++
+
+ @pytest.mark.parametrize(
+     ('url', 'expected_port'),
+diff --git a/tests/unit/proxy_configuration/test_tiers.py b/tests/unit/proxy_configuration/test_tiers.py
+index 0dabc9c267..bf34e448d3 100644
+--- a/tests/unit/proxy_configuration/test_tiers.py
++++ b/tests/unit/proxy_configuration/test_tiers.py
+@@ -66,6 +66,42 @@ async def test_retrying_request_makes_tier_go_up() -> None:
+     assert info.url == tiered_proxy_urls[2][0]
+
+
++async def test_retrying_request_makes_tier_go_up_with_sessions() -> None:
++    tiered_proxy_urls: list[list[str | None]] = [
++        ['http://proxy:1111'],
++        ['http://proxy:2222'],
++        ['http://proxy:3333'],
++        ['http://proxy:4444'],
++    ]
++
++    config = ProxyConfiguration(tiered_proxy_urls=tiered_proxy_urls)
++
++    request = Request(url='http://some.domain/abc', unique_key='1', id='1')
++
++    # Calling `new_proxy_info` with the same request likely means that it is being retried.
++    # However, a single session should always receive the same proxy
++    info = await config.new_proxy_info('session_id', request, None)
++    assert info is not None
++    assert info.url == tiered_proxy_urls[0][0]
++
++    info = await config.new_proxy_info('session_id', request, None)
++    assert info is not None
++    assert info.url == tiered_proxy_urls[0][0]
++
++    info = await config.new_proxy_info('session_id', request, None)
++    assert info is not None
++    assert info.url == tiered_proxy_urls[0][0]
++
++    # For a new session, we will get a proxy from the corresponding tier
++    info = await config.new_proxy_info('session_id2', request, None)
++    assert info is not None
++    assert info.url == tiered_proxy_urls[3][0]
++
++    info = await config.new_proxy_info('session_id2', request, None)
++    assert info is not None
++    assert info.url == tiered_proxy_urls[3][0]
++
++
+ async def test_successful_request_makes_tier_go_down() -> None:
+     """Repeatedly requesting a proxy for a single request will cause the proxy tier to go up -
+     ProxyConfiguration assumes those are retries. Then, requesting a proxy for different requests to the same domain
+@@ -84,13 +120,13 @@ async def test_successful_request_makes_tier_go_down() -> None:
+
+     info = None
+     for tier in tiered_proxy_urls:
+-        info = await config.new_proxy_info('session_id', request_1, None)
++        info = await config.new_proxy_info(None, request_1, None)
+         assert info is not None
+         assert info.url == tier[0]
+
+     for i in range(100):
+         new_request = Request(url=f'http://some.domain/{i}', unique_key=str(i), id=str(i))
+-        info = await config.new_proxy_info('session_id', new_request, None)
++        info = await config.new_proxy_info(None, new_request, None)
+
+     assert info is not None
+     assert info.url == tiered_proxy_urls[0][0]

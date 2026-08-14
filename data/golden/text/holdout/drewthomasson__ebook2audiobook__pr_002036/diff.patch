@@ -1,0 +1,129 @@
+diff --git a/ebook2audiobook.egg-info/PKG-INFO b/ebook2audiobook.egg-info/PKG-INFO
+index 22797f9524..00f263ca92 100644
+--- a/ebook2audiobook.egg-info/PKG-INFO
++++ b/ebook2audiobook.egg-info/PKG-INFO
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: ebook2audiobook
+-Version: 26.7.20
++Version: 26.7.23
+ Summary: Convert eBooks to audiobooks with chapters and metadata
+ Author: Drew Thomasson
+ Project-URL: Homepage, https://github.com/DrewThomasson/ebook2audiobook
+@@ -20,7 +20,7 @@ Requires-Dist: llvmlite
+ Requires-Dist: numba
+ Requires-Dist: librosa>=0.9.2
+ Requires-Dist: pytorch-lightning>=1.7.0
+-Requires-Dist: onnx-simplifier>=0.4.10
++Requires-Dist: onnxsim>=0.4.10
+ Requires-Dist: onnxscript>=0.7.0
+ Requires-Dist: cryptography
+ Requires-Dist: requests
+diff --git a/ebook2audiobook.egg-info/requires.txt b/ebook2audiobook.egg-info/requires.txt
+index 0d02706054..3ba10ec1c7 100644
+--- a/ebook2audiobook.egg-info/requires.txt
++++ b/ebook2audiobook.egg-info/requires.txt
+@@ -8,7 +8,7 @@ llvmlite
+ numba
+ librosa>=0.9.2
+ pytorch-lightning>=1.7.0
+-onnx-simplifier>=0.4.10
++onnxsim>=0.4.10
+ onnxscript>=0.7.0
+ cryptography
+ requests
+diff --git a/lib/classes/device_installer.py b/lib/classes/device_installer.py
+index 8c6d8c99f3..c423c6443e 100644
+--- a/lib/classes/device_installer.py
++++ b/lib/classes/device_installer.py
+@@ -1269,13 +1269,12 @@ def check_numpy(self)->bool:
+     def has_directml_gpu(self)->bool:
+         if self.system != systems['WINDOWS']:
+             return False
+-        cmd = (
+-            'powershell -NoProfile -NonInteractive -Command '
+-            '"Get-CimInstance Win32_VideoController | '
+-            'Select-Object -ExpandProperty Name"'
+-        )
++        cmd = [
++            'powershell', '-NoProfile', '-NonInteractive', '-Command',
++            'Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name'
++        ]
+         try:
+-            out = subprocess.check_output(cmd, shell=True, stderr=subprocess.DEVNULL, timeout=30).decode(errors='ignore').lower()
++            out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=30).decode(errors='ignore').lower()
+         except Exception as e:
+             error = f'has_directml_gpu(): {e}'
+             print(error)
+@@ -1292,7 +1291,7 @@ def has_directml_gpu(self)->bool:
+
+     def check_onnxruntime_pkg(self)->Union[str, None]:
+         name, tag, msg = self.check_hardware
+-        if self.python_version >= (3, 12) and (devices['CUDA']['found'] or devices['XPU']['found'] or devices['ROCM']['found']):
++        if self.python_version >= (3, 12) and (devices['CUDA']['found'] or devices['XPU']['found'] or devices['ROCM']['found'] or devices['JETSON']['found']):
+             if self.get_package_version('onnxruntime-gpu'):
+                 return None
+             if self.get_package_version('onnxruntime-directml'):
+diff --git a/lib/gradio.py b/lib/gradio.py
+index 703a095f07..6a806ef7dc 100644
+--- a/lib/gradio.py
++++ b/lib/gradio.py
+@@ -1161,7 +1161,7 @@ def _restore_interface(session_id:str, req:gr.Request)->tuple:
+                     if session and session.get('id', False):
+                         socket_hash = str(req.session_hash)
+                         if not session.get(socket_hash):
+-                            outputs = tuple([gr.update() for _ in range(32)])
++                            outputs = tuple([gr.update() for _ in range(len(outputs_restore_interface))])
+                             return outputs
+                         ebook_data = None
+                         ebook_textarea = None
+@@ -1259,7 +1259,7 @@ def _restore_interface(session_id:str, req:gr.Request)->tuple:
+                 except Exception as e:
+                     error = f'_restore_interface(): {e}'
+                     exception_alert(session_id, error)
+-                outputs = tuple([gr.update() for _ in range(32)])
++                outputs = tuple([gr.update() for _ in range(len(outputs_restore_interface))])
+                 return outputs
+
+             def _restore_audiobook_player(session_id:str, audiobook:str|None)->tuple:
+@@ -1321,7 +1321,7 @@ def _click_gr_abs_upload_btn(session_id:str)->tuple:
+                         return (gr.update(interactive=True), 'Session not found')
+                     audiobook = session.get('audiobook')
+                     if not audiobook or not os.path.isfile(str(audiobook)):
+-                        return (gr.update(interactive=True), '<span>No audiobook to upload</span>')
++                        return (gr.update(interactive=True), 'No audiobook to upload')
+                     from lib.classes.audiobookshelf import upload_to_abs
+                     from urllib.parse import urlparse
+                     title = Path(audiobook).stem
+@@ -1330,17 +1330,17 @@ def _click_gr_abs_upload_btn(session_id:str)->tuple:
+                     api_token = str(session.get('abs_api_token') or '')
+                     library_id = str(session.get('abs_library_id') or '')
+                     if not server_url or not api_token or not library_id:
+-                        return (gr.update(interactive=True), '<span>Configure ABS settings first</span>')
++                        return (gr.update(interactive=True), 'Configure ABS settings first')
+                     parsed = urlparse(server_url)
+                     if not parsed.scheme or not parsed.netloc:
+-                        return (gr.update(interactive=True), '<span>Invalid server URL</span>')
++                        return (gr.update(interactive=True), 'Invalid server URL')
+                     ok, msg = upload_to_abs([audiobook], title, author, server_url, api_token, library_id)
+                     if ok:
+-                        return (gr.update(interactive=True), f'<span>{msg}</span>')
++                        return (gr.update(interactive=True), f'{msg}')
+                     else:
+-                        return (gr.update(interactive=True), f'<span>Error: {msg}</span>')
++                        return (gr.update(interactive=True), f'Error: {msg}')
+                 except Exception as e:
+-                    return (gr.update(interactive=True), f'<span>Error: {e}</span>')
++                    return (gr.update(interactive=True), f'Error: {e}')
+
+             def _refresh_interface(session_id:str)->tuple:
+                 try:
+@@ -3583,7 +3583,7 @@ def _chain_enable(event, always=False):
+                 fn=_click_gr_abs_upload_btn,
+                 inputs=[gr_session],
+                 outputs=[gr_abs_upload_btn, gr_abs_status],
+-                show_progress_on=[gr_progress]
++                show_progress_on=[gr_abs_status]
+             )
+             ############
+             app.load(

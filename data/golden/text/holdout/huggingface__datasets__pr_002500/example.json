@@ -1,0 +1,51 @@
+{
+  "example_id": "huggingface__datasets__pr_002500",
+  "source": "github-codereview",
+  "repository": "huggingface/datasets",
+  "commit_sha": "c89dab6e0b5799f57bcb2931fd5fa1169b71af55",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Add load_dataset_builder",
+    "description": "Adds the `load_dataset_builder` function. The good thing is that we can reuse this function to load the dataset info without downloading the dataset itself.\r\n\r\nTODOs:\r\n- [x] Add docstring and entry in the docs\r\n- [x] Add tests\r\n\r\nCloses #2484 \r\n",
+    "url": "https://github.com/huggingface/datasets/pull/2500"
+  },
+  "changed_files": [
+    "docs/make.bat",
+    "docs/source/loading_datasets.rst",
+    "docs/source/package_reference/loading_methods.rst",
+    "src/datasets/__init__.py",
+    "src/datasets/builder.py",
+    "src/datasets/load.py",
+    "src/datasets/naming.py",
+    "src/datasets/packaged_modules/__init__.py",
+    "tests/test_load.py"
+  ],
+  "diff_path": "text/holdout/huggingface__datasets__pr_002500/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "src/datasets/packaged_modules/__init__.py",
+      "line": 17,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "I would just remove this replacements.\r\nThey could create some errors (return the same hash while the code is different). And since it would change the hashes, it means that all the cache directories that have been created until now would now be ignored. \r\n\r\n```suggestion\r\n```",
+      "evidence_requirement": "The added lines `line = line.replace(...)` for newline, space, and tab removal alter the input in a way that may cause different code to produce identical hashes.",
+      "must_not_claim": [
+        "causes crash",
+        "exposes secrets",
+        "breaks functionality"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Removing all whitespace and line breaks before hashing can cause distinct code snippets to produce the same hash, breaking cache correctness.",
+      "_reviewer_comment_full": "I would just remove this replacements.\r\nThey could create some errors (return the same hash while the code is different). And since it would change the hashes, it means that all the cache directories that have been created until now would now be ignored. \r\n\r\n```suggestion\r\n```",
+      "_gold_comment_url": "https://github.com/huggingface/datasets/pull/2500#discussion_r662071930"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 212
+}

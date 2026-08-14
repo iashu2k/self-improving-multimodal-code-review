@@ -1,0 +1,24 @@
+{
+  "example_id": "allenai__olmo__pr_000785",
+  "source": "github-codereview",
+  "repository": "allenai/OLMo",
+  "commit_sha": "ae578252b8c6ec8fa166cb6401f634812220e746",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Use Union to support Python<3.10",
+    "description": "",
+    "url": "https://github.com/allenai/OLMo/pull/785"
+  },
+  "changed_files": [
+    "CHANGELOG.md",
+    "olmo/util.py"
+  ],
+  "diff_path": "text/holdout/allenai__olmo__pr_000785/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 81
+}

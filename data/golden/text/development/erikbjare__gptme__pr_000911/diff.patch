@@ -1,0 +1,440 @@
+diff --git a/gptme/tools/choice.py b/gptme/tools/choice.py
+index 1312ae7a8c..e00099a105 100644
+--- a/gptme/tools/choice.py
++++ b/gptme/tools/choice.py
+@@ -101,9 +101,12 @@ def execute_choice(
+     try:
+         import questionary
+     except ImportError:
++        from ..util.install import get_package_install_command
++
++        install_cmd = get_package_install_command("questionary")
+         yield Message(
+             "system",
+-            "questionary library not available. Please install it with: pip install questionary",
++            f"questionary library not available. Please install it with: {install_cmd}",
+         )
+         return
+
+diff --git a/gptme/tools/form.py b/gptme/tools/form.py
+new file mode 100644
+index 0000000000..b79e4a579c
+--- /dev/null
++++ b/gptme/tools/form.py
+@@ -0,0 +1,228 @@
++"""
++Gives the assistant the ability to present a form with multiple fields for user input.
++
++This tool enables structured data collection from users through an interactive form
++with support for different field types: text, select, boolean, and number.
++"""
++
++import json
++import re
++from collections.abc import Generator
++
++from ..message import Message
++from .base import (
++    ConfirmFunc,
++    Parameter,
++    ToolSpec,
++    ToolUse,
++)
++
++instructions = """
++Present a form with multiple fields for user input.
++
++Each field is specified on a separate line with the format:
++  field_name: Prompt text [options]
++
++Field types are inferred from the prompt:
++- Text field (default): `name: What's your name?`
++- Select field: `priority: Priority level [low, medium, high]`
++- Boolean field: `confirm: Are you sure? [yes/no]`
++- Number field: `count: How many? (number)`
++
++The tool will present an interactive form and return the collected data as JSON.
++""".strip()
++
++instructions_format = {
++    "markdown": "Use a code block with the language tag: `form` followed by field definitions.",
++}
++
++
++def examples(tool_format):
++    return f"""
++### Collect project information
++
++> User: I want to start a new project
++> Assistant: Let me gather some information about your project:
++{ToolUse("form", [], '''name: Project name?
++description: Brief description?
++language: Primary language [python, javascript, rust, go, other]
++priority: Priority level [low, medium, high]''').to_output(tool_format)}
++> System: Form submitted:
++```json
++{{"name": "my-awesome-project", "description": "A CLI tool for productivity", "language": "python", "priority": "high"}}
++```
++
++### Simple confirmation form
++
++> User: Deploy to production
++> Assistant: Please confirm the deployment details:
++{ToolUse("form", [], '''environment: Target environment [staging, production]
++confirm: Proceed with deployment? [yes/no]''').to_output(tool_format)}
++> System: Form submitted:
++```json
++{{"environment": "production", "confirm": true}}
++```
++""".strip()
++
++
++def parse_field(line: str) -> dict | None:
++    """Parse a field definition line into a field specification."""
++    line = line.strip()
++    if not line or ":" not in line:
++        return None
++
++    # Split on first colon
++    name, rest = line.split(":", 1)
++    name = name.strip()
++    rest = rest.strip()
++
++    if not name or not rest:
++        return None
++
++    # Check for select options [opt1, opt2, ...]
++    select_match = re.search(r"\[([^\]]+)\]", rest)
++    if select_match:
++        options_str = select_match.group(1)
++        prompt = rest[: select_match.start()].strip()
++        options = [opt.strip() for opt in options_str.split(",")]
++
++        # Check if it's a boolean field [yes/no]
++        if set(opt.lower() for opt in options) == {"yes", "no"}:
++            return {
++                "name": name,
++                "prompt": prompt or f"{name}?",
++                "type": "boolean",
++            }
++        return {
++            "name": name,
++            "prompt": prompt or f"Select {name}:",
++            "type": "select",
++            "options": options,
++        }
++
++    # Check for number field (number)
++    if "(number)" in rest.lower():
++        prompt = rest.replace("(number)", "").replace("(Number)", "").strip()
++        return {
++            "name": name,
++            "prompt": prompt or f"Enter {name}:",
++            "type": "number",
++        }
++
++    # Default to text field
++    return {
++        "name": name,
++        "prompt": rest,
++        "type": "text",
++    }
++
++
++def parse_form_content(content: str) -> list[dict]:
++    """Parse form content into a list of field specifications."""
++    fields = []
++    for line in content.strip().split("\n"):
++        field = parse_field(line)
++        if field:
++            fields.append(field)
++    return fields
++
++
++def execute_form(
++    code: str | None,
++    args: list[str] | None,
++    kwargs: dict[str, str] | None,
++    confirm: ConfirmFunc,
++) -> Generator[Message, None, None]:
++    """Present a form to the user and collect their responses."""
++    if not code:
++        yield Message("system", "No form fields provided")
++        return
++
++    fields = parse_form_content(code)
++    if not fields:
++        yield Message("system", "No valid fields found in form definition")
++        return
++
++    # Import questionary here to handle import errors gracefully
++    try:
++        import questionary
++    except ImportError:
++        from ..util.install import get_package_install_command
++
++        install_cmd = get_package_install_command("questionary")
++        yield Message(
++            "system",
++            f"questionary library not available. Please install it with: {install_cmd}",
++        )
++        return
++
++    results: dict = {}
++
++    try:
++        for field in fields:
++            name = field["name"]
++            prompt = field["prompt"]
++            field_type = field["type"]
++
++            if field_type == "select":
++                value = questionary.select(
++                    prompt,
++                    choices=field["options"],
++                    use_shortcuts=True,
++                ).ask()
++            elif field_type == "boolean":
++                value = questionary.confirm(prompt, default=False).ask()
++            elif field_type == "number":
++                while True:
++                    value_str = questionary.text(prompt).ask()
++                    if value_str is None:
++                        value = None
++                        break
++                    try:
++                        # Try int first, then float
++                        if "." in value_str:
++                            value = float(value_str)
++                        else:
++                            value = int(value_str)
++                        break
++                    except ValueError:
++                        questionary.print("Please enter a valid number")
++            else:  # text
++                value = questionary.text(prompt).ask()
++
++            if value is None:
++                yield Message("system", "Form cancelled")
++                return
++
++            results[name] = value
++
++        # Format results as JSON
++        results_json = json.dumps(results, indent=2)
++        yield Message("system", f"Form submitted:\n```json\n{results_json}\n```")
++
++    except (KeyboardInterrupt, EOFError):
++        yield Message("system", "Form cancelled")
++    except Exception as e:
++        yield Message("system", f"Error during form input: {e}")
++
++
++tool_form = ToolSpec(
++    name="form",
++    desc="Present a form with multiple fields for user input",
++    instructions=instructions,
++    instructions_format=instructions_format,
++    examples=examples,
++    execute=execute_form,
++    block_types=["form"],
++    disabled_by_default=True,
++    parameters=[
++        Parameter(
++            name="fields",
++            type="string",
++            description="Form field definitions, one per line",
++            required=True,
++        ),
++    ],
++)
++
++__doc__ = tool_form.get_doc(__doc__)
+diff --git a/gptme/util/install.py b/gptme/util/install.py
+new file mode 100644
+index 0000000000..7579d431a9
+--- /dev/null
++++ b/gptme/util/install.py
+@@ -0,0 +1,68 @@
++"""Utilities for detecting installation environment and generating install commands."""
++
++import os
++import sys
++
++
++def detect_install_environment() -> str:
++    """
++    Detect how gptme is installed.
++
++    Returns:
++        Environment type: 'pipx', 'uvx', 'venv', or 'system'
++    """
++    # Check for pipx
++    if os.environ.get("PIPX_HOME") or "pipx/venvs" in sys.prefix:
++        return "pipx"
++
++    # Check for uvx (comprehensive cross-platform detection to avoid false positives)
++    if (
++        "/.uv/" in sys.prefix
++        or "\\.uv\\" in sys.prefix
++        or "/uv/" in sys.prefix
++        or "\\uv\\" in sys.prefix
++        or sys.prefix.endswith("/.uv")
++        or sys.prefix.endswith("\\.uv")
++        or sys.prefix.endswith("/uv")
++        or sys.prefix.endswith("\\uv")
++        or os.environ.get("UV_HOME")
++    ):
++        return "uvx"
++
++    # Check for virtualenv
++    if sys.prefix != sys.base_prefix:
++        return "venv"
++
++    return "system"
++
++
++def get_package_install_command(package: str, env_type: str | None = None) -> str:
++    """
++    Get the install command for a package based on the current environment.
++
++    Args:
++        package: Package name (e.g., 'questionary' or 'gptme[browser]')
++        env_type: Environment type ('pipx', 'uvx', 'venv', 'system').
++                  If None, auto-detects using detect_install_environment()
++
++    Returns:
++        Installation command string appropriate for the environment
++
++    Examples:
++        >>> get_package_install_command('questionary')  # in pipx env
++        'pipx inject gptme questionary'
++        >>> get_package_install_command('questionary')  # in venv
++        'pip install questionary'
++    """
++    if env_type is None:
++        env_type = detect_install_environment()
++
++    if env_type == "pipx":
++        return f"pipx inject gptme {package}"
++    elif env_type == "uvx":
++        # uvx runs in ephemeral environments, use uv pip with --system
++        return f"uv pip install {package}"
++    elif env_type == "venv":
++        return f"pip install {package}"
++    else:  # system
++        return f"pip install --user {package}"
+diff --git a/tests/test_tools_form.py b/tests/test_tools_form.py
+new file mode 100644
+index 0000000000..2fd49deb5c
+--- /dev/null
++++ b/tests/test_tools_form.py
+@@ -0,0 +1,108 @@
++"""Tests for the form tool."""
++
++from gptme.tools import init_tools
++from gptme.tools.form import parse_field, parse_form_content
++
++
++def test_parse_field_text():
++    """Test parsing a simple text field."""
++    field = parse_field("name: What is your name?")
++    assert field is not None
++    assert field["name"] == "name"
++    assert field["prompt"] == "What is your name?"
++    assert field["type"] == "text"
++
++
++def test_parse_field_select():
++    """Test parsing a select field with options."""
++    field = parse_field("priority: Priority level [low, medium, high]")
++    assert field is not None
++    assert field["name"] == "priority"
++    assert field["prompt"] == "Priority level"
++    assert field["type"] == "select"
++    assert field["options"] == ["low", "medium", "high"]
++
++
++def test_parse_field_boolean():
++    """Test parsing a boolean field."""
++    field = parse_field("confirm: Proceed? [yes, no]")
++    assert field is not None
++    assert field["name"] == "confirm"
++    assert field["prompt"] == "Proceed?"
++    assert field["type"] == "boolean"
++
++
++def test_parse_field_number():
++    """Test parsing a number field."""
++    field = parse_field("count: How many items? (number)")
++    assert field is not None
++    assert field["name"] == "count"
++    assert field["prompt"] == "How many items?"
++    assert field["type"] == "number"
++
++
++def test_parse_field_empty():
++    """Test parsing empty or invalid lines."""
++    assert parse_field("") is None
++    assert parse_field("   ") is None
++    assert parse_field("no colon here") is None
++    assert parse_field(":") is None
++    assert parse_field("field:") is None
++
++
++def test_parse_form_content():
++    """Test parsing a complete form definition."""
++    content = """
++    name: Project name?
++    description: Brief description?
++    language: Primary language [python, javascript, rust]
++    priority: Priority [low, medium, high]
++    count: Number of tasks (number)
++    confirm: Ready to proceed? [yes, no]
++    """
++    fields = parse_form_content(content)
++
++    assert len(fields) == 6
++    assert fields[0]["name"] == "name"
++    assert fields[0]["type"] == "text"
++    assert fields[1]["name"] == "description"
++    assert fields[1]["type"] == "text"
++    assert fields[2]["name"] == "language"
++    assert fields[2]["type"] == "select"
++    assert fields[3]["name"] == "priority"
++    assert fields[3]["type"] == "select"
++    assert fields[4]["name"] == "count"
++    assert fields[4]["type"] == "number"
++    assert fields[5]["name"] == "confirm"
++    assert fields[5]["type"] == "boolean"
++
++
++def test_form_tool_registered():
++    """Test that the form tool is properly registered."""
++    init_tools([])
++    # Form tool is disabled by default, so it won't be in the loaded tools
++    # but it should be in available tools
++    from gptme.tools import get_available_tools
++
++    available = get_available_tools()
++    available_names = [t.name for t in available]
++    assert "form" in available_names
++
++
++def test_parse_field_select_with_spaces():
++    """Test parsing select field with spaces in options."""
++    field = parse_field("status: Current status [in progress, on hold, completed]")
++    assert field is not None
++    assert field["type"] == "select"
++    assert field["options"] == ["in progress", "on hold", "completed"]
++
++
++def test_parse_field_boolean_case_insensitive():
++    """Test that yes/no detection is case insensitive."""
++    field1 = parse_field("ok: Continue? [Yes, No]")
++    assert field1 is not None
++    assert field1["type"] == "boolean"
++
++    field2 = parse_field("ok: Continue? [YES, NO]")
++    assert field2 is not None
++    assert field2["type"] == "boolean"

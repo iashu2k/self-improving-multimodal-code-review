@@ -1,0 +1,23 @@
+{
+  "example_id": "ansible__awx__pr_016565",
+  "source": "github-codereview",
+  "repository": "ansible/awx",
+  "commit_sha": "32d9d44ffe30884a25e8a783f0c3be3b7d06c041",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "AAP-85067 Old RBAC sync regression tests for bulk claims",
+    "description": "## Summary\r\n- Adds regression tests verifying that old `Role.members` are correctly synced after `save_user_claims` uses bulk assignment (which skips `post_save` signals)\r\n- Tests cover: signal gap confirmation, add sync, remove sync, and multi-org/team scenarios\r\n- Companion to [ansible/django-ansible-base#1057](https://github.com/ansible/django-ansible-base/pull/1057)\r\n\r\n## Test plan\r\n- [ ] All 4 new tests in `test_claims_old_rbac_sync.py` pass\r\n- [ ] Existing `dab_rbac` functional tests unaffected\r\n\r\n\ud83e\udd16 Generated with [Claude Code](https://claude.com/claude-code)\r\n\r\n<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\r\n## Summary by CodeRabbit\r\n\r\n## Summary by CodeRabbit\r\n\r\n* **Tests**\r\n  * Added coverage for synchronizing permission claims with role memberships.\r\n  * Verified memberships are populated correctly and stale assignments are removed when claims change.\r\n  * Confirmed synchronization works across multiple organizations and teams.\r\n  * Ensured bulk updates create the expected assignments without triggering unintended legacy behavior.\r\n<!-- end of auto-generated comment: release notes by coderabbit.ai -->\r\n\r\n##### ISSUE TYPE\r\n\r\n* Bug, Docs Fix or other nominal change",
+    "url": "https://github.com/ansible/awx/pull/16565"
+  },
+  "changed_files": [
+    "awx/main/tests/functional/dab_rbac/test_claims_old_rbac_sync.py"
+  ],
+  "diff_path": "text/holdout/ansible__awx__pr_016565/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 150
+}

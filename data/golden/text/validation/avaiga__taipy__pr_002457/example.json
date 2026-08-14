@@ -1,0 +1,44 @@
+{
+  "example_id": "avaiga__taipy__pr_002457",
+  "source": "github-codereview",
+  "repository": "Avaiga/taipy",
+  "commit_sha": "3bb0fa083e477dde228e8fd219353167ba6cfcd4",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Feature - Allow serialize Enum object",
+    "description": "## What type of PR is this? (check all applicable)\n\n- Refactor\n- Feature\n\n## Description\n\nThis PR allows the _BaseSerializer to serialize and deserialize an Enum object.\n",
+    "url": "https://github.com/Avaiga/taipy/pull/2457"
+  },
+  "changed_files": [
+    "taipy/common/config/_serializer/_base_serializer.py",
+    "taipy/common/config/common/_template_handler.py"
+  ],
+  "diff_path": "text/validation/avaiga__taipy__pr_002457/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "taipy/common/config/_serializer/_base_serializer.py",
+      "line": 171,
+      "category": "maintainability",
+      "severity": "high",
+      "issue_summary": "This `if` command handles the case where a dataclass instance is serialized into a dictionary.\r\n\r\nFor example, UserAttribute(\"email\", \"credential_mail\", default=\"example@taipy.org\") will be serialized to\r\n\r\n```\r\n{ \"USER_ATTRIBUTE\": {\"name\": \"email\", \"credentials_name\": \"credentials_mail\", \"default\": \"example@taipy.org\"}\r\n```\r\nThe key is used to identify the type of the serialized object.",
+      "evidence_requirement": "The added line `return _TemplateHandler._to_enum(actual_val)` references a method that is not defined or implemented in this diff, indicating missing deserialization logic for enums.",
+      "must_not_claim": [
+        "exposes secrets",
+        "causes crash",
+        "breaks functionality"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would flag this because the serialization path for enums is implemented but the corresponding deserialization path is incomplete, risking runtime errors when deserializing enum values from config.",
+      "_reviewer_comment_full": "This `if` command handles the case where a dataclass instance is serialized into a dictionary.\r\n\r\nFor example, UserAttribute(\"email\", \"credential_mail\", default=\"example@taipy.org\") will be serialized to\r\n\r\n```\r\n{ \"USER_ATTRIBUTE\": {\"name\": \"email\", \"credentials_name\": \"credentials_mail\", \"default\": \"example@taipy.org\"}\r\n```\r\nThe key is used to identify the type of the serialized object.",
+      "_gold_comment_url": "https://github.com/Avaiga/taipy/pull/2457#discussion_r1966552208"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 115
+}

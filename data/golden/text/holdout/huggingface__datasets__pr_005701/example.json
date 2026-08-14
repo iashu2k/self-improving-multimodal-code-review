@@ -1,0 +1,44 @@
+{
+  "example_id": "huggingface__datasets__pr_005701",
+  "source": "github-codereview",
+  "repository": "huggingface/datasets",
+  "commit_sha": "41866a0f169ac75f64a8f44753a0b41624cb92b8",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Add Dataset.from_spark",
+    "description": "Adds static method Dataset.from_spark to create datasets from Spark DataFrames.\r\n\r\nThis approach alleviates users of the need to materialize their dataframe---a common use case is that the user loads their dataset into a dataframe, uses Spark to apply some transformation to some of the columns, and then wants to train on the dataset.\r\n\r\nRelated issue: https://github.com/huggingface/datasets/issues/5678",
+    "url": "https://github.com/huggingface/datasets/pull/5701"
+  },
+  "changed_files": [
+    "setup.py",
+    "src/datasets/arrow_dataset.py",
+    "src/datasets/io/spark.py",
+    "src/datasets/packaged_modules/__init__.py",
+    "src/datasets/packaged_modules/spark/spark.py",
+    "tests/test_arrow_dataset.py"
+  ],
+  "diff_path": "text/holdout/huggingface__datasets__pr_005701/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "src/datasets/packaged_modules/spark/spark.py",
+      "line": 66,
+      "category": "bug_risk",
+      "severity": "low",
+      "issue_summary": "```suggestion\r\n        raise ValueError(\"When using Dataset.from_spark, all workers should be able to access cache_dir\")\r\n```",
+      "evidence_requirement": "The error message at line 66 must be changed from mentioning 'NFS' to a more general accessibility requirement for cache_dir.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The original error message incorrectly implies NFS is required, when the actual requirement is that all workers can access the cache directory (which could be achieved through other shared filesystems or network storage).",
+      "_reviewer_comment_full": "```suggestion\r\n        raise ValueError(\"When using Dataset.from_spark, all workers should be able to access cache_dir\")\r\n```",
+      "_gold_comment_url": "https://github.com/huggingface/datasets/pull/5701#discussion_r1159316050"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 213
+}

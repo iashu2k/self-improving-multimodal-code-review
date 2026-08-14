@@ -1,0 +1,268 @@
+diff --git a/facefusion.ini b/facefusion.ini
+index 7f56cc680a..ad834e0f41 100644
+--- a/facefusion.ini
++++ b/facefusion.ini
+@@ -45,6 +45,9 @@ trim_frame_end =
+ temp_frame_format =
+ keep_temp =
+
++[audio_extraction]
++audio_extract_voice =
++
+ [output_creation]
+ output_image_quality =
+ output_image_resolution =
+diff --git a/facefusion/audio.py b/facefusion/audio.py
+index a77448f3fb..5d2c9898a1 100644
+--- a/facefusion/audio.py
++++ b/facefusion/audio.py
+@@ -3,14 +3,19 @@
+ import numpy
+ import scipy
+
++import facefusion.globals
+ from facefusion.filesystem import is_audio
+ from facefusion.ffmpeg import read_audio_buffer
+ from facefusion.typing import Fps, Audio, Spectrogram, AudioFrame
++from facefusion.audio_extractor import batch_extract_voice
+
+
+ def get_audio_frame(audio_path : str, fps : Fps, frame_number : int = 0) -> Optional[AudioFrame]:
+ 	if is_audio(audio_path):
+-		audio_frames = read_static_audio(audio_path, fps)
++		if facefusion.globals.audio_extract_voice:
++			audio_frames = read_static_voice(audio_path, fps)
++		else:
++			audio_frames = read_static_audio(audio_path, fps)
+ 		if frame_number in range(len(audio_frames)):
+ 			return audio_frames[frame_number]
+ 	return None
+@@ -34,6 +39,20 @@ def read_static_audio(audio_path : str, fps : Fps) -> Optional[List[AudioFrame]]
+ 	return None
+
+
++@lru_cache(maxsize = None)
++def read_static_voice(audio_path : str, fps : Fps) -> Optional[List[AudioFrame]]:
++	if is_audio(audio_path):
++		audio_buffer = read_audio_buffer(audio_path, 16000, 2)
++		audio = numpy.frombuffer(audio_buffer, dtype = numpy.int16).reshape(-1, 2)
++		audio = batch_extract_voice(audio, 1000000, 0.75)
++		audio = normalize_audio(audio)
++		audio = filter_audio(audio, -0.97)
++		spectrogram = create_spectrogram(audio, 16000, 80, 800, 55.0, 7600.0)
++		audio_frames = extract_audio_frames(spectrogram, 80, 16, fps)
++		return audio_frames
++	return None
++
++
+ def normalize_audio(audio : numpy.ndarray[Any, Any]) -> Audio:
+ 	if audio.ndim > 1:
+ 		audio = numpy.mean(audio, axis = 1)
+diff --git a/facefusion/audio_extractor.py b/facefusion/audio_extractor.py
+new file mode 100644
+index 0000000000..a244f1d6d5
+--- /dev/null
++++ b/facefusion/audio_extractor.py
+@@ -0,0 +1,121 @@
++from typing import Any, Tuple
++from time import sleep
++import threading
++import scipy
++import numpy
++import onnxruntime
++
++import facefusion.globals
++from facefusion import process_manager
++from facefusion.typing import ModelSet, AudioChunk, Audio
++from facefusion.execution import apply_execution_provider_options
++from facefusion.filesystem import resolve_relative_path
++from facefusion.download import conditional_download
++
++VOICE_EXTRACTOR = None
++THREAD_LOCK : threading.Lock = threading.Lock()
++MODELS : ModelSet =\
++{
++	'voice_extractor':
++	{
++		'url': 'https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/Kim_Vocal_2.onnx',
++		'path': resolve_relative_path('../.assets/models/Kim_Vocal_2.onnx')
++	}
++}
++
++
++def get_voice_extractor() -> Any:
++	global VOICE_EXTRACTOR
++
++	with THREAD_LOCK:
++		while process_manager.is_checking():
++			sleep(0.5)
++		if VOICE_EXTRACTOR is None:
++			model_path = MODELS.get('voice_extractor').get('path')
++			VOICE_EXTRACTOR = onnxruntime.InferenceSession(model_path, providers = apply_execution_provider_options(facefusion.globals.execution_providers))
++	return VOICE_EXTRACTOR
++
++
++def clear_voice_extractor() -> None:
++	global VOICE_EXTRACTOR
++
++	VOICE_EXTRACTOR = None
++
++
++def pre_check() -> bool:
++	if not facefusion.globals.skip_download:
++		download_directory_path = resolve_relative_path('../.assets/models')
++		model_urls =\
++		[
++			MODELS.get('voice_extractor').get('url'),
++		]
++		process_manager.check()
++		conditional_download(download_directory_path, model_urls)
++		process_manager.end()
++	return True
++
++
++def batch_extract_voice(audio : Audio, chunk_size : int, overlap_size : float) -> Audio:
++	step_size = int(chunk_size * (1 - overlap_size))
++	audio_total = numpy.zeros((audio.shape[0], 2), dtype = numpy.float32)
++	audio_count = numpy.zeros((audio.shape[0], 2), dtype = numpy.float32)
++	for start in range(0, audio.shape[0], step_size):
++		end = min(start + chunk_size, audio.shape[0])
++		audio_total[start:end, ...] += extract_voice(audio[start:end, ...])
++		audio_count[start:end, ...] += 1
++	audio = audio_total / audio_count
++	return audio
++
++
++def extract_voice(audio_chunk : AudioChunk) -> AudioChunk:
++	voice_extractor = get_voice_extractor()
++	extractor_shape = voice_extractor.get_inputs()[0].shape[1:]
++	hop_length = 1024
++	filter_size = 7680
++	trim_size = filter_size // 2
++	frequency_bins = trim_size + 1
++	chunk_size = hop_length * (extractor_shape[2] - 1)
++	window = scipy.signal.windows.hann(filter_size, sym = False)
++	audio_chunk, pad_size = prepare_audio_chunk(audio_chunk, chunk_size, trim_size)
++	audio_chunk = decompose_audio_chunk(audio_chunk, filter_size, hop_length, frequency_bins, window, extractor_shape)
++	audio_chunk = voice_extractor.run(None, {voice_extractor.get_inputs()[0].name: audio_chunk})[0]
++	audio_chunk = compose_audio_chunk(audio_chunk, filter_size, hop_length, frequency_bins, window, extractor_shape)
++	audio_chunk = normalize_audio_chunk(audio_chunk, chunk_size, trim_size, pad_size)
++	return audio_chunk
++
++
++def prepare_audio_chunk(audio_chunk : AudioChunk, chunk_size : int, trim_size : int) -> Tuple[AudioChunk, int]:
++	audio_chunk = audio_chunk.T
++	step_size = chunk_size - 2 * trim_size
++	pad_size = step_size - audio_chunk.shape[1] % step_size
++	audio_chunk_size = audio_chunk.shape[1] + pad_size
++	audio_chunk = audio_chunk.astype(numpy.float32) / numpy.iinfo(numpy.int16).max
++	audio_chunk = numpy.pad(audio_chunk, ((0, 0), (trim_size, trim_size + pad_size)), mode='constant', constant_values = 0)
++	audio_chunk = numpy.concatenate([audio_chunk[:,i:i + chunk_size] for i in range(0, audio_chunk_size, step_size)], axis = 0)
++	audio_chunk = audio_chunk.reshape([-1, chunk_size])
++	return audio_chunk, pad_size
++
++
++def decompose_audio_chunk(audio_chunk : AudioChunk, filter_size : int, hop_length : int, frequency_bins : int, window : Any, extractor_shape : Tuple[int, int, int]) -> AudioChunk:
++	audio_chunk = scipy.signal.stft(audio_chunk, nperseg = filter_size, noverlap = filter_size - hop_length, window = window, padded = False)[2]
++	audio_chunk = numpy.stack((numpy.real(audio_chunk), numpy.imag(audio_chunk)), axis = -1).transpose((0, 3, 1, 2))
++	audio_chunk = audio_chunk.reshape((-1, 2, 2, frequency_bins, extractor_shape[2])).reshape((-1, extractor_shape[0], frequency_bins, extractor_shape[2]))
++	audio_chunk = audio_chunk[:,:,:extractor_shape[1]]
++	audio_chunk /= numpy.sqrt(1.0 / window.sum() ** 2)
++	return audio_chunk
++
++
++def compose_audio_chunk(audio_chunk : AudioChunk, filter_size : int, hop_length : int, frequency_bins : int, window : Any, extractor_shape : Tuple[int, int, int]) -> AudioChunk:
++	audio_chunk = numpy.pad(audio_chunk, ((0, 0), (0, 0), (0, frequency_bins - extractor_shape[1]), (0, 0)), mode = 'constant')
++	audio_chunk = audio_chunk.reshape(-1, 2, frequency_bins, extractor_shape[2]).transpose((0, 2, 3, 1))
++	audio_chunk = audio_chunk[:,:,:,0] + 1j * audio_chunk[:,:,:,1]
++	audio_chunk = scipy.signal.istft(audio_chunk, nperseg = filter_size, noverlap = filter_size - hop_length, window = window)[1]
++	audio_chunk *= numpy.sqrt(1.0 / window.sum() ** 2)
++	return audio_chunk
++
++
++def normalize_audio_chunk(audio_chunk : AudioChunk, chunk_size : int, trim_size : int, pad_size : int) -> AudioChunk:
++	audio_chunk = audio_chunk.reshape([-1, 2, chunk_size])
++	audio_chunk = audio_chunk[:,:,trim_size:-trim_size].transpose(1, 0, 2)
++	audio_chunk = audio_chunk.reshape(2, -1)[:,:-pad_size].T
++	return audio_chunk
+diff --git a/facefusion/core.py b/facefusion/core.py
+index 1c0897f903..d64d920a03 100755
+--- a/facefusion/core.py
++++ b/facefusion/core.py
+@@ -83,6 +83,9 @@ def cli() -> None:
+ 	group_frame_extraction.add_argument('--trim-frame-end',	help = wording.get('help.trim_frame_end'), type = int, default = facefusion.config.get_int_value('frame_extraction.trim_frame_end'))
+ 	group_frame_extraction.add_argument('--temp-frame-format', help = wording.get('help.temp_frame_format'), default = config.get_str_value('frame_extraction.temp_frame_format', 'png'), choices = facefusion.choices.temp_frame_formats)
+ 	group_frame_extraction.add_argument('--keep-temp', help = wording.get('help.keep_temp'), action = 'store_true',	default = config.get_bool_value('frame_extraction.keep_temp'))
++	# audio extraction
++	group_audio_extraction = program.add_argument_group('audio extraction')
++	group_audio_extraction.add_argument('--audio-extract-voice', help = wording.get('help.audio_extract_voice'), action = 'store_true',	default = config.get_bool_value('audio_extraction.audio_extract_voice'))
+ 	# output creation
+ 	group_output_creation = program.add_argument_group('output creation')
+ 	group_output_creation.add_argument('--output-image-quality', help = wording.get('help.output_image_quality'), type = int, default = config.get_int_value('output_creation.output_image_quality', '80'), choices = facefusion.choices.output_image_quality_range, metavar = create_metavar(facefusion.choices.output_image_quality_range))
+@@ -152,6 +155,8 @@ def apply_args(program : ArgumentParser) -> None:
+ 	facefusion.globals.trim_frame_end = args.trim_frame_end
+ 	facefusion.globals.temp_frame_format = args.temp_frame_format
+ 	facefusion.globals.keep_temp = args.keep_temp
++	# audio extraction
++	facefusion.globals.audio_extract_voice = args.audio_extract_voice
+ 	# output creation
+ 	facefusion.globals.output_image_quality = args.output_image_quality
+ 	if is_image(args.target_path):
+diff --git a/facefusion/globals.py b/facefusion/globals.py
+index d736880a77..60e60e355b 100755
+--- a/facefusion/globals.py
++++ b/facefusion/globals.py
+@@ -42,6 +42,8 @@
+ trim_frame_end : Optional[int] = None
+ temp_frame_format : Optional[TempFrameFormat] = None
+ keep_temp : Optional[bool] = None
++# audio extraction
++audio_extract_voice : Optional[bool] = None
+ # output creation
+ output_image_quality : Optional[int] = None
+ output_image_resolution : Optional[str] = None
+diff --git a/facefusion/processors/frame/modules/lip_syncer.py b/facefusion/processors/frame/modules/lip_syncer.py
+index 9b70ffb30c..474ecef631 100755
+--- a/facefusion/processors/frame/modules/lip_syncer.py
++++ b/facefusion/processors/frame/modules/lip_syncer.py
+@@ -24,6 +24,7 @@
+ from facefusion.common_helper import get_first
+ from facefusion.vision import read_image, write_image, read_static_image
+ from facefusion.processors.frame.typings import LipSyncerInputs
++from facefusion.audio_extractor import clear_voice_extractor
+ from facefusion.processors.frame import globals as frame_processors_globals
+ from facefusion.processors.frame import choices as frame_processors_choices
+
+@@ -130,6 +131,7 @@ def post_process() -> None:
+ 		clear_content_analyser()
+ 		clear_face_occluder()
+ 		clear_face_parser()
++		clear_voice_extractor()
+
+
+ def sync_lip(target_face : Face, temp_audio_frame : AudioFrame, temp_vision_frame : VisionFrame) -> VisionFrame:
+diff --git a/facefusion/typing.py b/facefusion/typing.py
+index 9d0c36f194..717faceeb0 100755
+--- a/facefusion/typing.py
++++ b/facefusion/typing.py
+@@ -43,6 +43,7 @@
+
+ AudioBuffer = bytes
+ Audio = numpy.ndarray[Any, Any]
++AudioChunk = numpy.ndarray[Any, Any]
+ AudioFrame = numpy.ndarray[Any, Any]
+ Spectrogram = numpy.ndarray[Any, Any]
+
+diff --git a/facefusion/wording.py b/facefusion/wording.py
+index 3db08ecb67..9243a54c95 100755
+--- a/facefusion/wording.py
++++ b/facefusion/wording.py
+@@ -93,6 +93,8 @@
+ 		'trim_frame_end': 'specify the the end frame of the target video',
+ 		'temp_frame_format': 'specify the temporary resources format',
+ 		'keep_temp': 'keep the temporary resources after processing',
++		# audio extraction
++		'audio_extract_voice': 'extract only the voice from the audio for processing',
+ 		# output creation
+ 		'output_image_quality': 'specify the image quality which translates to the compression factor',
+ 		'output_image_resolution': 'specify the image output resolution based on the target image',

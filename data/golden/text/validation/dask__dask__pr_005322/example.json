@@ -1,0 +1,40 @@
+{
+  "example_id": "dask__dask__pr_005322",
+  "source": "github-codereview",
+  "repository": "dask/dask",
+  "commit_sha": "0a11a9bebfc61ea3be647f27f98cb2bd6c16c616",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[REVIEW] Enable merge/set_index for cudf-based dataframes with cupy `values`",
+    "description": "This PR is a continuation of #5205, with the goal of allowing `rearrange_by_divisions`, `set_index`, `merge`, etc... to be used with `cudf`-based dataframes.  Due to recent progressin cudf, this requires two general changes:\r\n\r\n1. cudf dataframe/series `.values` will soon return cupy (rather than numpy) arrays.  Since the pandas' `groupsort_indexer` function requires numpy, we need to check for a `values_host` attribute right before this function is called.  A cudf drop-in for `groupsort_indexer` is in progress, but the use of `values_host` is needed until then.\r\n\r\n2. Since `hash_pandas_object` does not work for cudf dataframes,  we need to use `cudf.hash_columns` (when the attribute is available) within `partitioning_index`.  Note that this is required for `merge` to work with cudf-based dataframes.\r\n\r\ncc @brandon-b-miller - These changes *should* allow dask_cudf tests to pass for [cudf#2655](https://github.com/rapidsai/cudf/pull/2655)\r\n\r\n- [ ] Tests added / passed\r\n- [ ] Passes `black dask` / `flake8 dask`\r\n",
+    "url": "https://github.com/dask/dask/pull/5322"
+  },
+  "changed_files": [
+    "dask/dataframe/methods.py",
+    "dask/dataframe/partitionquantiles.py",
+    "dask/dataframe/shuffle.py"
+  ],
+  "diff_path": "text/validation/dask__dask__pr_005322/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "dask/dataframe/methods.py",
+      "line": 497,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "I think that this function may not be necessary, the `hash_df_dispatch` object above should do this.  You might remove this function and rename the dispatch object above.\r\n\r\nWe had to do tricky dispatch stuff with `concat` (where I expect you're copying things from) because `concat` takes in a list, and so it's harder to dispatch on types.",
+      "evidence_requirement": "The diff adds a new `hash_df` dispatch object and `hash_df_pandas` function despite the reviewer suggesting the function may not be necessary and proposing removal and renaming instead.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would comment to avoid redundant code and simplify the API surface by removing an unnecessary wrapper function when an existing dispatch mechanism could handle the dispatch directly.",
+      "_reviewer_comment_full": "I think that this function may not be necessary, the `hash_df_dispatch` object above should do this.  You might remove this function and rename the dispatch object above.\r\n\r\nWe had to do tricky dispatch stuff with `concat` (where I expect you're copying things from) because `concat` takes in a list, and so it's harder to dispatch on types.",
+      "_gold_comment_url": "https://github.com/dask/dask/pull/5322#discussion_r318357013"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 56
+}

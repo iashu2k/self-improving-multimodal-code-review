@@ -1,0 +1,58 @@
+diff --git a/gptme/codeblock.py b/gptme/codeblock.py
+index 7f22e6b22b..0809271dc7 100644
+--- a/gptme/codeblock.py
++++ b/gptme/codeblock.py
+@@ -34,6 +34,7 @@ def to_xml(self) -> str:
+     @classmethod
+     @trace_function(name="codeblock.from_markdown", attributes={"component": "parser"})
+     def from_markdown(cls, content: str) -> "Codeblock":
++        content = content.replace("\r\n", "\n").replace("\r", "\n")
+         stripped = content.strip()
+         fence_len = 0
+
+@@ -177,6 +178,9 @@ def _extract_codeblocks(
+     if len(fence_pattern.findall(markdown)) < 2:
+         return
+
++    # Normalize line endings so CRLF input does not leak carriage returns into content.
++    markdown = markdown.replace("\r\n", "\n").replace("\r", "\n")
++
+     lines = markdown.split("\n")
+     i = 0
+
+diff --git a/tests/test_codeblock.py b/tests/test_codeblock.py
+index c74b152740..0f1aaffa93 100644
+--- a/tests/test_codeblock.py
++++ b/tests/test_codeblock.py
+@@ -1478,3 +1478,31 @@ def test_xml_roundtrip_special_chars():
+     xml = original.to_xml()
+     restored = Codeblock.from_xml(xml)
+     assert restored.content == original.content
++
++
++def test_from_markdown_normalizes_crlf():
++    """CRLF input must produce the same content as LF input (no carriage returns)."""
++    crlf = Codeblock.from_markdown("```python\r\nprint(1)\r\n```")
++    lf = Codeblock.from_markdown("```python\nprint(1)\n```")
++    assert crlf.content == lf.content
++    assert "\r" not in crlf.content
++
++
++def test_iter_from_markdown_normalizes_crlf():
++    """CRLF input to iter_from_markdown must not leave \\r in content."""
++    blocks = Codeblock.iter_from_markdown("```python\r\nprint(1)\r\n```")
++    assert blocks == [Codeblock("python", "print(1)")]
++
++
++def test_from_markdown_normalizes_standalone_cr():
++    """Standalone \\r (old-Mac) line endings must also be normalized."""
++    cr = Codeblock.from_markdown("```python\rprint(1)\r```")
++    lf = Codeblock.from_markdown("```python\nprint(1)\n```")
++    assert cr.content == lf.content
++    assert "\r" not in cr.content
++
++
++def test_iter_from_markdown_normalizes_standalone_cr():
++    """Standalone \\r (old-Mac) line endings must also be normalized."""
++    blocks = Codeblock.iter_from_markdown("```python\rprint(1)\r```")
++    assert blocks == [Codeblock("python", "print(1)")]

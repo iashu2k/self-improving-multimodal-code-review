@@ -1,0 +1,43 @@
+{
+  "example_id": "lightning-ai__pytorch-lightning__pr_003587",
+  "source": "github-codereview",
+  "repository": "Lightning-AI/pytorch-lightning",
+  "commit_sha": "eb2b49ef38e9f6841b6c0d5a21a75a6a85b810e6",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Clean up optimizer code",
+    "description": "## What does this PR do?\r\n\r\n- Cleans up some of the `OptimizerConnector` logic to avoid duplicated code.\r\n- Checks if there are extra keys in the `lr_scheduler` dict. Adds a test for this warning.\r\n- Cleans up the `init_optimizers` function so `configure_optimizers` is only called at the end.\r\n- Fixes bug where if configure_optimizers returned `([optimizer], scheduler)`, `trainer.optimizers` became `[optimizer, scheduler]`\r\n- Updates exception message for invalid `configure_optimizers` returns. Adds a test for this exception.\r\n- Updates the default scheduler config to include `strict`.\r\n- Check for extra unsupported keys in the `lr_scheduler` dict. Adds a test for this warning.\r\n- Improves logic to check if there is a monitor when a `ReduceLROnPlateau` scheduler is used. both in the case of `{\"optimizer\": optimizer, \"lr_scheduler\": scheduler, \"monitor\": \"your_loss\"}` and `{\"optimizer\": optimizer, \"lr_scheduler\": {\"scheduler\": scheduler, \"monitor\": \"your_loss\"}}`. Adds tests for these exceptions.\r\n- Updates docs to reflect how we no longer support automatically monitoring `val_loss`.\r\n\r\nNo issue to tag. Just some stuff I found while coding #3586\r\n\r\n# Before submitting\r\n\r\n- [ ] Was this discussed/approved via a Github issue? (no need for typos and docs improvements)\r\n- [x] Did you read the [contributor guideline](https://github.com/PyTorchLightning/pytorch-lightning/blob/master/.github/CONTRIBUTING.md), Pull Request section?\r\n- [x] Did you make sure your PR does only one thing, instead of bundling different changes together? Otherwise, we ask you to create a separate PR for every change.\r\n- [x] Did you make sure to update the documentation with your changes?\r\n- [x] Did you write any new necessary tests? \r\n- [x] Did you verify new and existing tests pass locally with your changes?\r\n- [x] If you made a notable change (that affects users), did you update the [CHANGELOG](https://github.com/PyTorchLightning/pytorch-lightning/blob/master/CHANGELOG.md)?",
+    "url": "https://github.com/Lightning-AI/pytorch-lightning/pull/3587"
+  },
+  "changed_files": [
+    "CHANGELOG.md",
+    "pytorch_lightning/trainer/connectors/optimizer_connector.py",
+    "pytorch_lightning/trainer/optimizers.py",
+    "tests/base/model_optimizers.py",
+    "tests/trainer/test_optimizers.py"
+  ],
+  "diff_path": "text/development/lightning-ai__pytorch-lightning__pr_003587/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "tests/trainer/test_optimizers.py",
+      "line": 421,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "```suggestion\r\n    with pytest.raises(MisconfigurationException, match=\"Unknown configuration for model optimizers.\"):\r\n```\r\nyou don't need to give it the full exact message if it's not ambigious. makes it easier to read the test",
+      "evidence_requirement": "The test at line 421 uses `pytest.raises(MisconfigurationException, match=escape(msg))` where `msg` is a variable; the reviewer suggested using a direct literal string for clarity.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Using a variable for the match string adds unnecessary indirection when the message is fixed and unambiguous; a literal string improves test readability and maintainability.",
+      "_reviewer_comment_full": "```suggestion\r\n    with pytest.raises(MisconfigurationException, match=\"Unknown configuration for model optimizers.\"):\r\n```\r\nyou don't need to give it the full exact message if it's not ambigious. makes it easier to read the test",
+      "_gold_comment_url": "https://github.com/Lightning-AI/pytorch-lightning/pull/3587#discussion_r509408870"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "development",
+  "snapshot_id": 217
+}

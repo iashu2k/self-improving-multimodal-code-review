@@ -1,0 +1,38 @@
+{
+  "example_id": "chia-network__chia-blockchain__pr_019743",
+  "source": "github-codereview",
+  "repository": "Chia-Network/chia-blockchain",
+  "commit_sha": "848331df99b53fa7191df1f6293073eb484134f6",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "CHIA-2638 Full Node RPC Validation Tool",
+    "description": "<!-- Merging Requirements:\r\n- Please give your PR a title that is release-note friendly\r\n- In order to be merged, you must add the most appropriate category Label (Added, Changed, Fixed) to your PR\r\n-->\r\n<!-- Explain why this is an improvement (Does this add missing functionality, improve performance, or reduce complexity?) -->\r\n\r\n### Purpose:\r\nAdds a Full Node RPC validation tool that validates the get_block_spends, get_block_spends_with_conditions and get_additions_and_removals endpoints work on all blocks\r\n<!-- Does this PR introduce a breaking change? -->\r\nThis PR introduces no breaking changes\r\n\r\n### Current Behavior:\r\nNo tool to test endpoints across all blocks\r\n\r\n### New Behavior:\r\nThere is a tool to test the endpoints across all blocks.\r\n<!-- As we aim for complete code coverage, please include details regarding unit, and regression tests -->\r\n\r\n### Testing Notes:\r\nIncreases code coverage by allowing rpcs to be tested against the real blockchain.\r\n<!-- Attach any visual examples, or supporting evidence (attach any .gif/video/console output below) -->\r\n",
+    "url": "https://github.com/Chia-Network/chia-blockchain/pull/19743"
+  },
+  "changed_files": [
+    "tools/validate_rpcs.py"
+  ],
+  "diff_path": "text/holdout/chia-network__chia-blockchain__pr_019743/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "tools/validate_rpcs.py",
+      "line": 135,
+      "category": "performance",
+      "severity": "medium",
+      "issue_summary": "```suggestion\r\n    concurrent_requests = max(concurrent_requests, requests_per_batch)\r\n```\r\nI'm not sure what you intended by this division, but I imagine you'd want a lower cap on the batch-size",
+      "evidence_requirement": "The code uses `pipeline_depth` directly as the concurrency cap without ensuring it is at least `requests_per_batch`, risking underutilization or incorrect batching behavior.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A pipeline depth smaller than the number of RPCs per block (`requests_per_batch`) would cause sequential execution of per-block RPCs, defeating the purpose of concurrency and potentially skewing performance measurements.",
+      "_reviewer_comment_full": "```suggestion\r\n    concurrent_requests = max(concurrent_requests, requests_per_batch)\r\n```\r\nI'm not sure what you intended by this division, but I imagine you'd want a lower cap on the batch-size",
+      "_gold_comment_url": "https://github.com/Chia-Network/chia-blockchain/pull/19743#discussion_r2177853729"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 68
+}

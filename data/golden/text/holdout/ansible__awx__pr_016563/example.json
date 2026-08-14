@@ -1,0 +1,24 @@
+{
+  "example_id": "ansible__awx__pr_016563",
+  "source": "github-codereview",
+  "repository": "ansible/awx",
+  "commit_sha": "73dcd4f8bf3d1692b7e522db6bafb27e75ebc674",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "AAP-36932 Batch-delete JobHostSummary before cleanup to avoid invalid memory alloc",
+    "description": "##### SUMMARY\n\n- Pre-delete `JobHostSummary` rows and clear `Host.last_job_host_summary_id` FK references in batches of 1000 job IDs using raw SQL **before** Django's `.delete()` runs\n- Prevents Django's cascade collector from materializing millions of JHS IDs into a single `UPDATE ... IN (...)` that exceeds PostgreSQL's 1GB query memory allocation limit\n- Applied to both deletion paths: `cleanup_jobs()` (legacy) and `DeleteMeta.delete_jobs()` (partition)\n- Added unit tests for the new `_pre_delete_job_host_summaries()` function\n- No model or schema changes required\n\n> **Note:** A prior approach considered changing the FK `on_delete` to `DO_NOTHING` but was abandoned. This fix resolves the issue without changing model definitions or the database schema.\n\n##### ISSUE TYPE\n - Bug, Docs Fix or other nominal change\n\n##### COMPONENT NAME\n - Other\n\n##### STEPS TO REPRODUCE AND EXTRA INFO\n\n**Root cause:** When Django cascade-deletes a batch of `Job` rows, the collector gathers all `JobHostSummary` PKs (CASCADE), then generates `UPDATE main_host SET last_job_host_summary_id = NULL WHERE last_job_host_summary_id IN (millions_of_ids)` (SET_NULL). With many jobs x hosts, this IN-list exceeds PostgreSQL's max memory allocation size for a single query.\n\n**Steps to reproduce:**\n\n1. Run enough jobs on a cluster to generate 21k+ completed jobs with many hosts per job\n2. Run `awx-manage cleanup_jobs --days <N>` where N causes those jobs to be eligible for deletion\n\n**Before (error):**\n```\npsycopg.errors.InternalError_: invalid memory alloc request size 1073741824\n```\n\n**After (ScaleLab cluster, aap-devel namespace, ~121k jobs):**\n```\n$ awx-manage cleanup_jobs --days 3 --dry-run -v2\njobs: 5894 would be deleted, 115566 would be skipped.\nproject updates: 76 would be deleted, 4586 would be skipped.\n\n$ awx-manage cleanup_jobs --days 3 -v2\nPre-deleted JobHostSummary chunk 0-1000 of 2957 job PKs\nPre-deleted JobHostSummary chunk 1000-2000 of 2957 job PKs\nPre-deleted JobHostSummary chunk 2000-2957 of 2957 job PKs\nDropping event partition(s) main_jobevent_20260726_17,main_jobevent_20260726_18,main_jobevent_20260726_19\njobs: 2957 deleted, 115576 skipped.\nproject updates: 38 deleted, 4596 skipped.\n```\n\n**Test plan:**\n\n- [x] Unit tests pass (`py.test awx/main/tests/unit/commands/test_cleanup_jobs.py`)\n- [x] Dry run on ScaleLab cluster (121k jobs) completes without error\n- [x] Live run on ScaleLab cluster deletes 2957 jobs + 38 project updates successfully\n\nAssisted-by: Claude Code via Google Vertex AI\n\n<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\n## Summary by CodeRabbit\n\n- **Bug Fixes**\n  - Improved job cleanup reliability by clearing related host summary references before deleting jobs.\n  - Reduced risk of slow or heavy cascading updates by processing deletions in bounded raw-SQL chunks.\n\n- **Tests**\n  - Added unit tests for empty inputs, single-batch, and multi-batch behavior.\n  - Verified correct SQL execution order, chunking limits, parameterization (no SQL interpolation), and debug logging.\n  - Added tests ensuring the pre-clear step runs only for job deletions and not during dry runs or non-Job cleanup.\n<!-- end of auto-generated comment: release notes by coderabbit.ai -->",
+    "url": "https://github.com/ansible/awx/pull/16563"
+  },
+  "changed_files": [
+    "awx/main/management/commands/cleanup_jobs.py",
+    "awx/main/tests/unit/commands/test_cleanup_jobs.py"
+  ],
+  "diff_path": "text/holdout/ansible__awx__pr_016563/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 149
+}

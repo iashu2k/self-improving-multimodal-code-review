@@ -1,0 +1,47 @@
+{
+  "example_id": "apify__crawlee-python__pr_001086",
+  "source": "github-codereview",
+  "repository": "apify/crawlee-python",
+  "commit_sha": "b5fc9a47a0c5e292e200311b6363c7531d61e7c5",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "feat: add Session binding capability via `session_id` in `Request`",
+    "description": "### Description\r\n\r\n- Add strict binding of a `Request` to a specific `Session`. If the `Session` is not available in the `SessionPool`, an error will be raised for the `Request` which can be handled in the `failed_request_handler`.\r\n\r\n### Issues\r\n\r\n- Closes: #1076 \r\n\r\n### Testing\r\n\r\nAdded tests to verify functionality:\r\n- Binding to a valid session\r\n- Binding to a non-existent session\r\n- Catching error in `failed_request_handler`\r\n\r\n",
+    "url": "https://github.com/apify/crawlee-python/pull/1086"
+  },
+  "changed_files": [
+    "docs/guides/code_examples/session_management/multi_sessions_http.py",
+    "docs/guides/code_examples/session_management/one_session_http.py",
+    "docs/guides/session_management.mdx",
+    "src/crawlee/_request.py",
+    "src/crawlee/_utils/requests.py",
+    "src/crawlee/crawlers/_basic/_basic_crawler.py",
+    "src/crawlee/errors.py",
+    "tests/unit/_utils/test_requests.py",
+    "tests/unit/crawlers/_basic/test_basic_crawler.py"
+  ],
+  "diff_path": "text/holdout/apify__crawlee-python__pr_001086/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "docs/guides/code_examples/session_management/multi_sessions_http.py",
+      "line": 21,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "```suggestion\r\nimport asyncio\r\nfrom datetime import timedelta\r\nfrom itertools import count\r\nfrom typing import Callable\r\n\r\nfrom crawlee import ConcurrencySettings, Request\r\nfrom crawlee.crawlers import BasicCrawlingContext, HttpCrawler, HttpCrawlingContext\r\nfrom crawlee.errors import RequestCollisionError\r\nfrom crawlee.sessions import Session, SessionPool\r\n\r\n\r\n# Define a function for creating sessions with simple logic for unique `id` generation.\r\n# This is necessary if you need to specify a par",
+      "evidence_requirement": "The code uses `nonlocal counter` with manual increment (`counter += 1`) instead of the cleaner `itertools.count()` pattern suggested by the reviewer.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Using `nonlocal` for a simple counter in a closure is less idiomatic and more error-prone than using `itertools.count()`, which the reviewer explicitly recommended as a cleaner alternative.",
+      "_reviewer_comment_full": "```suggestion\r\nimport asyncio\r\nfrom datetime import timedelta\r\nfrom itertools import count\r\nfrom typing import Callable\r\n\r\nfrom crawlee import ConcurrencySettings, Request\r\nfrom crawlee.crawlers import BasicCrawlingContext, HttpCrawler, HttpCrawlingContext\r\nfrom crawlee.errors import RequestCollisionError\r\nfrom crawlee.sessions import Session, SessionPool\r\n\r\n\r\n# Define a function for creating sessions with simple logic for unique `id` generation.\r\n# This is necessary if you need to specify a particular session for the first request,\r\n# for example during authentication\r\ndef create_session_function() -> Callable[[], Session]:\r\n    counter = count()\r\n\r\n    def create_session() -> Session:\r\n        return Session(\r\n            id=str(next(counter)),\r\n```\r\n\r\nWhat do you think? Using `nonlocal` looks kinda hacky IMO...",
+      "_gold_comment_url": "https://github.com/apify/crawlee-python/pull/1086#discussion_r2020815476"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 182
+}

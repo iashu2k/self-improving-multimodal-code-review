@@ -1,0 +1,40 @@
+{
+  "example_id": "avaiga__taipy__pr_001304",
+  "source": "github-codereview",
+  "repository": "Avaiga/taipy",
+  "commit_sha": "4ce1b776b1956e47bf961bc94b68adffdddce29d",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Feature/#405 exposing notification mechanism to user",
+    "description": "#405 ",
+    "url": "https://github.com/Avaiga/taipy/pull/1304"
+  },
+  "changed_files": [
+    "taipy/core/notification/core_event_consumer.py",
+    "taipy/core/notification/notifier.py"
+  ],
+  "diff_path": "text/validation/avaiga__taipy__pr_001304/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "taipy/core/notification/notifier.py",
+      "line": 69,
+      "category": "bug_risk",
+      "severity": "low",
+      "issue_summary": "```suggestion\r\n        The topic is defined by the combination of an optional entity type, an optional \r\n        entity id, an optional operation, and an optional attribute name. The purpose is\r\n        to be as flexible as possible. For example, we can register to:\r\n        \r\n        - All scenario creations\r\n        - A specific data node update\r\n        - A sequence submission\r\n        - A Scenario deletion\r\n        - Job failures\r\n```",
+      "evidence_requirement": "The added example for `register` uses only one specific combination of parameters and does not demonstrate the flexibility described in the reviewer's suggestion (e.g., omitting entity_id to listen to all creations).",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would want to show users how to register for different topic patterns (e.g., all events of a type, specific entity updates) to make the API usable and intuitive.",
+      "_reviewer_comment_full": "```suggestion\r\n        The topic is defined by the combination of an optional entity type, an optional \r\n        entity id, an optional operation, and an optional attribute name. The purpose is\r\n        to be as flexible as possible. For example, we can register to:\r\n        \r\n        - All scenario creations\r\n        - A specific data node update\r\n        - A sequence submission\r\n        - A Scenario deletion\r\n        - Job failures\r\n```",
+      "_gold_comment_url": "https://github.com/Avaiga/taipy/pull/1304#discussion_r1618391475"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 188
+}

@@ -1,0 +1,124 @@
+diff --git a/.github/workflows/generate-osrepo-site.yml b/.github/workflows/generate-osrepo-site.yml
+index a5e722442159..1f7ae9ece2fc 100644
+--- a/.github/workflows/generate-osrepo-site.yml
++++ b/.github/workflows/generate-osrepo-site.yml
+@@ -23,6 +23,29 @@ jobs:
+         working-directory: tools/packaging/osrepos
+         run: pip install -r requirements.txt
+
++      - name: Authenticate
++        uses: 'google-github-actions/auth@v3'
++        with:
++          project_id: 'dragonflydb'
++          credentials_json: ${{ secrets.GCP_BUCKET_CREDENTIALS }}
++
++      - name: GCloud setup
++        uses: 'google-github-actions/setup-gcloud@v3'
++
++      - name: Fetch published RPMs
++        # Fetch existing RPM files from bucket. Those are already signed, we will not
++        # re-sign them again, so that we do not end up changing their checksum. If this
++        # step fails the job must fail, rather than re-sign all releases found on GitHub
++        # in the next step.
++        working-directory: tools/packaging/osrepos
++        run: |
++          mkdir -p $SiteRoot/rpm
++          gcloud storage rsync ${{ secrets.GCP_PACKAGES_BUCKET }}/rpm $SiteRoot/rpm \
++            --recursive --exclude="^repodata/.*|.*index\.html$"
++
++          echo "=== Published RPMs fetched ==="
++          find $SiteRoot/rpm -type f -name "*.rpm" -exec sha256sum {} +
++
+       - name: Download packages
+         working-directory: tools/packaging/osrepos
+         env:
+@@ -69,15 +92,6 @@ jobs:
+         working-directory: tools/packaging/osrepos
+         run: python scripts/generate-index.py $SiteRoot
+
+-      - name: Authenticate
+-        uses: 'google-github-actions/auth@v3'
+-        with:
+-          project_id: 'dragonflydb'
+-          credentials_json: ${{ secrets.GCP_BUCKET_CREDENTIALS }}
+-
+-      - name: GCloud setup
+-        uses: 'google-github-actions/setup-gcloud@v3'
+-
+       - name: Log locally built metadata
+         working-directory: tools/packaging/osrepos
+         run: |
+@@ -89,14 +103,20 @@ jobs:
+
+       - name: Deploy site
+         working-directory: tools/packaging/osrepos
++        # checksums-only compares hash instead of mtime, so we don't upload unchanged package files,
++        # and so we don't change their last modified time in bucket everytime the job runs. The index
++        # files are copied with no-cache, max-age=0. The other files we dont care if they are cached.
+         run: |
+-          gcloud storage rm ${{ secrets.GCP_PACKAGES_BUCKET }}/**
+-          gcloud storage rsync $SiteRoot ${{ secrets.GCP_PACKAGES_BUCKET }} --recursive --delete-unmatched-destination-objects
+-
+-      - name: Disable caching for repo metadata
+-        run: |
+-          gcloud storage objects update "${{ secrets.GCP_PACKAGES_BUCKET }}/deb/dists/**" --cache-control="no-cache, max-age=0"
+-          gcloud storage objects update "${{ secrets.GCP_PACKAGES_BUCKET }}/rpm/repodata/**" --cache-control="no-cache, max-age=0"
++          gcloud storage rsync $SiteRoot ${{ secrets.GCP_PACKAGES_BUCKET }} --recursive --checksums-only \
++            --exclude="^(rpm/repodata/repomd\.xml.*|deb/dists/.*)"
++          gcloud storage rsync $SiteRoot/deb/dists ${{ secrets.GCP_PACKAGES_BUCKET }}/deb/dists --recursive --checksums-only \
++            --exclude="^noble/(InRelease|Release|Release\.gpg)$" \
++            --cache-control="no-cache, max-age=0"
++          gcloud storage cp $SiteRoot/deb/dists/noble/InRelease $SiteRoot/deb/dists/noble/Release \
++            $SiteRoot/deb/dists/noble/Release.gpg ${{ secrets.GCP_PACKAGES_BUCKET }}/deb/dists/noble/ \
++            --cache-control="no-cache, max-age=0"
++          gcloud storage cp $SiteRoot/rpm/repodata/repomd.xml $SiteRoot/rpm/repodata/repomd.xml.asc \
++            ${{ secrets.GCP_PACKAGES_BUCKET }}/rpm/repodata/ --cache-control="no-cache, max-age=0"
+
+       - name: Verify deployed site
+         run: |
+diff --git a/tools/packaging/osrepos/scripts/fetch-releases.py b/tools/packaging/osrepos/scripts/fetch-releases.py
+index 448125ecbfbf..cbc5791bf0e8 100644
+--- a/tools/packaging/osrepos/scripts/fetch-releases.py
++++ b/tools/packaging/osrepos/scripts/fetch-releases.py
+@@ -82,10 +82,15 @@ def download_packages(root: str, packages: list[Package]):
+
+         print(f"Downloading {package.download_url}")
+         path = package.storage_path(root)
++        target = os.path.join(path, package.filename)
++
++        if os.path.exists(target) and package.kind == AssetKind.RPM:
++            print(f"Skipping download of already existing RPM: {target}")
++            continue
++
+         if not os.path.exists(path):
+             os.makedirs(path)
+
+-        target = os.path.join(path, package.filename)
+         # TODO retry logic
+         response = requests.get(package.download_url)
+         with open(target, "wb") as f:
+diff --git a/tools/packaging/osrepos/scripts/sign-rpms.sh b/tools/packaging/osrepos/scripts/sign-rpms.sh
+index 807397991ac3..67394e635169 100644
+--- a/tools/packaging/osrepos/scripts/sign-rpms.sh
++++ b/tools/packaging/osrepos/scripts/sign-rpms.sh
+@@ -9,6 +9,18 @@ GPG_TTY=""
+ export GPG_TTY
+
+ for file in $(find _site/rpm -type f -name "*.rpm"); do
+-  echo "Signing ${file}"
+-  rpm --define "__gpg /usr/bin/gpg" --define "%_signature gpg" --define "%_gpg_name ${1}" --addsign "${file}"
++  SIGNATURE=$(rpm -qp --qf '%{RSAHEADER:pgpsig}' "$file")
++  case "${SIGNATURE}" in
++      "(none)")
++        echo "Signing ${file}"
++        rpm --define "__gpg /usr/bin/gpg" --define "%_signature gpg" --define "%_gpg_name ${1}" --addsign "${file}"
++        ;;
++      *"Key ID "*)
++        echo "Skipping already signed file: ${file} (signature: ${SIGNATURE})"
++        ;;
++      *)
++        echo "Unexpected signature value for ${file}: '${SIGNATURE}'" >&2
++        exit 1
++        ;;
++    esac
+ done

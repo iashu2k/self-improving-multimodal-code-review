@@ -1,0 +1,44 @@
+{
+  "example_id": "astral-sh__ruff__pr_022163",
+  "source": "github-codereview",
+  "repository": "astral-sh/ruff",
+  "commit_sha": "785f779256259bd29e887c404a9bcca4ce9df64b",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[ty] Synthesize a `_fields` attribute for NamedTuples",
+    "description": "## Summary\r\n\r\nCloses https://github.com/astral-sh/ty/issues/2176.\r\n",
+    "url": "https://github.com/astral-sh/ruff/pull/22163"
+  },
+  "changed_files": [
+    "crates/ty_python_semantic/resources/mdtest/annotations/self.md",
+    "crates/ty_python_semantic/resources/mdtest/call/replace.md",
+    "crates/ty_python_semantic/resources/mdtest/named_tuple.md",
+    "crates/ty_python_semantic/src/types.rs",
+    "crates/ty_python_semantic/src/types/class.rs",
+    "crates/ty_vendored/ty_extensions/ty_extensions.pyi"
+  ],
+  "diff_path": "text/development/astral-sh__ruff__pr_022163/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "crates/ty_vendored/ty_extensions/ty_extensions.pyi",
+      "line": 193,
+      "category": "bug_risk",
+      "severity": "high",
+      "issue_summary": "I know I suggested this but... on further reflection, I think this might cause problems down the line. Most of the time you don't access the `_fields` attribute on _instances_ of a `NamedTuple` class -- most of the time you access it on the class itself. And it's a bit dubious whether `@property` members (or any non-`ClassVar` non-method members, really) should be available on the class itself. The fact that we currently allow it is a missing check in our `Protocol` machinery somewhere.\r\n\r\nSo th",
+      "evidence_requirement": "The diff shows `_fields` and `_field_defaults` defined as `@property` methods instead of `ClassVar` attributes, contradicting the reviewer's explicit concern about class-level access.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The reviewer identified that accessing `_fields` on NamedTuple *classes* (not instances) is the common pattern, and `@property` members are not reliably available on classes, which could break type checking for legitimate use cases.",
+      "_reviewer_comment_full": "I know I suggested this but... on further reflection, I think this might cause problems down the line. Most of the time you don't access the `_fields` attribute on _instances_ of a `NamedTuple` class -- most of the time you access it on the class itself. And it's a bit dubious whether `@property` members (or any non-`ClassVar` non-method members, really) should be available on the class itself. The fact that we currently allow it is a missing check in our `Protocol` machinery somewhere.\r\n\r\nSo this might be better? I think it should still fix the problem where `NamedTuple` instances weren't considered assignable to `NamedTupleLike`:\r\n\r\n```suggestion\r\n    # _fields is defined as `tuple[Any, ...]` rather than `tuple[str, ...]` so\r\n    # that instances of actual `NamedTuple` classes with more precise `_fields`\r\n    # types are considered assignable to this protocol (protocol attribute members\r\n    # are invariant, and `tuple[str, str]` is not invariantly assignable to\r\n    # `tuple[str, ...]`\r\n    _fields: ClassVar[tuple[Any, ...]]\r\n    _field_defaults: ClassVar[dict[str, Any]]\r\n```",
+      "_gold_comment_url": "https://github.com/astral-sh/ruff/pull/22163#discussion_r2643713263"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "development",
+  "snapshot_id": 184
+}

@@ -1,0 +1,712 @@
+diff --git a/deeplake/api/dataset.py b/deeplake/api/dataset.py
+index 3ea3f95030..7eddc20aae 100644
+--- a/deeplake/api/dataset.py
++++ b/deeplake/api/dataset.py
+@@ -1055,7 +1055,7 @@ def ingest_coco(
+         connect_kwargs: Optional[Dict] = None,
+         **dataset_kwargs,
+     ) -> Dataset:
+-        """Ingest images and annotations in COCO format to a Deep Lake Dataset.
++        """Ingest images and annotations in COCO format to a Deep Lake Dataset. The source data can be stored locally or in the cloud.
+
+         Examples:
+             >>> ds = deeplake.ingest_coco(
+@@ -1068,7 +1068,7 @@ def ingest_coco(
+             >>>     token="my_activeloop_token",
+             >>>     num_workers=4,
+             >>> )
+-            >>> # or ingest data from cloud
++            >>> # or ingest data from the cloud
+             >>> ds = deeplake.ingest_coco(
+             >>>     "s3://bucket/images/directory",
+             >>>     "s3://bucket/annotation/file1.json",
+@@ -1076,7 +1076,7 @@ def ingest_coco(
+             >>>     ignore_one_group=True,
+             >>>     ignore_keys=["area", "image_id", "id"],
+             >>>     image_settings={"name": "images", "htype": "link[image]", "sample_compression": "jpeg"},
+-            >>>     image_creds_key="my_managed_creds"
++            >>>     image_creds_key="my_s3_managed_credentials"
+             >>>     src_creds=aws_creds, # Can also be inferred from environment
+             >>>     token="my_activeloop_token",
+             >>>     num_workers=4,
+@@ -1096,8 +1096,8 @@ def ingest_coco(
+             ignore_one_group (bool): Skip creation of group in case of a single annotation file. Set to ``False`` by default.
+             ignore_keys (List[str]): A list of COCO keys to ignore.
+             image_params (Optional[Dict]): A dictionary containing parameters for the images tensor.
+-            image_creds_key (Optional[str]): The name of the managed credentials to use for accessing the images directory via linked tensor.
+-            src_creds (Optional[Dict]): Credentials to access the source path. If not provided, will be inferred from the environment.
++            image_creds_key (Optional[str]): The name of the managed credentials to use for accessing the images in the linked tensor (is applicable).
++            src_creds (Optional[Dict]): Credentials to access the source data. If not provided, will be inferred from the environment.
+             dest_creds (Optional[Dict]): A dictionary containing credentials used to access the destination path of the dataset.
+             inspect_limit (int): The maximum number of samples to inspect in the annotations json, in order to generate the set of COCO annotation keys. Set to ``1000000`` by default.
+             progressbar (bool): Enables or disables ingestion progress bar. Set to ``True`` by default.
+@@ -1176,7 +1176,7 @@ def ingest_yolo(
+         connect_kwargs: Optional[Dict] = None,
+         **dataset_kwargs,
+     ) -> Dataset:
+-        """Ingest images and annotations (bounding boxes or polygons) in YOLO format to a Deep Lake Dataset.
++        """Ingest images and annotations (bounding boxes or polygons) in YOLO format to a Deep Lake Dataset. The source data can be stored locally or in the cloud.
+
+         Examples:
+             >>> ds = deeplake.ingest_yolo(
+@@ -1186,12 +1186,12 @@ def ingest_yolo(
+             >>>     token="my_activeloop_token",
+             >>>     num_workers=4,
+             >>> )
+-            >>> # or ingest data from cloud
++            >>> # or ingest data from the cloud
+             >>> ds = deeplake.ingest_yolo(
+             >>>     "s3://bucket/data_directory",
+             >>>     dest="hub://org_id/dataset",
+             >>>     image_params={"name": "image_links", "htype": "link[image]"},
+-            >>>     image_creds_key='my_s3_managed_crerendials",
++            >>>     image_creds_key="my_s3_managed_credentials",
+             >>>     src_creds=aws_creds, # Can also be inferred from environment
+             >>>     token="my_activeloop_token",
+             >>>     num_workers=4,
+@@ -1211,7 +1211,7 @@ def ingest_yolo(
+             image_params (Optional[Dict]): A dictionary containing parameters for the images tensor.
+             label_params (Optional[Dict]): A dictionary containing parameters for the labels tensor.
+             coordinates_params (Optional[Dict]): A dictionary containing parameters for the ccoordinates tensor. This tensor either contains bounding boxes or polygons.
+-            src_creds (Optional[Dict]): Credentials to access the source path. If not provided, will be inferred from the environment.
++            src_creds (Optional[Dict]): Credentials to access the source data. If not provided, will be inferred from the environment.
+             dest_creds (Optional[Dict]): A dictionary containing credentials used to access the destination path of the dataset.
+             image_creds_key (Optional[str]): creds_key for linked tensors, applicable if the htype for the images tensor is specified as 'link[image]' in the 'image_params' input.
+             inspect_limit (int): The maximum number of annotations to inspect, in order to infer whether they are bounding boxes of polygons. This in put is ignored if the htype is specfied in the 'coordinates_params'.
+@@ -1299,7 +1299,7 @@ def ingest_classification(
+         connect_kwargs: Optional[Dict] = None,
+         **dataset_kwargs,
+     ) -> Dataset:
+-        """Ingests a dataset of images from a source and stores it as a structured dataset to destination.
++        """Ingest a dataset of images from a local folder to a Deep Lake Dataset. Images should be stored in subfolders by class name.
+
+         Args:
+             src (str, pathlib.Path): Local path to where the unstructured dataset of images is stored or path to csv file.
+@@ -1386,14 +1386,19 @@ def ingest_classification(
+             if os.path.isdir(dest) and os.path.samefile(src, dest):
+                 raise SamePathException(src)
+
+-            if src.endswith(".csv"):
++            if src.endswith(".csv") or src.endswith(".txt"):
+                 import pandas as pd  # type:ignore
+
+                 if not os.path.isfile(src):
+                     raise InvalidPathException(src)
+                 source = pd.read_csv(src, quotechar='"', skipinitialspace=True)
+                 ds = dataset.ingest_dataframe(
+-                    source, dest, dest_creds, progressbar, token=token, **dataset_kwargs
++                    source,
++                    dest,
++                    dest_creds=dest_creds,
++                    progressbar=progressbar,
++                    token=token,
++                    **dataset_kwargs,
+                 )
+                 return ds
+
+@@ -1519,13 +1524,36 @@ def ingest_kaggle(
+     def ingest_dataframe(
+         src,
+         dest: Union[str, pathlib.Path],
++        column_params: Optional[Dict] = None,
++        src_creds: Optional[Dict] = None,
+         dest_creds: Optional[Dict] = None,
++        creds_key: Optional[Dict] = None,
+         progressbar: bool = True,
+         token: Optional[str] = None,
+         connect_kwargs: Optional[Dict] = None,
+         **dataset_kwargs,
+     ):
+-        """Convert pandas dataframe to a Deep Lake Dataset.
++        """Convert pandas dataframe to a Deep Lake Dataset. The contents of the dataframe can be parsed literally, or can be treated as links to local or cloud files.
++
++        Examples:
++            >>> ds = deeplake.dataframe(
++            >>>     df,
++            >>>     dest="hub://org_id/dataset",
++            >>> )
++            >>> # or ingest data as images from the cloud
++            >>> ds = deeplake.dataframe(
++            >>>     df,
++            >>>     dest="hub://org_id/dataset",
++            >>>     column_params={"df_column_with_cloud_paths": {"name": "images", "htype": "image"}}
++            >>>     src_creds=aws_creds
++            >>> )
++            >>> # or ingest data as linked images in the cloud
++            >>> ds = deeplake.dataframe(
++            >>>     df,
++            >>>     dest="hub://org_id/dataset",
++            >>>     column_params={"df_column_with_cloud_paths": {"name": "image_links", "htype": "link[image]"}}
++            >>>     creds_key="my_s3_managed_credentials"
++            >>> )
+
+         Args:
+             src (pd.DataFrame): The pandas dataframe to be converted.
+@@ -1535,7 +1563,10 @@ def ingest_dataframe(
+                 - an s3 path of the form ``s3://bucketname/path/to/dataset``. Credentials are required in either the environment or passed to the creds argument.
+                 - a local file system path of the form ``./path/to/dataset`` or ``~/path/to/dataset`` or ``path/to/dataset``.
+                 - a memory path of the form ``mem://path/to/dataset`` which doesn't save the dataset but keeps it in memory instead. Should be used only for testing as it does not persist.
++            column_params (Optional[Dict]): A dictionary containing parameters for the tensors corresponding to the dataframe columns.
++            src_creds (Optional[Dict]): Credentials to access the source data. If not provided, will be inferred from the environment.
+             dest_creds (Optional[Dict]): A dictionary containing credentials used to access the destination path of the dataset.
++            creds_key (Optional[str]): creds_key for linked tensors, applicable if the htype any tensor is specified as 'link[...]' in the 'column_params' input.
+             progressbar (bool): Enables or disables ingestion progress bar. Set to ``True`` by default.
+             token (Optional[str]): The token to use for accessing the dataset.
+             connect_kwargs (Optional[Dict]): A dictionary containing arguments to be passed to the dataset connect method. See :meth:`Dataset.connect`.
+@@ -1560,7 +1591,7 @@ def ingest_dataframe(
+         if not isinstance(src, pd.DataFrame):
+             raise Exception("Source provided is not a valid pandas dataframe object")
+
+-        structured = DataFrame(src)
++        structured = DataFrame(src, column_params, src_creds, creds_key)
+
+         dest = convert_pathlib_to_string_if_needed(dest)
+         ds = deeplake.empty(
+diff --git a/deeplake/auto/structured/dataframe.py b/deeplake/auto/structured/dataframe.py
+index 2c9bd713a2..b71ea62641 100644
+--- a/deeplake/auto/structured/dataframe.py
++++ b/deeplake/auto/structured/dataframe.py
+@@ -1,15 +1,31 @@
+ import numpy as np
+ from .base import StructuredDataset
+ from deeplake import Dataset
+-from tqdm import tqdm  # type: ignore
++from deeplake import read, link
++from deeplake.htype import HTYPE_SUPPORTED_COMPRESSIONS
++from deeplake.util.exceptions import IngestionError
++from deeplake.util.dataset import sanitize_tensor_name
++
++from collections import defaultdict
++from typing import DefaultDict, List, Union, Optional
++from deeplake.core.sample import Sample
++from deeplake.core.linked_sample import LinkedSample
++import pathlib
++
++
++from deeplake.client.log import logger
+
+
+ class DataFrame(StructuredDataset):
+-    def __init__(self, source):
++    def __init__(self, source, column_params=None, creds=None, creds_key=None):
+         """Convert a pandas dataframe to a Deep Lake dataset.
+
+         Args:
+             source: Pandas dataframe object.
++            column_params: Optional setting for the tensors corresponding to the dataframe columns.
++            creds: Optional credentials for accessing the source data.
++            creds_key: Optional managed credentials key for accessing source data in linked tensors.
++
+
+         Raises:
+             Exception: If source is not a pandas dataframe object.
+@@ -20,6 +36,130 @@ def __init__(self, source):
+         if not isinstance(self.source, pd.DataFrame):
+             raise Exception("Source is not a pandas dataframe object.")
+
++        self.creds = creds
++        self.creds_key = creds_key
++        self._initialize_params(column_params)
++
++    # def _sanitize_tensor(self, input: str):
++    #     """Sanitize a string to be a valid tensor name
++
++    #     Args:
++    #         input (str): A string that will be sanitized
++
++    #     Returns:
++    #         str: A string with the sanitized tensor name
++    #     """
++
++    #     invalid_chars = ["[", "]", "@", ".", ",", "?", "!", "/", "\\", "#", "'", '"']
++    #     new_char = "_"
++    #     for char in invalid_chars:
++    #         input = input.replace(char, new_char)
++
++    #     return input
++
++    def _initialize_params(self, column_params):
++        column_params = column_params if column_params is not None else {}
++
++        keys = list(self.source.columns)
++
++        for key in keys:
++            if key in column_params.keys():
++                column_params[key]["name"] = column_params[key].get(
++                    "name", sanitize_tensor_name(key)
++                )  # Get the specified name, and if it doesn't exist, use the sanitized column name
++            else:
++                column_params[key] = {
++                    "name": sanitize_tensor_name(key)
++                }  # If column parameters are not specified for a column, use the sanitized column name
++
++        self.column_params = column_params
++
++    def _get_most_frequent_image_extension(self, fn_iterator):
++        # TODO: Make this generic and work for any htype that requires compression
++
++        supported_image_extensions = tuple(
++            HTYPE_SUPPORTED_COMPRESSIONS["image"] + ["jpg"]
++        )
++        image_extensions: DefaultDict[str, int] = defaultdict(int)
++
++        for file in fn_iterator:
++            if file.endswith(supported_image_extensions):
++                ext = pathlib.Path(file).suffix[
++                    1:
++                ]  # Get extension without the . symbol
++                image_extensions[ext] += 1
++            else:
++                raise IngestionError(f"The following file is not supported: {file}")
++
++        most_frequent_image_extension = max(
++            image_extensions, key=lambda k: image_extensions[k], default=None
++        )
++
++        return most_frequent_image_extension
++
++    def _parse_tensor_params(self, key, inspect_limit=1000):
++        """Parse the tensor parameters for a column. Required parameters that are not specified will be inferred by inspecting up to 'inspect_limit' rows in the data."""
++
++        tensor_params = {}
++
++        tensor_params = self.column_params[key]
++
++        dtype = self.source[key].dtype
++        if (
++            "htype" not in tensor_params.keys()
++        ):  # Auto-set some typing parameters if htype is not specified
++            if dtype == np.dtype("object"):
++                types = [type(v) for v in self.source[key][0:inspect_limit].values]
++
++                if len(set(types)) != 1:
++                    raise IngestionError(
++                        f"Dataframe has different data types inside '{key}' column. Please make sure all data is given column is compatible with a single Deep Lake htype, or try specifying the htype manually."
++                    )
++
++                if types[0] == str:
++                    tensor_params.update(
++                        htype="text"
++                    )  # Use "text" htype for text data when the htype is not specified tensor_params
++            else:
++                tensor_params.update(
++                    dtype=dtype,
++                    create_shape_tensor=tensor_params.get("create_shape_tensor", False),
++                )  # htype will be auto-inferred for numeric data unless the htype is specified in tensor_params
++
++        # TODO: Make this more robust so it works for all htypes where sample_compression is required and should be inferred from the data itself
++        if (
++            "image" in tensor_params.get("htype", "")
++            and "sample_compression" not in tensor_params.keys()
++            and "chunk_compression" not in tensor_params.keys()
++        ):
++            tensor_params.update(
++                sample_compression=self._get_most_frequent_image_extension(
++                    self.source[key].values
++                )
++            )
++
++        return tensor_params
++
++    def _get_extend_values(self, tensor_params: dict, key: str):  # type: ignore
++        """Method creates a list of values to be extended to the tensor, based on the tensor parameters and the data in the dataframe column"""
++
++        extend_values: List[Optional[Union[Sample, LinkedSample, np.ndarray]]]
++
++        if "htype" in tensor_params.keys() and "link[" in tensor_params["htype"]:
++            extend_values = [
++                link(value, creds_key=self.creds_key) if value is not None else None
++                for value in self.source[key].values
++            ]
++        elif "htype" in tensor_params.keys() and "image" in tensor_params["htype"]:
++            extend_values = [
++                read(value, creds=self.creds) if value is not None else None
++                for value in self.source[key].values
++            ]
++        else:
++            extend_values = self.source[key].values
++
++        return extend_values
++
+     def fill_dataset(self, ds: Dataset, progressbar: bool = True) -> Dataset:
+         """Fill dataset with data from the dataframe - one tensor per column
+
+@@ -31,32 +171,23 @@ def fill_dataset(self, ds: Dataset, progressbar: bool = True) -> Dataset:
+             A Deep Lake dataset.
+
+         """
++
+         keys = list(self.source.columns)
+-        skipped_keys: list = []
+-        iterator = tqdm(
+-            keys,
+-            desc="Ingesting... (%i keys skipped)" % (len(skipped_keys)),
+-            disable=not progressbar,
+-        )
+-        with ds, iterator:
+-            for key in iterator:
++
++        with ds:
++            if self.creds_key is not None and self.creds_key not in ds.get_creds_keys():
++                ds.add_creds_key(self.creds_key, managed=True)
++            for key in keys:
+                 if progressbar:
+-                    print(f"\nkey={key}, dtype={self.source[key].dtype}")
+-                try:
+-                    dtype = self.source[key].dtype
+-                    if dtype == np.dtype("object"):
+-                        if key not in ds.tensors:
+-                            ds.create_tensor(key, htype="text")
+-                    else:
+-                        if key not in ds.tensors:
+-                            ds.create_tensor(
+-                                key, dtype=dtype, create_shape_tensor=False
+-                            )
+-                    ds[key].extend(self.source[key].values, progressbar=progressbar)
+-                except Exception as e:
+-                    skipped_keys.append(key)
+-                    iterator.set_description(
+-                        "Ingesting... (%i keys skipped)" % (len(skipped_keys))
+-                    )
+-                    continue
++                    logger.info(f"Ingesting column '{key}'")
++
++                tensor_params = self._parse_tensor_params(key)
++
++                if tensor_params["name"] not in ds.tensors:
++                    ds.create_tensor(**tensor_params)
++
++                ds[tensor_params["name"]].extend(
++                    self._get_extend_values(tensor_params, key),
++                    progressbar=progressbar,
++                )
+         return ds
+diff --git a/deeplake/auto/tests/test_ingestion.py b/deeplake/auto/tests/test_ingestion.py
+index e403c4cc03..af99840aa3 100644
+--- a/deeplake/auto/tests/test_ingestion.py
++++ b/deeplake/auto/tests/test_ingestion.py
+@@ -5,6 +5,7 @@
+     InvalidPathException,
+     SamePathException,
+     DatasetHandlerError,
++    IngestionError,
+ )
+ import numpy as np
+ import pytest
+@@ -187,8 +188,7 @@ def test_ingestion_with_connection(
+     assert len(ds.labels.info["class_names"]) > 0
+
+
+-def test_csv(memory_ds: Dataset):
+-    path = get_dummy_data_path("tests_auto/csv/deniro.csv")
++def test_csv(memory_ds: Dataset, dataframe_ingestion_data: dict):
+     with pytest.raises(InvalidPathException):
+         deeplake.ingest_classification(
+             src="tests_auto/csv/cities.csv",
+@@ -199,32 +199,62 @@ def test_csv(memory_ds: Dataset):
+         )
+
+     ds = deeplake.ingest_classification(
+-        src=path,
++        src=dataframe_ingestion_data["basic_dataframe_w_sanitize_path"],
+         dest=memory_ds.path,
+         progressbar=False,
+         summary=False,
+         overwrite=False,
+     )
+-    df = pd.read_csv(path, quotechar='"', skipinitialspace=True)
++    tensors_names = list(ds.tensors.keys())
++
++    df = pd.read_csv(
++        dataframe_ingestion_data["basic_dataframe_w_sanitize_path"],
++        quotechar='"',
++        skipinitialspace=True,
++    )
++    df_keys = df.keys()
+
+-    assert list(ds.tensors) == ["Year", "Score", "Title"]
++    assert (
++        df_keys[0] in tensors_names and df_keys[2] in tensors_names
++    )  # Second column should have been sanitized and got a new name
+
+-    assert ds["Year"].dtype == df["Year"].dtype
+-    np.testing.assert_array_equal(ds["Year"].numpy().reshape(-1), df["Year"].values)
++    assert ds[tensors_names[0]].dtype == df[df_keys[0]].dtype
++    np.testing.assert_array_equal(
++        ds[tensors_names[0]].numpy().reshape(-1), df[df_keys[0]].values
++    )
+
+-    assert ds["Score"].dtype == df["Score"].dtype
+-    np.testing.assert_array_equal(ds["Score"].numpy().reshape(-1), df["Score"].values)
++    assert ds[tensors_names[1]].dtype == df[df_keys[1]].dtype
++    np.testing.assert_array_equal(
++        ds[tensors_names[1]].numpy().reshape(-1), df[df_keys[1]].values
++    )
+
+-    assert ds["Title"].htype == "text"
+-    assert ds["Title"].dtype == str
+-    np.testing.assert_array_equal(ds["Title"].numpy().reshape(-1), df["Title"].values)
++    assert ds[tensors_names[2]].htype == "text"
++    assert ds[tensors_names[2]].dtype == str
++    np.testing.assert_array_equal(
++        ds[tensors_names[2]].numpy().reshape(-1), df[df_keys[2]].values
++    )
+
+
+ @pytest.mark.parametrize("convert_to_pathlib", [True, False])
+-def test_dataframe(memory_ds: Dataset, convert_to_pathlib: bool):
+-    path = get_dummy_data_path("tests_auto/csv/deniro.csv")
+-    df = pd.read_csv(path, quotechar='"', skipinitialspace=True)
+-    ds = deeplake.ingest_dataframe(df, memory_ds.path, progressbar=False)
++def test_dataframe_basic(
++    memory_ds: Dataset, dataframe_ingestion_data: dict, convert_to_pathlib: bool
++):
++    df = pd.read_csv(
++        dataframe_ingestion_data["basic_dataframe_w_sanitize_path"],
++        quotechar='"',
++        skipinitialspace=True,
++    )
++
++    df_keys = df.keys()
++    key_0_new_name = "year_new"
++
++    ds = deeplake.ingest_dataframe(
++        df,
++        memory_ds.path,
++        progressbar=False,
++        column_params={df_keys[0]: {"name": key_0_new_name}},
++    )
++    tensors_names = list(ds.tensors.keys())
+
+     with pytest.raises(Exception):
+         memory_ds.path = convert_string_to_pathlib_if_needed(
+@@ -232,17 +262,124 @@ def test_dataframe(memory_ds: Dataset, convert_to_pathlib: bool):
+         )
+         deeplake.ingest_dataframe(123, memory_ds.path)
+
+-    assert list(ds.tensors) == ["Year", "Score", "Title"]
++    assert key_0_new_name in tensors_names and df_keys[2] in tensors_names
++    assert df_keys[1] not in tensors_names  # Second columnd should have been sanitized
++
++    assert ds[key_0_new_name].dtype == df[df_keys[0]].dtype
++    np.testing.assert_array_equal(
++        ds[key_0_new_name].numpy().reshape(-1), df[df_keys[0]].values
++    )
++
++    assert ds[df_keys[2]].htype == "text"
++    assert ds[df_keys[2]].dtype == str
++    np.testing.assert_array_equal(
++        ds[df_keys[2]].numpy().reshape(-1), df[df_keys[2]].values
++    )
++
++
++def test_dataframe_files(memory_ds: Dataset, dataframe_ingestion_data):
++    df = pd.read_csv(dataframe_ingestion_data["dataframe_w_images_path"])
++    df_keys = df.keys()
++
++    df[df_keys[0]] = dataframe_ingestion_data["images_basepath"] + df[df_keys[0]]
++
++    ds = deeplake.ingest_dataframe(
++        df,
++        memory_ds.path,
++        column_params={
++            df_keys[0]: {"htype": "image"},
++            df_keys[2]: {"htype": "class_label"},
++        },
++        progressbar=False,
++    )
++    tensors_names = list(ds.tensors.keys())
++
++    assert tensors_names == [df_keys[0], df_keys[1], df_keys[2]]
++    assert ds[df_keys[0]].htype == "image"
++    assert ds[df_keys[2]].htype == "class_label"
++
++    assert ds[df_keys[0]].meta.sample_compression == "jpeg"
+
+-    assert ds["Year"].dtype == df["Year"].dtype
+-    np.testing.assert_array_equal(ds["Year"].numpy().reshape(-1), df["Year"].values)
++    assert len(ds[df_keys[0]][0].numpy().shape) == 3
++    assert ds[df_keys[2]][2].data()["text"][0] == df[df_keys[2]][2]
+
+-    assert ds["Score"].dtype == df["Score"].dtype
+-    np.testing.assert_array_equal(ds["Score"].numpy().reshape(-1), df["Score"].values)
+
+-    assert ds["Title"].htype == "text"
+-    assert ds["Title"].dtype == str
+-    np.testing.assert_array_equal(ds["Title"].numpy().reshape(-1), df["Title"].values)
++def test_dataframe_array(memory_ds: Dataset):
++    # Create DataFrame
++    data = {
++        "AA": ["Alice", "Bob", "Charlie", "Steve"],
++        "BB": [
++            np.array([80, 75, 85]),
++            np.array([80, 22, 1]),
++            np.array([0, 565, 234]),
++            np.array([0, 565, 234]),
++        ],
++        "CC": [45, 67, 88, 77],
++    }
++
++    df = pd.DataFrame(data)
++    df_keys = df.keys()
++
++    ds = deeplake.ingest_dataframe(
++        df,
++        memory_ds.path,
++        progressbar=False,
++    )
++    tensors_names = list(ds.tensors.keys())
++
++    assert tensors_names == [df_keys[0], df_keys[1], df_keys[2]]
++    assert ds[df_keys[0]].htype == "text"
++
++    np.testing.assert_array_equal(
++        ds[df_keys[1]].numpy(), np.stack([arr for arr in df[df_keys[1]].values], axis=0)
++    )
++
++    np.testing.assert_array_equal(
++        ds[df_keys[2]].numpy().reshape(-1), df[df_keys[2]].values
++    )
++    assert ds[df_keys[2]].dtype == df[df_keys[2]].dtype
++
++
++def test_dataframe_array_bad(memory_ds: Dataset):
++    # Create DataFrame
++
++    data = {
++        "AA": ["Alice", "Bob", "Charlie", "Steve"],
++        "BB": [
++            np.array([80, 75, 85]),
++            np.array([80, 22, 1]),
++            np.array([0, 565, 234]),
++            "bad_data",
++        ],
++        "CC": [45, 67, 88, 77],
++    }
++
++    df = pd.DataFrame(data)
++
++    with pytest.raises(IngestionError):
++        ds = deeplake.ingest_dataframe(
++            df,
++            memory_ds.path,
++            progressbar=False,
++        )
++
++
++def test_dataframe_unsupported_file(memory_ds: Dataset, dataframe_ingestion_data):
++    df = pd.read_csv(dataframe_ingestion_data["dataframe_w_bad_images_path"])
++    df_keys = df.keys()
++
++    df[df_keys[0]] = dataframe_ingestion_data["images_basepath"] + df[df_keys[0]]
++
++    with pytest.raises(IngestionError):
++        ds = deeplake.ingest_dataframe(
++            df,
++            memory_ds.path,
++            column_params={
++                df_keys[0]: {"htype": "image"},
++                df_keys[2]: {"htype": "class_label"},
++            },
++            progressbar=False,
++        )
+
+
+ def test_dataframe_with_connect(
+@@ -250,9 +387,15 @@ def test_dataframe_with_connect(
+     hub_cloud_path,
+     hub_cloud_dev_token,
+     hub_cloud_dev_managed_creds_key,
++    dataframe_ingestion_data,
+ ):
+-    path = get_dummy_data_path("tests_auto/csv/deniro.csv")
+-    df = pd.read_csv(path, quotechar='"', skipinitialspace=True)
++    df = pd.read_csv(
++        dataframe_ingestion_data["basic_dataframe_w_sanitize_path"],
++        quotechar='"',
++        skipinitialspace=True,
++    )
++    df_keys = df.keys()
++
+     ds = deeplake.ingest_dataframe(
+         df,
+         s3_path,
+@@ -265,13 +408,14 @@ def test_dataframe_with_connect(
+     )
+
+     assert ds.path == hub_cloud_path
+-    assert list(ds.tensors) == ["Year", "Score", "Title"]
+-    assert ds["Year"].dtype == df["Year"].dtype
+-    np.testing.assert_array_equal(ds["Year"].numpy().reshape(-1), df["Year"].values)
+
+-    assert ds["Score"].dtype == df["Score"].dtype
+-    np.testing.assert_array_equal(ds["Score"].numpy().reshape(-1), df["Score"].values)
++    assert ds[df_keys[0]].dtype == df[df_keys[0]].dtype
++    np.testing.assert_array_equal(
++        ds[df_keys[0]].numpy().reshape(-1), df[df_keys[0]].values
++    )
+
+-    assert ds["Title"].htype == "text"
+-    assert ds["Title"].dtype == str
+-    np.testing.assert_array_equal(ds["Title"].numpy().reshape(-1), df["Title"].values)
++    assert ds[df_keys[2]].htype == "text"
++    assert ds[df_keys[2]].dtype == str
++    np.testing.assert_array_equal(
++        ds[df_keys[2]].numpy().reshape(-1), df[df_keys[2]].values
++    )
+diff --git a/deeplake/tests/path_fixtures.py b/deeplake/tests/path_fixtures.py
+index 75a63751bd..1772a483ef 100644
+--- a/deeplake/tests/path_fixtures.py
++++ b/deeplake/tests/path_fixtures.py
+@@ -112,6 +112,16 @@ def _download_hub_test_yolo_data():
+     }
+
+
++def _download_hub_test_dataframe_data():
++    path = _git_clone(_HUB_TEST_RESOURCES_URL)
++    return {
++        "basic_dataframe_w_sanitize_path": path + "/dataframe/text_w_sanitization.txt",
++        "dataframe_w_images_path": path + "/dataframe/csv_w_local_files.csv",
++        "dataframe_w_bad_images_path": path + "/dataframe/csv_w_local_bad_file.csv",
++        "images_basepath": path + "/dataframe/images",
++    }
++
++
+ def _download_pil_test_images(ext=[".jpg", ".png"]):
+     paths = {e: [] for e in ext}
+     corrupt_file_keys = [
+@@ -538,3 +548,8 @@ def coco_ingestion_data():
+ @pytest.fixture(scope="session")
+ def yolo_ingestion_data():
+     return _download_hub_test_yolo_data()
++
++
++@pytest.fixture(scope="session")
++def dataframe_ingestion_data():
++    return _download_hub_test_dataframe_data()
+diff --git a/deeplake/util/dataset.py b/deeplake/util/dataset.py
+index e0bbebe041..3f892820bf 100644
+--- a/deeplake/util/dataset.py
++++ b/deeplake/util/dataset.py
+@@ -25,3 +25,21 @@ def map_tensor_keys(dataset, tensor_keys: Optional[Sequence[str]] = None) -> Lis
+
+     # Get full path in case of groups
+     return [tensors[k].meta.name or tensors[k].key for k in tensor_keys]
++
++
++def sanitize_tensor_name(input: str) -> str:
++    """Sanitize a string to be a valid tensor name
++
++    Args:
++        input (str): A string that will be sanitized
++
++    Returns:
++        str: A string with the sanitized tensor name
++    """
++
++    invalid_chars = ["[", "]", "@", ".", ",", "?", "!", "/", "\\", "#", "'", '"']
++    new_char = "_"
++    for char in invalid_chars:
++        input = input.replace(char, new_char)
++
++    return input

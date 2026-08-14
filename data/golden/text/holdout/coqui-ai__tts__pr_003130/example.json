@@ -1,0 +1,38 @@
+{
+  "example_id": "coqui-ai__tts__pr_003130",
+  "source": "github-codereview",
+  "repository": "coqui-ai/TTS",
+  "commit_sha": "472461dabf0ecc866d46af8ec290c1fc51d7b51c",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Add char limit warn",
+    "description": "- [x] Add language dependent char limits\r\n- [x] Fix error on failed audio loading during training",
+    "url": "https://github.com/coqui-ai/TTS/pull/3130"
+  },
+  "changed_files": [
+    "TTS/tts/layers/xtts/tokenizer.py"
+  ],
+  "diff_path": "text/holdout/coqui-ai__tts__pr_003130/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "TTS/tts/layers/xtts/tokenizer.py",
+      "line": 571,
+      "category": "performance",
+      "severity": "low",
+      "issue_summary": "Use a set for more performance?\r\n```suggestion\r\n        if lang in {\"en\", \"es\", \"fr\", \"de\", \"pt\", \"it\", \"pl\", \"ar\", \"cs\", \"ru\", \"nl\", \"tr\", \"zh-cn\"}:\r\n```",
+      "evidence_requirement": "The code uses a list literal `[...]` in an `in` check where a set `{...}` would be more performant.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Using a list for membership testing in a tight loop or frequently-called function is less efficient than using a set, as set lookups are O(1) average-case.",
+      "_reviewer_comment_full": "Use a set for more performance?\r\n```suggestion\r\n        if lang in {\"en\", \"es\", \"fr\", \"de\", \"pt\", \"it\", \"pl\", \"ar\", \"cs\", \"ru\", \"nl\", \"tr\", \"zh-cn\"}:\r\n```",
+      "_gold_comment_url": "https://github.com/coqui-ai/TTS/pull/3130#discussion_r1385244083"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 70
+}

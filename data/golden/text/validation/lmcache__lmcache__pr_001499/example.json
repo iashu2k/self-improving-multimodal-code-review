@@ -1,0 +1,43 @@
+{
+  "example_id": "lmcache__lmcache__pr_001499",
+  "source": "github-codereview",
+  "repository": "LMCache/LMCache",
+  "commit_sha": "842f92e4c10b5cd6127eae827237b98e5019ba6d",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[Misc][Core] add extra config `force_store_wait` to make sure store does not skip any requests",
+    "description": "This PR introduces a new extra config called `force_store_wait`\r\n\r\nWhen enable, the allocation will keep waitting during `store()` and `store_layer()` so that they won't skip any store requests when CPU memory is under pressure.\r\n\r\nAlso added a unit test for it. \r\n\r\n---\r\n\r\n<details>\r\n<!-- inside this <details> section, markdown rendering does not work, so we use raw html here. -->\r\n<summary><b> PR Checklist (Click to Expand) </b></summary>\r\n\r\n<p>Thank you for your contribution to LMCache! Before submitting the pull request, please ensure the PR meets the following criteria. This helps us maintain the code quality and improve the efficiency of the review process.</p>\r\n\r\n<h3>PR Title and Classification</h3>\r\n<p>Please try to classify PRs for easy understanding of the type of changes. The PR title is prefixed appropriately to indicate the type of change. Please use one of the following:</p>\r\n<ul>\r\n    <li><code>[Bugfix]</code> for bug fixes.</li>\r\n    <li><code>[CI/Build]</code> for build or continuous integration improvements.</li>\r\n    <li><code>[Doc]</code> for documentation fixes and improvements.</li>\r\n    <li><code>[Model]</code> for adding a new model or improving an existing model. Model name should appear in the title.</li>\r\n    <li><code>[Core]</code> for changes in the core LMCache logic (e.g., <code>LMCacheEngine</code>, <code>Backend</code> etc.)</li>\r\n    <li><code>[Misc]</code> for PRs that do not fit the above categories. Please use this sparingly.</li>\r\n</ul>\r\n<p><strong>Note:</strong> If the PR spans more than one category, please include all relevant prefixes.</p>\r\n\r\n<h3>Code Quality</h3>\r\n\r\n<p>The PR need to meet the following code quality standards:</p>\r\n\r\n<ul>\r\n    <li>The code need to be well-documented to ensure future contributors can easily understand the code.</li>\r\n    <li> Please include sufficient unit tests to ensure the change is stay correct and robust. The unit and integration tests will always run and our comprehensive test will be triggered after the \"full\" label is tagged onto a PR.</li>\r\n</ul>\r\n\r\n<h3>What to Expect for the Reviews</h3>\r\n\r\nWe aim to address all PRs in a timely manner. If no one reviews your PR within 5 days, please @-mention one of KuntaiDu, ApostaC or YaoJiayi.\r\n\r\n</details>\r\n",
+    "url": "https://github.com/LMCache/LMCache/pull/1499"
+  },
+  "changed_files": [
+    "lmcache/v1/cache_engine.py",
+    "tests/v1/test_cache_engine.py"
+  ],
+  "diff_path": "text/validation/lmcache__lmcache__pr_001499/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "lmcache/v1/cache_engine.py",
+      "line": 177,
+      "category": "bug_risk",
+      "severity": "critical",
+      "issue_summary": "caught by integration tests ! :)\r\n```text\r\n\r\n(EngineCore_0 pid=67)   File \"/opt/venv/lib/python3.12/site-packages/lmcache/v1/cache_engine.py\", line 173, in __init__\r\n--\r\n  | (EngineCore_0 pid=67)     self.force_store_wait = config.extra_config.get(\"force_store_wait\", False)\r\n  | (EngineCore_0 pid=67)                             ^^^^^^^^^^^^^^^^^^^^^^^\r\n  | (EngineCore_0 pid=67) AttributeError: 'NoneType' object has no attribute 'get'\r\n  | → Cleaning up Docker container and port...\r\n  | 🚨 Error: ",
+      "evidence_requirement": "The code at line 173 (now 175) calls `config.extra_config.get(...)` without verifying `config.extra_config` is not None, leading to AttributeError when `extra_config` is None.",
+      "must_not_claim": [
+        "exposes secrets",
+        "breaks functionality"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A None `extra_config` attribute causes an AttributeError when the code attempts to call `.get()` on it, crashing the engine initialization.",
+      "_reviewer_comment_full": "caught by integration tests ! :)\r\n```text\r\n\r\n(EngineCore_0 pid=67)   File \"/opt/venv/lib/python3.12/site-packages/lmcache/v1/cache_engine.py\", line 173, in __init__\r\n--\r\n  | (EngineCore_0 pid=67)     self.force_store_wait = config.extra_config.get(\"force_store_wait\", False)\r\n  | (EngineCore_0 pid=67)                             ^^^^^^^^^^^^^^^^^^^^^^^\r\n  | (EngineCore_0 pid=67) AttributeError: 'NoneType' object has no attribute 'get'\r\n  | → Cleaning up Docker container and port...\r\n  | 🚨 Error: The command exited with status 1\r\n  | user command error: exit status 1\r\n```\r\n\r\n",
+      "_gold_comment_url": "https://github.com/LMCache/LMCache/pull/1499#discussion_r2317637769"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 219
+}

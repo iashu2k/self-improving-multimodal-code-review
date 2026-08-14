@@ -1,0 +1,58 @@
+diff --git a/chart/files/pod-template-file.kubernetes-helm-yaml b/chart/files/pod-template-file.kubernetes-helm-yaml
+index e8db91c7f4140..afbf33f4fe4aa 100644
+--- a/chart/files/pod-template-file.kubernetes-helm-yaml
++++ b/chart/files/pod-template-file.kubernetes-helm-yaml
+@@ -252,7 +252,7 @@ spec:
+   - emptyDir: {{- toYaml (default (dict) .Values.logs.emptyDirConfig) | nindent 6 }}
+     name: logs
+   {{- end }}
+-  {{- if and  .Values.dags.gitSync.enabled  .Values.dags.gitSync.sshKeySecret }}
++  {{- if and  .Values.dags.gitSync.enabled (or .Values.dags.gitSync.sshKeySecret .Values.dags.gitSync.sshKey) }}
+     {{- include "git_sync_ssh_key_volume" . | nindent 2 }}
+   {{- end }}
+   - configMap:
+diff --git a/helm-tests/tests/helm_tests/airflow_aux/test_configmap.py b/helm-tests/tests/helm_tests/airflow_aux/test_configmap.py
+index 0fc78be86040e..fe3726c761f07 100644
+--- a/helm-tests/tests/helm_tests/airflow_aux/test_configmap.py
++++ b/helm-tests/tests/helm_tests/airflow_aux/test_configmap.py
+@@ -302,6 +302,40 @@ def test_execution_api_server_url(
+                 "execution_api_server_url should not be set for Airflow 2.x versions"
+             )
+
++    @pytest.mark.parametrize(
++        ("git_sync_enabled", "ssh_key_secret", "ssh_key", "expected_volume"),
++        [
++            (True, "my-secret", None, True),
++            (True, None, "my-key", True),
++            (True, "my-secret", "my-key", True),
++            (True, None, None, False),
++            (False, "my-secret", None, False),
++            (False, None, "my-key", False),
++        ],
++    )
++    def test_pod_template_git_sync_ssh_key_volume(
++        self, git_sync_enabled, ssh_key_secret, ssh_key, expected_volume
++    ):
++        dag_values = {"gitSync": {"enabled": git_sync_enabled}}
++        if ssh_key_secret:
++            dag_values["gitSync"]["sshKeySecret"] = ssh_key_secret
++        if ssh_key:
++            dag_values["gitSync"]["sshKey"] = ssh_key
++
++        docs = render_chart(
++            values={
++                "executor": "KubernetesExecutor",
++                "dags": dag_values,
++            },
++            show_only=["templates/configmaps/configmap.yaml"],
++        )
++
++        pod_template_file = jmespath.search('data."pod_template_file.yaml"', docs[0])
++        if expected_volume:
++            assert "git-sync-ssh-key" in pod_template_file
++        else:
++            assert "git-sync-ssh-key" not in pod_template_file
++
+     @pytest.mark.parametrize(
+         ("scheduler_cpu_limit", "expected_sync_parallelism"),
+         [

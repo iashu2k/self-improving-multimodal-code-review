@@ -1,0 +1,42 @@
+{
+  "example_id": "apify__crawlee-python__pr_000905",
+  "source": "github-codereview",
+  "repository": "apify/crawlee-python",
+  "commit_sha": "75b9812087c100fc1b21b09ddfef36634a404d16",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "fix: Optimize memory consumption for `HttpxHttpClient`, fix proxy handling",
+    "description": "### Description\r\n\r\n- Use a shared transport and SSL context for all `httpx.AsyncClient` instances\r\n- Fix proxy handling by implementing proper binding of `session_id` to `proxy_url`\r\n\r\n### Issues\r\n\r\n- Closes: #895\r\n\r\n### Testing\r\n\r\n- Updated test `tests/unit/proxy_configuration/test_tiers.py::test_successful_request_makes_tier_go_down`. In the previous version, when `session_id` was passed, we should not obtain a new proxy even if the tier changes. The updated test now aligns with both the documentation and the `test_retrying_request_makes_tier_go_up` test.\r\n",
+    "url": "https://github.com/apify/crawlee-python/pull/905"
+  },
+  "changed_files": [
+    "src/crawlee/http_clients/_httpx.py",
+    "src/crawlee/proxy_configuration.py",
+    "tests/unit/proxy_configuration/test_new_proxy_info.py",
+    "tests/unit/proxy_configuration/test_tiers.py"
+  ],
+  "diff_path": "text/holdout/apify__crawlee-python__pr_000905/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "src/crawlee/proxy_configuration.py",
+      "line": 122,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "Could you please add the `Args` section and describe all of them? It is probably one of the last public components where it is missing.\r\n\r\nSame for the `new_url` method.\r\n\r\n(I am sorry, I know you are not an author of that and these are not your changes.)",
+      "evidence_requirement": "The docstring for `new_proxy_info` and `new_url` lacks an `Args` section documenting parameters like `session_id`, `request`, and `proxy_tier`.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Public async methods should have complete docstrings with parameter descriptions for usability and maintainability.",
+      "_reviewer_comment_full": "Could you please add the `Args` section and describe all of them? It is probably one of the last public components where it is missing.\r\n\r\nSame for the `new_url` method.\r\n\r\n(I am sorry, I know you are not an author of that and these are not your changes.)",
+      "_gold_comment_url": "https://github.com/apify/crawlee-python/pull/905#discussion_r1923391203"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 181
+}

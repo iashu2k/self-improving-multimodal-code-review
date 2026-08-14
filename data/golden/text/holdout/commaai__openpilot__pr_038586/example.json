@@ -1,0 +1,23 @@
+{
+  "example_id": "commaai__openpilot__pr_038586",
+  "source": "github-codereview",
+  "repository": "commaai/openpilot",
+  "commit_sha": "918e3e235c0093571644e62d9ad3fbec3e21c4ce",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "ui: show gpu icon longer",
+    "description": "",
+    "url": "https://github.com/commaai/openpilot/pull/38586"
+  },
+  "changed_files": [
+    "openpilot/selfdrive/ui/mici/onroad/hud_renderer.py"
+  ],
+  "diff_path": "text/holdout/commaai__openpilot__pr_038586/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 97
+}

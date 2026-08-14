@@ -1,0 +1,40 @@
+{
+  "example_id": "allenai__olmo__pr_000551",
+  "source": "github-codereview",
+  "repository": "allenai/OLMo",
+  "commit_sha": "13acf521e0292e7826d7873856977a7bc20b971e",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "use correct PG when collecting metrics with HYBRID shard",
+    "description": "Followup to #540. Fixes how we collect per-param optim metrics when using hybrid sharding. The process group we're using is the same process group that `FSDP` uses during hybrid sharding when reducing the grad norms, for example, so it should be the right one. See https://github.com/pytorch/pytorch/blob/cb17721899d4d6a55d66d4f7188e36c20a078231/torch/distributed/fsdp/fully_sharded_data_parallel.py#L1149.",
+    "url": "https://github.com/allenai/OLMo/pull/551"
+  },
+  "changed_files": [
+    "olmo/optim.py",
+    "olmo/train.py"
+  ],
+  "diff_path": "text/holdout/allenai__olmo__pr_000551/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "olmo/optim.py",
+      "line": 150,
+      "category": "bug_risk",
+      "severity": "high",
+      "issue_summary": "This was the original approach I went with, but I had a few concerns:\r\n\r\n1. Rank 0 refers to the global rank, so only the 'first' group will perform the reduce. The code says it will warn for the other groups, and I vaguely remember my runs crashing instead. If it doesn't crash then I guess it's not a real problem. You can get around this by getting each group rank 0 using `process_group.get_global_rank(group, 0)`.\r\n2. Using multiple process groups on the same stream without some sort of synchro",
+      "evidence_requirement": "The code passes `process_group` to distributed collectives but still uses rank 0 (global rank) as the destination for `dist.reduce`, which only rank 0 in the global group will execute on, leaving other groups' results unreduced.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "When using multiple process groups, specifying rank 0 in `dist.reduce` refers to the global rank; only the first group's rank 0 will perform the reduce, while other groups' rank 0 operations may hang or produce incorrect results.",
+      "_reviewer_comment_full": "This was the original approach I went with, but I had a few concerns:\r\n\r\n1. Rank 0 refers to the global rank, so only the 'first' group will perform the reduce. The code says it will warn for the other groups, and I vaguely remember my runs crashing instead. If it doesn't crash then I guess it's not a real problem. You can get around this by getting each group rank 0 using `process_group.get_global_rank(group, 0)`.\r\n2. Using multiple process groups on the same stream without some sort of synchronization can lead to deadlocks (https://pytorch.org/docs/stable/distributed.html#torch.distributed.new_group). I don't fully understand it myself. The way torch seems to get around this is that it puts the ops on different streams AND (if dynamo compiling is off) has the streams wait on each other. For us, it may be that we have to either pass the process group to all `dist.*` calls or that we have to synchronize when we make distributed calls over different process groups.",
+      "_gold_comment_url": "https://github.com/allenai/OLMo/pull/551#discussion_r1571177815"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 159
+}

@@ -1,0 +1,46 @@
+{
+  "example_id": "facefusion__facefusion__pr_000468",
+  "source": "github-codereview",
+  "repository": "facefusion/facefusion",
+  "commit_sha": "64dd149fcfb9f3aafac3551ff8ca5257ce55da03",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Voice separator",
+    "description": "- ui not added",
+    "url": "https://github.com/facefusion/facefusion/pull/468"
+  },
+  "changed_files": [
+    "facefusion.ini",
+    "facefusion/audio.py",
+    "facefusion/audio_extractor.py",
+    "facefusion/core.py",
+    "facefusion/globals.py",
+    "facefusion/processors/frame/modules/lip_syncer.py",
+    "facefusion/typing.py",
+    "facefusion/wording.py"
+  ],
+  "diff_path": "text/holdout/facefusion__facefusion__pr_000468/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "facefusion/audio_extractor.py",
+      "line": 81,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "we always format it that way:\r\n```\r\nvoice_extractor.run(None,\r\n{\r\n     voice_extractor.get_inputs()[0].name: audio_chunk\r\n})[0]\r\n```",
+      "evidence_requirement": "The added line 81 contains a single-line function call that the reviewer explicitly requested to be reformatted across multiple lines for consistency.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The reviewer requested consistent multi-line formatting for ONNX Runtime inference calls to improve readability and maintain uniform style across the codebase.",
+      "_reviewer_comment_full": "we always format it that way:\r\n```\r\nvoice_extractor.run(None,\r\n{\r\n     voice_extractor.get_inputs()[0].name: audio_chunk\r\n})[0]\r\n```",
+      "_gold_comment_url": "https://github.com/facefusion/facefusion/pull/468#discussion_r1546515749"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 198
+}

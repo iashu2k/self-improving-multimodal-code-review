@@ -1,0 +1,311 @@
+diff --git a/py/examples/inline.py b/py/examples/inline.py
+new file mode 100644
+index 0000000000..48cd0c385d
+--- /dev/null
++++ b/py/examples/inline.py
+@@ -0,0 +1,24 @@
++# Inline
++# Create an inline (horizontal) list of components.
++# ---
++
++from h2o_wave import main, app, Q, ui
++
++@app('/demo')
++async def serve(q: Q):
++    all_justify = ['start', 'end', 'center', 'between', 'around']
++    all_align = ['start', 'end', 'center']
++
++    justify_choices = [ui.choice(opt, opt) for opt in all_justify]
++    align_choices = [ui.choice(opt, opt) for opt in all_align]
++
++    justify_current = q.args.justify if q.args.justify in all_justify else 'start'
++    align_current = q.args.align if q.args.align in all_align else 'center'
++
++    q.page['example'] = ui.form_card(box='1 1 -1 3', items=[
++        ui.inline([
++            ui.choice_group(name='justify', label='justify', value=justify_current, choices=justify_choices, trigger=True),
++            ui.choice_group(name='align', label='align', value=align_current, choices=align_choices, trigger=True),
++        ], justify=justify_current, align=align_current)
++    ])
++    await q.page.save()
+diff --git a/py/examples/tour.conf b/py/examples/tour.conf
+index bd981f164b..a74dab36cd 100644
+--- a/py/examples/tour.conf
++++ b/py/examples/tour.conf
+@@ -102,6 +102,7 @@ tags.py
+ image.py
+ image_popup.py
+ image_annotator.py
++inline.py
+ file_stream.py
+ frame.py
+ frame_path.py
+diff --git a/py/h2o_wave/types.py b/py/h2o_wave/types.py
+index ff8c0cc952..0084c1b8e2 100644
+--- a/py/h2o_wave/types.py
++++ b/py/h2o_wave/types.py
+@@ -5925,6 +5925,17 @@ class InlineJustify:
+     AROUND = 'around'
+
+
++_InlineAlign = ['start', 'end', 'center', 'baseline', 'stretch']
++
++
++class InlineAlign:
++    START = 'start'
++    END = 'end'
++    CENTER = 'center'
++    BASELINE = 'baseline'
++    STRETCH = 'stretch'
++
++
+ class Inline:
+     """Create an inline (horizontal) list of components.
+     """
+@@ -5932,15 +5943,19 @@ def __init__(
+             self,
+             items: List['Component'],
+             justify: Optional[str] = None,
++            align: Optional[str] = None,
+             inset: Optional[bool] = None,
+     ):
+         _guard_vector('Inline.items', items, (Component,), False, False, False)
+         _guard_enum('Inline.justify', justify, _InlineJustify, True)
++        _guard_enum('Inline.align', align, _InlineAlign, True)
+         _guard_scalar('Inline.inset', inset, (bool,), False, True, False)
+         self.items = items
+         """The components laid out inline."""
+         self.justify = justify
+         """Specifies how to lay out the individual components. Defaults to 'start'. One of 'start', 'end', 'center', 'between', 'around'. See enum h2o_wave.ui.InlineJustify."""
++        self.align = align
++        """Specifies how the individual components are aligned on the vertical axis. Defaults to 'center'. One of 'start', 'end', 'center', 'baseline', 'stretch'. See enum h2o_wave.ui.InlineAlign."""
+         self.inset = inset
+         """Whether to display the components inset from the parent form, with a contrasting background."""
+
+@@ -5948,10 +5963,12 @@ def dump(self) -> Dict:
+         """Returns the contents of this object as a dict."""
+         _guard_vector('Inline.items', self.items, (Component,), False, False, False)
+         _guard_enum('Inline.justify', self.justify, _InlineJustify, True)
++        _guard_enum('Inline.align', self.align, _InlineAlign, True)
+         _guard_scalar('Inline.inset', self.inset, (bool,), False, True, False)
+         return _dump(
+             items=[__e.dump() for __e in self.items],
+             justify=self.justify,
++            align=self.align,
+             inset=self.inset,
+         )
+
+@@ -5962,14 +5979,18 @@ def load(__d: Dict) -> 'Inline':
+         _guard_vector('Inline.items', __d_items, (dict,), False, False, False)
+         __d_justify: Any = __d.get('justify')
+         _guard_enum('Inline.justify', __d_justify, _InlineJustify, True)
++        __d_align: Any = __d.get('align')
++        _guard_enum('Inline.align', __d_align, _InlineAlign, True)
+         __d_inset: Any = __d.get('inset')
+         _guard_scalar('Inline.inset', __d_inset, (bool,), False, True, False)
+         items: List['Component'] = [Component.load(__e) for __e in __d_items]
+         justify: Optional[str] = __d_justify
++        align: Optional[str] = __d_align
+         inset: Optional[bool] = __d_inset
+         return Inline(
+             items,
+             justify,
++            align,
+             inset,
+         )
+
+diff --git a/py/h2o_wave/ui.py b/py/h2o_wave/ui.py
+index 1d52970192..9f714ba0ea 100644
+--- a/py/h2o_wave/ui.py
++++ b/py/h2o_wave/ui.py
+@@ -2197,6 +2197,7 @@ def stats(
+ def inline(
+         items: List[Component],
+         justify: Optional[str] = None,
++        align: Optional[str] = None,
+         inset: Optional[bool] = None,
+ ) -> Component:
+     """Create an inline (horizontal) list of components.
+@@ -2204,6 +2205,7 @@ def inline(
+     Args:
+         items: The components laid out inline.
+         justify: Specifies how to lay out the individual components. Defaults to 'start'. One of 'start', 'end', 'center', 'between', 'around'. See enum h2o_wave.ui.InlineJustify.
++        align: Specifies how the individual components are aligned on the vertical axis. Defaults to 'center'. One of 'start', 'end', 'center', 'baseline', 'stretch'. See enum h2o_wave.ui.InlineAlign.
+         inset: Whether to display the components inset from the parent form, with a contrasting background.
+     Returns:
+         A `h2o_wave.types.Inline` instance.
+@@ -2211,6 +2213,7 @@ def inline(
+     return Component(inline=Inline(
+         items,
+         justify,
++        align,
+         inset,
+     ))
+
+diff --git a/r/R/ui.R b/r/R/ui.R
+index c608f42f5d..8745916bb4 100644
+--- a/r/R/ui.R
++++ b/r/R/ui.R
+@@ -2577,19 +2577,24 @@ ui_stats <- function(
+ #' @param items The components laid out inline.
+ #' @param justify Specifies how to lay out the individual components. Defaults to 'start'.
+ #'   One of 'start', 'end', 'center', 'between', 'around'. See enum h2o_wave.ui.InlineJustify.
++#' @param align Specifies how the individual components are aligned on the vertical axis. Defaults to 'center'.
++#'   One of 'start', 'end', 'center', 'baseline', 'stretch'. See enum h2o_wave.ui.InlineAlign.
+ #' @param inset Whether to display the components inset from the parent form, with a contrasting background.
+ #' @return A Inline instance.
+ #' @export
+ ui_inline <- function(
+   items,
+   justify = NULL,
++  align = NULL,
+   inset = NULL) {
+   .guard_vector("items", "WaveComponent", items)
+   # TODO Validate justify
++  # TODO Validate align
+   .guard_scalar("inset", "logical", inset)
+   .o <- list(inline=list(
+     items=items,
+     justify=justify,
++    align=align,
+     inset=inset))
+   class(.o) <- append(class(.o), c(.wave_obj, "WaveComponent"))
+   return(.o)
+diff --git a/tools/intellij-plugin/src/main/resources/templates/wave-components.xml b/tools/intellij-plugin/src/main/resources/templates/wave-components.xml
+index 92ad7def36..749f3b9ef2 100644
+--- a/tools/intellij-plugin/src/main/resources/templates/wave-components.xml
++++ b/tools/intellij-plugin/src/main/resources/templates/wave-components.xml
+@@ -1303,8 +1303,9 @@
+       <option name="Python" value="true"/>
+     </context>
+   </template>
+-  <template name="w_full_inline" value="ui.inline(justify='$justify$',inset=$inset$,items=[&#10;	$items$	&#10;]),$END$" description="Create Wave Inline with full attributes." toReformat="true" toShortenFQNames="true">
++  <template name="w_full_inline" value="ui.inline(justify='$justify$',align='$align$',inset=$inset$,items=[&#10;	$items$	&#10;]),$END$" description="Create Wave Inline with full attributes." toReformat="true" toShortenFQNames="true">
+     <variable name="justify" expression="" defaultValue="&quot;start&quot;" alwaysStopAt="true"/>
++    <variable name="align" expression="" defaultValue="&quot;center&quot;" alwaysStopAt="true"/>
+     <variable name="inset" expression="" defaultValue="&quot;False&quot;" alwaysStopAt="true"/>
+     <variable name="items" expression="" defaultValue="" alwaysStopAt="true"/>
+     <context>
+diff --git a/tools/vscode-extension/component-snippets.json b/tools/vscode-extension/component-snippets.json
+index 59763b50f9..5a2ee090a5 100644
+--- a/tools/vscode-extension/component-snippets.json
++++ b/tools/vscode-extension/component-snippets.json
+@@ -1108,7 +1108,7 @@
+   "Wave Full Inline": {
+     "prefix": "w_full_inline",
+     "body": [
+-      "ui.inline(justify='${1:start}', inset=${2:False}, items=[\n\t\t$3\t\t\n]),$0"
++      "ui.inline(justify='${1:start}', align='${2:center}', inset=${3:False}, items=[\n\t\t$4\t\t\n]),$0"
+     ],
+     "description": "Create a full Wave Inline."
+   },
+diff --git a/ui/src/form.tsx b/ui/src/form.tsx
+index 7c1e278101..2f39815f3b 100644
+--- a/ui/src/form.tsx
++++ b/ui/src/form.tsx
+@@ -52,7 +52,7 @@ import { Text, TextL, TextM, TextS, TextXl, TextXs, XText } from './text'
+ import { Textbox, XTextbox } from './textbox'
+ import { TextAnnotator, XTextAnnotator } from './text_annotator'
+ import { ImageAnnotator, XImageAnnotator } from './image_annotator'
+-import { clas, cssVar, justifications, padding } from './theme'
++import { clas, cssVar, justifications, alignments, padding } from './theme'
+ import { Toggle, XToggle } from './toggle'
+ import { XToolTip } from './tooltip'
+ import { bond } from './ui'
+@@ -171,6 +171,8 @@ interface Inline {
+   items: Component[]
+   /** Specifies how to lay out the individual components. Defaults to 'start'. */
+   justify?: 'start' | 'end' | 'center' | 'between' | 'around'
++  /** Specifies how the individual components are aligned on the vertical axis. Defaults to 'center'. */
++  align?: 'start' | 'end' | 'center' | 'baseline' | 'stretch'
+   /** Whether to display the components inset from the parent form, with a contrasting background. */
+   inset?: B
+ }
+@@ -214,10 +216,11 @@ const
+     },
+   })
+
+-type XComponentAlignment = 'start' | 'end' | 'center' | 'between' | 'around'
++type Justification = 'start' | 'end' | 'center' | 'between' | 'around'
++type Alignment = 'start' | 'end' | 'center' | 'baseline' | 'stretch'
+
+ export const
+-  XComponents = ({ items, alignment, inset }: { items: Component[], alignment?: XComponentAlignment, inset?: B }) => {
++  XComponents = ({ items, justify, align, inset }: { items: Component[], justify?: Justification, align?: Alignment, inset?: B }) => {
+     const
+       components = items.map((m: any, i) => {
+         const
+@@ -225,7 +228,7 @@ export const
+           [componentKey] = Object.keys(m),
+           { name, visible = true, width = 'auto' } = m[componentKey],
+           visibleStyles: React.CSSProperties = visible ? {} : { display: 'none' },
+-          // TODO: Ugly, maybe introduce 'align' prop to ui.inline?
++          // TODO: Ugly, maybe use ui.inline's 'align' prop instead?
+           alignSelf = componentKey === 'links' ? 'flex-start' : undefined
+
+         return (
+@@ -235,12 +238,19 @@ export const
+           </div>
+         )
+       })
+-    return <div className={clas(alignment ? css.horizontal : css.vertical, inset ? css.inset : '')} style={{ justifyContent: justifications[alignment || ''] }}>{components}</div>
++    return <div
++      className={clas(justify ? css.horizontal : css.vertical, inset ? css.inset : '')}
++      style={{
++        justifyContent: justifications[justify || ''],
++        alignItems: alignments[align || ''],
++      }}
++    >{components}</div>
+   },
+   XInline = ({ model: m }: { model: Inline }) => (
+     <XComponents
+       items={m.items}
+-      alignment={m.justify || 'start'}
++      justify={m.justify || 'start'}
++      align={m.align || 'center'}
+       inset={m.inset}
+     />
+   )
+diff --git a/ui/src/message_bar.tsx b/ui/src/message_bar.tsx
+index 31aef9e2d4..8f6bd77547 100644
+--- a/ui/src/message_bar.tsx
++++ b/ui/src/message_bar.tsx
+@@ -138,7 +138,7 @@ export const
+             messageBarType={toMessageBarType(type)}
+             className={css.messageBar}
+             isMultiline={false}
+-            actions={btns?.length ? <XComponents items={btns || []} alignment='end' /> : undefined}
++            actions={btns?.length ? <XComponents items={btns || []} justify='end' /> : undefined}
+             messageBarIconProps={{ iconName }}
+           >
+             <Markdown source={text} />
+diff --git a/ui/src/notification_bar.tsx b/ui/src/notification_bar.tsx
+index 84d384592d..ab823e3dc7 100644
+--- a/ui/src/notification_bar.tsx
++++ b/ui/src/notification_bar.tsx
+@@ -102,7 +102,7 @@ export const
+             <Fluent.MessageBar
+               messageBarType={toMessageBarType(currentModel?.type)}
+               messageBarIconProps={{ iconName }}
+-              actions={buttons?.length ? <XComponents items={buttons || []} alignment='end' /> : undefined}
++              actions={buttons?.length ? <XComponents items={buttons || []} justify='end' /> : undefined}
+               isMultiline={isMultiline}
+               onDismiss={onDismiss}
+               className={css.messageBar}
+diff --git a/ui/src/section.tsx b/ui/src/section.tsx
+index fdac3d3e87..7357caf474 100644
+--- a/ui/src/section.tsx
++++ b/ui/src/section.tsx
+@@ -61,7 +61,7 @@ export const
+           components = unpack<Component[]>(items), // XXX ugly
+           form = items && (
+             <div className={css.rhs}>
+-              <XComponents items={components} alignment='end' />
++              <XComponents items={components} justify='end' />
+             </div>
+           )
+
+diff --git a/website/docs/examples/assets/inline.png b/website/docs/examples/assets/inline.png
+new file mode 100644
+index 0000000000..a5bd868851
+Binary files /dev/null and b/website/docs/examples/assets/inline.png differ

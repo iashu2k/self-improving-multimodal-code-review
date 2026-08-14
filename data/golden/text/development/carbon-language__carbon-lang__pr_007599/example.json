@@ -1,0 +1,23 @@
+{
+  "example_id": "carbon-language__carbon-lang__pr_007599",
+  "source": "github-codereview",
+  "repository": "carbon-language/carbon-lang",
+  "commit_sha": "618f39b49de686baab55823e849b1a89ff954bf8",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Fix uses of \"dependent\" to mean \"dependency\"",
+    "description": "For consistency with existing code I've chosen to use \"dep\" as an abbreviation for \"dependency\", even though it's somewhat ambiguous with \"dependent\".\r\n",
+    "url": "https://github.com/carbon-language/carbon-lang/pull/7599"
+  },
+  "changed_files": [
+    "github_tools/check_dependent_pr.py"
+  ],
+  "diff_path": "text/development/carbon-language__carbon-lang__pr_007599/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "development",
+  "snapshot_id": 93
+}

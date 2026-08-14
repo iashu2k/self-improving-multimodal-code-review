@@ -1,0 +1,87 @@
+diff --git a/bindings/python/google_benchmark/__init__.py b/bindings/python/google_benchmark/__init__.py
+index 227327131a..029588fe43 100644
+--- a/bindings/python/google_benchmark/__init__.py
++++ b/bindings/python/google_benchmark/__init__.py
+@@ -28,8 +28,7 @@ def my_benchmark(state):
+ """
+
+ import atexit
+-
+-from absl import app
++import contextlib
+
+ from google_benchmark import _benchmark
+ from google_benchmark._benchmark import (
+@@ -53,6 +52,17 @@ def my_benchmark(state):
+ __version__ = "1.9.4"
+
+
++HAS_ABSL = False
++with contextlib.suppress(ImportError):
++    # check if absl-py is available.
++    import absl
++
++    HAS_ABSL = True
++    del absl
++
++del contextlib
++
++
+ class __OptionMaker:
+     """A stateless class to collect benchmark options.
+
+@@ -122,19 +132,33 @@ def register(undefined=None, *, name=None):
+     return options.func
+
+
+-def _flags_parser(argv):
+-    argv = _benchmark.Initialize(argv)
+-    return app.parse_flags_with_usage(argv)
++def _flags_parser(argv: list[str] | None = None) -> list[str]:
++    if HAS_ABSL:
++        from absl import app
++
++        return app.parse_flags_with_usage(argv)
+
++    import sys
++
++    return _benchmark.Initialize(argv or sys.argv)
++
++
++def _run_benchmarks(argv: list[str]) -> None:
++    if HAS_ABSL and len(argv) > 1:
++        from absl import app
+
+-def _run_benchmarks(argv):
+-    if len(argv) > 1:
+         raise app.UsageError("Too many command-line arguments.")
+     return _benchmark.RunSpecifiedBenchmarks()
+
+
+-def main(argv=None):
+-    return app.run(_run_benchmarks, argv=argv, flags_parser=_flags_parser)
++def main(argv: list[str] | None = None) -> None:
++    if HAS_ABSL:
++        from absl import app
++
++        return app.run(_run_benchmarks, argv=argv, flags_parser=_flags_parser)
++
++    argv = _flags_parser(argv)
++    return _run_benchmarks(argv)
+
+
+ # FIXME: can we rerun with disabled ASLR?
+diff --git a/pyproject.toml b/pyproject.toml
+index 9e56f866e4..37a9ceb00d 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -26,7 +26,8 @@ classifiers = [
+
+ dynamic = ["readme", "version"]
+
+-dependencies = ["absl-py>=0.7.1"]
++[project.optional-dependencies]
++absl = ["absl-py>=0.7.1"]
+
+ [dependency-groups]
+ dev = ["pre-commit>=3.3.3"]

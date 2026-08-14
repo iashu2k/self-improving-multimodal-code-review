@@ -1,0 +1,39 @@
+{
+  "example_id": "carbon-language__carbon-lang__pr_005824",
+  "source": "github-codereview",
+  "repository": "carbon-language/carbon-lang",
+  "commit_sha": "cc4e3ce73326abc9e162493e3dc491bf4af57f6e",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Add a `dump` command in lldb for dumping from ids",
+    "description": "The command is:\r\n```\r\ndump <context> [<ID>|<TYPE><ID>|<TYPE> <ID>|-- <ID>]\r\n\r\nTYPE can be \"inst\", \"entity_name\", etc.\r\n```\r\n\r\nThis saves a lot of typing of `SemIR::MakeInstId()` in a debugger, and allows copy-pasting ids from dump output, as they take the form `inst33`, etc.",
+    "url": "https://github.com/carbon-language/carbon-lang/pull/5824"
+  },
+  "changed_files": [
+    "scripts/lldbinit.py"
+  ],
+  "diff_path": "text/development/carbon-language__carbon-lang__pr_005824/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "scripts/lldbinit.py",
+      "line": 128,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "Just looking one more time at the code structure, had you considered putting the final print in a helper function, like `def print_id`, similar to `print_usage`? Mainly I was wondering because of the `if not id_type` flow, which I assume you're doing so that the `print_usage` calls return to where you want. But then I was thinking about nesting, and not sure what you'd think of something like:\r\n\r\n```\r\n    print_id(f\"SemIR::...\")\r\n    return\r\n```\r\n\r\nwhich by the return, would mean you wouldn't ne",
+      "evidence_requirement": "The diff shows no helper function (e.g., `print_id`) introduced to replace the repeated `print_usage()` calls and nested conditionals in `cmd_dump`.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A helper function would centralize printing logic and reduce indentation/nesting, improving readability and maintainability of the command handler.",
+      "_reviewer_comment_full": "Just looking one more time at the code structure, had you considered putting the final print in a helper function, like `def print_id`, similar to `print_usage`? Mainly I was wondering because of the `if not id_type` flow, which I assume you're doing so that the `print_usage` calls return to where you want. But then I was thinking about nesting, and not sure what you'd think of something like:\r\n\r\n```\r\n    print_id(f\"SemIR::...\")\r\n    return\r\n```\r\n\r\nwhich by the return, would mean you wouldn't need as much nesting.\r\n\r\nAnyways, I think this code is plenty good as-is, so I'm going to approve and leave this to you to choose.",
+      "_gold_comment_url": "https://github.com/carbon-language/carbon-lang/pull/5824#discussion_r2219862364"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "development",
+  "snapshot_id": 191
+}

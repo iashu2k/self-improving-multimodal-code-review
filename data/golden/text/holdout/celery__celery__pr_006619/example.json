@@ -1,0 +1,39 @@
+{
+  "example_id": "celery__celery__pr_006619",
+  "source": "github-codereview",
+  "repository": "celery/celery",
+  "commit_sha": "967d555a8638a6fdc0c73fda40c206faf26108fa",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Safeguard against schedule entry without kwargs",
+    "description": "Fixes ##5889",
+    "url": "https://github.com/celery/celery/pull/6619"
+  },
+  "changed_files": [
+    "celery/beat.py"
+  ],
+  "diff_path": "text/holdout/celery__celery__pr_006619/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "celery/beat.py",
+      "line": 384,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "**[suggestion]**: Refactor this function for better readability. Avoid doing an extra boolean operation inside a comprehension. Avoid calling `items()` on an empty dict.\r\n\r\n```python\r\ndef apply_async(self, entry, producer=None, advance=True, **kwargs):\r\n    # Update time-stamps and run counts before we actually execute,\r\n    # so we have that done if an exception is raised (doesn't schedule\r\n    # forever.)\r\n    entry = self.reserve(entry) if advance else entry\r\n    task = self.app.tasks.get(ent",
+      "evidence_requirement": "The added line 384 still uses `{k: v() if isinstance(v, BeatLazyFunc) else v for k, v in (entry.kwargs or {}).items()}` inline without extracting the logic into a helper function as suggested.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The reviewer suggested refactoring for readability and avoiding unnecessary boolean operations and `items()` calls on empty dicts; the current implementation retains the original complex comprehension pattern.",
+      "_reviewer_comment_full": "**[suggestion]**: Refactor this function for better readability. Avoid doing an extra boolean operation inside a comprehension. Avoid calling `items()` on an empty dict.\r\n\r\n```python\r\ndef apply_async(self, entry, producer=None, advance=True, **kwargs):\r\n    # Update time-stamps and run counts before we actually execute,\r\n    # so we have that done if an exception is raised (doesn't schedule\r\n    # forever.)\r\n    entry = self.reserve(entry) if advance else entry\r\n    task = self.app.tasks.get(entry.task)\r\n\r\n    try:\r\n        entry_args = self._evaluate_entry_args(entry.args)\r\n        entry_kwargs = self._evaluate_entry_kwargs(entry.kwargs)\r\n\r\n        self.send_task(entry, entry_args, entry_kwargs, task, producer)\r\n    except Exception as exc:  # pylint: disable=broad-except\r\n        reraise(SchedulingError, SchedulingError(\r\n            \"Couldn't apply scheduled task {0.name}: {exc}\".format(\r\n                entry, exc=exc)), sys.exc_info()[2])\r\n    finally:\r\n        self._tasks_since_sync += 1\r\n        if self.should_sync():\r\n            self._do_sync()\r\n\r\ndef _evaluate_entry_args(entry_args):\r\n    if not entry_args:\r\n        return []\r\n    return [v() if isinstance(v, BeatLazyFunc) else v for v in entry_args]\r\n\r\ndef _evaluate_entry_kwargs(entry_kwargs):\r\n    if not entry_kwargs:\r\n        return {}\r\n    return {k: v() if isinstance(v, BeatLazyFunc) else v for k, v in entry_kwargs}\r\n\r\n# Repurpose existing function\r\ndef send_task(self, entry, entry_args, entry_kwargs, task, producer):\r\n        if task:\r\n            return task.apply_async(\r\n                entry_args, entry_kwargs,\r\n                producer=producer,\r\n                **entry.options\r\n            )\r\n        else:\r\n            return self.app.send_task(\r\n                entry.task,\r\n                entry_args,\r\n                entry_kwargs,\r\n                producer=producer,\r\n                **entry.options\r\n            )",
+      "_gold_comment_url": "https://github.com/celery/celery/pull/6619#discussion_r592463994"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 192
+}

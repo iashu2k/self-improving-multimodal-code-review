@@ -1,0 +1,262 @@
+diff --git a/libs/kotaemon/kotaemon/indices/vectorindex.py b/libs/kotaemon/kotaemon/indices/vectorindex.py
+index 7eddc8700..80534151c 100644
+--- a/libs/kotaemon/kotaemon/indices/vectorindex.py
++++ b/libs/kotaemon/kotaemon/indices/vectorindex.py
+@@ -1,8 +1,11 @@
+ from __future__ import annotations
+
+ import uuid
++from pathlib import Path
+ from typing import Optional, Sequence, cast
+
++from theflow.settings import settings as flowsettings
++
+ from kotaemon.base import BaseComponent, Document, RetrievedDocument
+ from kotaemon.embeddings import BaseEmbeddings
+ from kotaemon.storages import BaseDocumentStore, BaseVectorStore
+@@ -23,6 +26,7 @@ class VectorIndexing(BaseIndexing):
+         - List of texts
+     """
+
++    cache_dir: Optional[str] = getattr(flowsettings, "KH_CHUNKS_OUTPUT_DIR", None)
+     vector_store: BaseVectorStore
+     doc_store: Optional[BaseDocumentStore] = None
+     embedding: BaseEmbeddings
+@@ -69,6 +73,12 @@ def run(self, text: str | list[str] | Document | list[Document]):
+         if self.doc_store:
+             print("Adding documents to doc store")
+             self.doc_store.add(input_)
++        # save the chunks content into markdown format
++        if self.cache_dir is not None:
++            file_name = Path(input_[0].metadata["file_name"])
++            for i in range(len(input_)):
++                with open(Path(self.cache_dir) / f"{file_name.stem}_{i}.md", "w") as f:
++                    f.write(input_[i].text)
+
+
+ class VectorRetrieval(BaseRetrieval):
+diff --git a/libs/kotaemon/kotaemon/loaders/azureai_document_intelligence_loader.py b/libs/kotaemon/kotaemon/loaders/azureai_document_intelligence_loader.py
+index 204c786fd..8aabe2986 100644
+--- a/libs/kotaemon/kotaemon/loaders/azureai_document_intelligence_loader.py
++++ b/libs/kotaemon/kotaemon/loaders/azureai_document_intelligence_loader.py
+@@ -95,6 +95,10 @@ class AzureAIDocumentIntelligenceLoader(BaseReader):
+             "location to extract figures."
+         ),
+     )
++    cache_dir: str = Param(
++        None,
++        help="Directory to cache the downloaded files. Default is None",
++    )
+
+     @Param.auto(depends_on=["endpoint", "credential"])
+     def client_(self):
+@@ -118,6 +122,7 @@ def load_data(
+     ) -> list[Document]:
+         """Extract the input file, allowing multi-modal extraction"""
+         metadata = extra_info or {}
++        file_name = Path(file_path)
+         with open(file_path, "rb") as fi:
+             poller = self.client_.begin_analyze_document(
+                 self.model,
+@@ -219,4 +224,8 @@ def load_data(
+                 + text_content[span["offset"] + span["length"] :]
+             )
+
++        # save the text content into markdown format
++        if self.cache_dir is not None:
++            with open(Path(self.cache_dir) / f"{file_name.stem}.md", "w") as f:
++                f.write(text_content)
+         return [Document(content=text_content, metadata=metadata)] + figures + tables
+diff --git a/libs/kotaemon/kotaemon/loaders/html_loader.py b/libs/kotaemon/kotaemon/loaders/html_loader.py
+index 552c29255..555efe50f 100644
+--- a/libs/kotaemon/kotaemon/loaders/html_loader.py
++++ b/libs/kotaemon/kotaemon/loaders/html_loader.py
+@@ -3,6 +3,7 @@
+ from typing import Optional
+
+ from llama_index.core.readers.base import BaseReader
++from theflow.settings import settings as flowsettings
+
+ from kotaemon.base import Document
+
+@@ -78,6 +79,9 @@ class MhtmlReader(BaseReader):
+
+     def __init__(
+         self,
++        cache_dir: Optional[str] = getattr(
++            flowsettings, "KH_MARKDOWN_OUTPUT_DIR", None
++        ),
+         open_encoding: Optional[str] = None,
+         bs_kwargs: Optional[dict] = None,
+         get_text_separator: str = "",
+@@ -86,6 +90,7 @@ def __init__(
+         to pass to the BeautifulSoup object.
+
+         Args:
++            cache_dir: Path for markdwon format.
+             file_path: Path to file to load.
+             open_encoding: The encoding to use when opening the file.
+             bs_kwargs: Any kwargs to pass to the BeautifulSoup object.
+@@ -100,6 +105,7 @@ def __init__(
+                 "`pip install beautifulsoup4`"
+             )
+
++        self.cache_dir = cache_dir
+         self.open_encoding = open_encoding
+         if bs_kwargs is None:
+             bs_kwargs = {"features": "lxml"}
+@@ -116,6 +122,7 @@ def load_data(
+         extra_info = extra_info or {}
+         metadata: dict = extra_info
+         page = []
++        file_name = Path(file_path)
+         with open(file_path, "r", encoding=self.open_encoding) as f:
+             message = email.message_from_string(f.read())
+             parts = message.get_payload()
+@@ -144,5 +151,11 @@ def load_data(
+                     text = "\n\n".join(lines)
+                     if text:
+                         page.append(text)
++        # save the page into markdown format
++        print(self.cache_dir)
++        if self.cache_dir is not None:
++            print(Path(self.cache_dir) / f"{file_name.stem}.md")
++            with open(Path(self.cache_dir) / f"{file_name.stem}.md", "w") as f:
++                f.write(page[0])
+
+         return [Document(text="\n\n".join(page), metadata=metadata)]
+diff --git a/libs/ktem/ktem/index/file/ui.py b/libs/ktem/ktem/index/file/ui.py
+index 9ff1cfb83..16cadb788 100644
+--- a/libs/ktem/ktem/index/file/ui.py
++++ b/libs/ktem/ktem/index/file/ui.py
+@@ -1,5 +1,6 @@
+ import os
+ import tempfile
++import zipfile
+ from pathlib import Path
+ from typing import Generator
+
+@@ -12,6 +13,7 @@
+ from ktem.utils.render import Render
+ from sqlalchemy import select
+ from sqlalchemy.orm import Session
++from theflow.settings import settings as flowsettings
+
+
+ class File(gr.File):
+@@ -167,6 +169,15 @@ def on_building_ui(self):
+                         variant="stop",
+                         visible=False,
+                     )
++                with gr.Row():
++                    self.download_all_button = gr.DownloadButton(
++                        "Download all files",
++                        visible=True,
++                    )
++                    self.download_single_button = gr.DownloadButton(
++                        "Download file",
++                        visible=False,
++                    )
+
+     def on_subscribe_public_events(self):
+         """Subscribe to the declared public event of the app"""
+@@ -229,6 +240,7 @@ def file_selected(self, file_id):
+             gr.update(value="".join(chunks), visible=file_id is not None),
+             gr.update(visible=file_id is not None),
+             gr.update(visible=file_id is not None),
++            gr.update(visible=file_id is not None),
+         )
+
+     def delete_event(self, file_id):
+@@ -268,6 +280,49 @@ def delete_no_event(self):
+             gr.update(visible=False),
+         )
+
++    def download_single_file(self, file_id):
++        with Session(engine) as session:
++            source = session.execute(
++                select(self._index._resources["Source"]).where(
++                    self._index._resources["Source"].id == file_id
++                )
++            ).first()
++        if source:
++            target_file_name = Path(source[0].name)
++        zip_files = []
++        for file_name in os.listdir(flowsettings.KH_CHUNKS_OUTPUT_DIR):
++            if target_file_name.stem in file_name:
++                zip_files.append(
++                    os.path.join(flowsettings.KH_CHUNKS_OUTPUT_DIR, file_name)
++                )
++        for file_name in os.listdir(flowsettings.KH_MARKDOWN_OUTPUT_DIR):
++            if target_file_name.stem in file_name:
++                zip_files.append(
++                    os.path.join(flowsettings.KH_MARKDOWN_OUTPUT_DIR, file_name)
++                )
++        zip_file_path = os.path.join(
++            flowsettings.KH_ZIP_OUTPUT_DIR, target_file_name.stem
++        )
++        with zipfile.ZipFile(f"{zip_file_path}.zip", "w") as zipMe:
++            for file in zip_files:
++                zipMe.write(file, arcname=os.path.basename(file))
++        return gr.DownloadButton(label="Download pressed", value=f"{zip_file_path}.zip")
++
++    def download_all_files(self):
++        zip_files = []
++        for file_name in os.listdir(flowsettings.KH_CHUNKS_OUTPUT_DIR):
++            zip_files.append(os.path.join(flowsettings.KH_CHUNKS_OUTPUT_DIR, file_name))
++        for file_name in os.listdir(flowsettings.KH_MARKDOWN_OUTPUT_DIR):
++            zip_files.append(
++                os.path.join(flowsettings.KH_MARKDOWN_OUTPUT_DIR, file_name)
++            )
++        zip_file_path = os.path.join(flowsettings.KH_ZIP_OUTPUT_DIR, "all")
++        with zipfile.ZipFile(f"{zip_file_path}.zip", "w") as zipMe:
++            for file in zip_files:
++                arcname = Path(file)
++                zipMe.write(file, arcname=arcname.name)
++        return gr.DownloadButton(label="Download pressed", value=f"{zip_file_path}.zip")
++
+     def on_register_events(self):
+         """Register all events to the app"""
+         onDeleted = (
+@@ -294,6 +349,7 @@ def on_register_events(self):
+                     self.chunks,
+                     self.deselect_button,
+                     self.delete_button,
++                    self.download_single_button,
+                 ],
+                 show_progress="hidden",
+             )
+@@ -313,10 +369,25 @@ def on_register_events(self):
+                 self.chunks,
+                 self.deselect_button,
+                 self.delete_button,
++                self.download_single_button,
+             ],
+             show_progress="hidden",
+         )
+
++        self.download_all_button.click(
++            fn=self.download_all_files,
++            inputs=[],
++            outputs=self.download_all_button,
++            show_progress="hidden",
++        )
++
++        self.download_single_button.click(
++            fn=self.download_single_file,
++            inputs=[self.selected_file_id],
++            outputs=self.download_single_button,
++            show_progress="hidden",
++        )
++
+         onUploaded = self.upload_button.click(
+             fn=lambda: gr.update(visible=True),
+             outputs=[self.upload_progress_panel],
+@@ -363,6 +434,7 @@ def on_register_events(self):
+                 self.chunks,
+                 self.deselect_button,
+                 self.delete_button,
++                self.download_single_button,
+             ],
+             show_progress="hidden",
+         )

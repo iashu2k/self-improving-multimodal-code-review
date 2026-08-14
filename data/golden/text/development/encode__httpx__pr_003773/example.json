@@ -1,0 +1,23 @@
+{
+  "example_id": "encode__httpx__pr_003773",
+  "source": "github-codereview",
+  "repository": "encode/httpx",
+  "commit_sha": "63e885394a629d194b0aa867e8fbf475cdec6521",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Adapt test_response_decode_text_using_autodetect for chardet 6.0",
+    "description": "<!-- Thanks for contributing to HTTPX! \ud83d\udc9a\r\nGiven this is a project maintained by volunteers, please read this template to not waste your time, or ours! \ud83d\ude01 -->\r\n\r\n# Summary\r\n\r\nSee https://github.com/encode/httpx/discussions/3772. Version 6.0.0 of `chardet` detects this byte string as `WINDOWS-1252`, while previous versions detected `ISO-8859-1`. Since both are plausible (the encoded byte string decodes to the same Unicode string under either encoding), this PR adjusts the test to accept either claim.\r\n<!-- Write a small summary about what is happening here. -->\r\n\r\n# Checklist\r\n\r\n- [x] I understand that this PR may be closed in case there was no previous discussion. (This doesn't apply to typos!)\r\n- [x] I've added a test for each change that was introduced, and I tried as much as possible to make a single atomic change. **No new test required, as this fixes a test regression.**\r\n- [x] I've updated the documentation accordingly. **No documentation changes required.**\r\n",
+    "url": "https://github.com/encode/httpx/pull/3773"
+  },
+  "changed_files": [
+    "tests/models/test_responses.py"
+  ],
+  "diff_path": "text/development/encode__httpx__pr_003773/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "development",
+  "snapshot_id": 134
+}

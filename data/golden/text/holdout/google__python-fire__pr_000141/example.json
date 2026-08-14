@@ -1,0 +1,41 @@
+{
+  "example_id": "google__python-fire__pr_000141",
+  "source": "github-codereview",
+  "repository": "google/python-fire",
+  "commit_sha": "c73064a790d75d0ac78fca53aaa81a2dfc1c2677",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Issue #108: Shortcuts for boolean arguments",
+    "description": "In response to [this issue](https://github.com/google/python-fire/issues/108).  This adds a feature where a shortcut can be used for boolean arguments of functions.  For example the function\r\n\r\n`def foo(bar=False):`\r\n\r\ncan be invoked as `foo -b` to set bar to True.  While developing this, I came across a couple concerns:\r\n\r\n- In detecting whether or not arguments matched the pattern of a bool shortcut, I decided that python's regex library was the best way to solve this problem.  Is adding `re` to imports ok?\r\n- If a naming collision occurs (see final assert of `testBoolShortcutParsing`) the program raises a FireError describing the ambiguity.  Is this a proper manner to use this error in?\r\n- Currently, if a shortcut doesn't match any function argument, it is parsed as-is.  Should something else be done in this scenario?",
+    "url": "https://github.com/google/python-fire/pull/141"
+  },
+  "changed_files": [
+    "fire/core.py",
+    "fire/fire_test.py",
+    "fire/test_components.py"
+  ],
+  "diff_path": "text/holdout/google__python-fire__pr_000141/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "fire/core.py",
+      "line": 801,
+      "category": "maintainability",
+      "severity": "medium",
+      "issue_summary": "Let's refactor `arg.startswith('--') or re.match('^-[a-z]$', arg)` into a function _IsFlag so that we don't have to worry about keeping the regexes in sync. And then let's use that function both here and at 792 as part of handling any type (not just bools) with single-character args.\r\n\r\n\r\nI think the way we should organize this is (pseudocode):\r\n\r\ndef _IsFlag:  return _IsSingleCharFlag or _IsMultiCharFlag\r\ndef _IsSingleCharFlag: ...\r\ndef _IsMultiCharFlag: ...\r\n\r\nline 792:\r\n```\r\nif _IsFlag(argume",
+      "evidence_requirement": "The diff adds `re.match('^-[a-z]$', args[index + 1])` inline at line 798 and `re.match('^-[a-z]$', argument)` at line 836 without extracting into shared helper functions as requested.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The duplicated regex pattern increases maintenance risk and violates the DRY principle; the reviewer explicitly asked for a unified `_IsFlag` function to avoid sync issues.",
+      "_reviewer_comment_full": "Let's refactor `arg.startswith('--') or re.match('^-[a-z]$', arg)` into a function _IsFlag so that we don't have to worry about keeping the regexes in sync. And then let's use that function both here and at 792 as part of handling any type (not just bools) with single-character args.\r\n\r\n\r\nI think the way we should organize this is (pseudocode):\r\n\r\ndef _IsFlag:  return _IsSingleCharFlag or _IsMultiCharFlag\r\ndef _IsSingleCharFlag: ...\r\ndef _IsMultiCharFlag: ...\r\n\r\nline 792:\r\n```\r\nif _IsFlag(argument):\r\n  if _IsSingleCharFlag(argument):\r\n    # your logic from 838 for determining the keyword\r\n  else:\r\n    # the logic from 796 for determining the keyword\r\n  # continue from from 797 as is...\r\n```\r\n\r\n\r\n---\r\n\r\nThen (either in this PR or in a subsequent change) I'm a proponent of modifying _IsMultiCharFlag to work even if argument only starts with -[a-zA-Z] instead of requiring two hyphens.",
+      "_gold_comment_url": "https://github.com/google/python-fire/pull/141#discussion_r221718075"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 203
+}

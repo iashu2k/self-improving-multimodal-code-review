@@ -1,0 +1,42 @@
+{
+  "example_id": "apify__crawlee-python__pr_000320",
+  "source": "github-codereview",
+  "repository": "apify/crawlee-python",
+  "commit_sha": "484d1e2308fccd1192587cf9bb1dd5543cf25a45",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "doc: tiered proxy urls",
+    "description": "- closes #311\n",
+    "url": "https://github.com/apify/crawlee-python/pull/320"
+  },
+  "changed_files": [
+    "docs/guides/proxy_management.mdx",
+    "docs/guides/proxy_management_examples/tiers_beautifulsoup.py",
+    "docs/guides/proxy_management_examples/tiers_playwright.py",
+    "src/crawlee/proxy_configuration.py"
+  ],
+  "diff_path": "text/holdout/apify__crawlee-python__pr_000320/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "docs/guides/proxy_management_examples/tiers_beautifulsoup.py",
+      "line": 12,
+      "category": "style",
+      "severity": "low",
+      "issue_summary": "lets add comments to each line, something like this\r\n\r\n```suggestion\r\n            # lower tier, cheaper, preferred as long as they work\r\n            ['http://cheap-datacenter-proxy-1.com/', 'http://cheap-datacenter-proxy-2.com/'],\r\n            # higher tier, more expensive, used as a fallback\r\n            ['http://expensive-residential-proxy-1.com/', 'http://expensive-residential-proxy-2.com/'],\r\n```",
+      "evidence_requirement": "The added lines 11\u201312 lack explanatory comments for the proxy tiers, making the code less self-documenting.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would leave this comment to improve code readability and help users understand the purpose of each proxy tier.",
+      "_reviewer_comment_full": "lets add comments to each line, something like this\r\n\r\n```suggestion\r\n            # lower tier, cheaper, preferred as long as they work\r\n            ['http://cheap-datacenter-proxy-1.com/', 'http://cheap-datacenter-proxy-2.com/'],\r\n            # higher tier, more expensive, used as a fallback\r\n            ['http://expensive-residential-proxy-1.com/', 'http://expensive-residential-proxy-2.com/'],\r\n```",
+      "_gold_comment_url": "https://github.com/apify/crawlee-python/pull/320#discussion_r1682794555"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 179
+}

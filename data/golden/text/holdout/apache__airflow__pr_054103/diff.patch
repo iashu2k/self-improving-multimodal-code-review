@@ -1,0 +1,295 @@
+diff --git a/airflow-core/src/airflow/config_templates/config.yml b/airflow-core/src/airflow/config_templates/config.yml
+index c057c9f7ca7f5..01f0fae30b279 100644
+--- a/airflow-core/src/airflow/config_templates/config.yml
++++ b/airflow-core/src/airflow/config_templates/config.yml
+@@ -121,12 +121,11 @@ core:
+       default: "32"
+     max_active_tasks_per_dag:
+       description: |
+-        The maximum number of task instances allowed to run concurrently in each DAG. To calculate
+-        the number of tasks that is running concurrently for a DAG, add up the number of running
+-        tasks for all DAG runs of the DAG. This is configurable at the DAG level with ``max_active_tasks``,
++        The maximum number of task instances allowed to run concurrently in each dag run.
++        This is also configurable per-dag with ``max_active_tasks``,
+         which is defaulted as ``[core] max_active_tasks_per_dag``.
+
+-        An example scenario when this would be useful is when you want to stop a new dag with an early
++        An example scenario when this would be useful is when you want to stop a new dag run with an early
+         start date from stealing all the executor slots in a cluster.
+       version_added: 2.2.0
+       type: integer
+diff --git a/airflow-core/src/airflow/jobs/scheduler_job_runner.py b/airflow-core/src/airflow/jobs/scheduler_job_runner.py
+index 605c9538cfa68..4e47884c5aa09 100644
+--- a/airflow-core/src/airflow/jobs/scheduler_job_runner.py
++++ b/airflow-core/src/airflow/jobs/scheduler_job_runner.py
+@@ -32,7 +32,19 @@
+ from itertools import groupby
+ from typing import TYPE_CHECKING, Any
+
+-from sqlalchemy import and_, delete, desc, exists, func, inspect, or_, select, text, tuple_, update
++from sqlalchemy import (
++    and_,
++    delete,
++    desc,
++    exists,
++    func,
++    inspect,
++    or_,
++    select,
++    text,
++    tuple_,
++    update,
++)
+ from sqlalchemy.exc import OperationalError
+ from sqlalchemy.orm import joinedload, lazyload, load_only, make_transient, selectinload
+ from sqlalchemy.sql import expression
+@@ -100,6 +112,7 @@
+     from pendulum.datetime import DateTime
+     from sqlalchemy.orm import Session
+     from sqlalchemy.orm.interfaces import LoaderOption
++    from sqlalchemy.sql.selectable import Subquery
+
+     from airflow._shared.logging.types import Logger
+     from airflow.executors.base_executor import BaseExecutor
+@@ -188,6 +201,16 @@ def _is_parent_process() -> bool:
+     return multiprocessing.current_process().name == "MainProcess"
+
+
++def _get_current_dr_task_concurrency(states: Iterable[TaskInstanceState]) -> Subquery:
++    """Get the dag_run IDs and how many tasks are in the provided states for each one."""
++    return (
++        select(TI.run_id, func.count("*").label("dr_count"))
++        .where(TI.state.in_(states))
++        .group_by(TI.run_id)
++        .subquery()
++    )
++
++
+ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
+     """
+     SchedulerJobRunner runs for a specific time interval and schedules jobs that are ready to run.
+@@ -399,6 +422,8 @@ def _executable_task_instances_to_queued(self, max_tis: int, session: Session) -
+             num_starved_tasks = len(starved_tasks)
+             num_starved_tasks_task_dagrun_concurrency = len(starved_tasks_task_dagrun_concurrency)
+
++            dr_task_concurrency_subquery = _get_current_dr_task_concurrency(states=EXECUTION_STATES)
++
+             query = (
+                 select(TI)
+                 .with_hint(TI, "USE INDEX (ti_state)", dialect_name="mysql")
+@@ -408,10 +433,63 @@ def _executable_task_instances_to_queued(self, max_tis: int, session: Session) -
+                 .where(~DM.is_paused)
+                 .where(TI.state == TaskInstanceState.SCHEDULED)
+                 .where(DM.bundle_name.is_not(None))
++                .join(
++                    dr_task_concurrency_subquery,
++                    TI.run_id == dr_task_concurrency_subquery.c.run_id,
++                    isouter=True,
++                )
++                .where(func.coalesce(dr_task_concurrency_subquery.c.dr_count, 0) < DM.max_active_tasks)
+                 .options(selectinload(TI.dag_model))
+                 .order_by(-TI.priority_weight, DR.logical_date, TI.map_index)
+             )
+
++            # Create a subquery with row numbers partitioned by run_id.
++            #
++            # run_id    | task_id | priority_weight | row_num
++            # ----------|---------|-----------------|--------
++            # dag1_dr1  | task1   | 100             | 1
++            # dag1_dr1  | task22  | 90              | 2
++            # dag1_dr1  | task5   | 80              | 3
++            # dag1_dr1  | task13  | 70              | 4
++            # dag2_dr1  | task3   | 95              | 1
++            # dag2_dr1  | task1   | 85              | 2
++            # dag2_dr1  | task5   | 75              | 3
++            ranked_query = (
++                query.add_columns(
++                    func.row_number()
++                    .over(
++                        partition_by=TI.run_id,
++                        order_by=[-TI.priority_weight, DR.logical_date, TI.map_index],
++                    )
++                    .label("row_num"),
++                    DM.max_active_tasks.label("dr_max_active_tasks"),
++                    # Create columns for the order_by checks here for sqlite.
++                    TI.priority_weight.label("priority_weight_for_ordering"),
++                    DR.logical_date.label("logical_date_for_ordering"),
++                    TI.map_index.label("map_index_for_ordering"),
++                )
++            ).subquery()
++
++            # Select only rows where row_number <= max_active_tasks.
++            query = (
++                select(TI)
++                .select_from(ranked_query)
++                .join(
++                    TI,
++                    (TI.dag_id == ranked_query.c.dag_id)
++                    & (TI.task_id == ranked_query.c.task_id)
++                    & (TI.run_id == ranked_query.c.run_id)
++                    & (TI.map_index == ranked_query.c.map_index),
++                )
++                .where(ranked_query.c.row_num <= ranked_query.c.dr_max_active_tasks)
++                # Add the order_by columns from the ranked query for sqlite.
++                .order_by(
++                    -ranked_query.c.priority_weight_for_ordering,
++                    ranked_query.c.logical_date_for_ordering,
++                    ranked_query.c.map_index_for_ordering,
++                )
++            )
++
+             if starved_pools:
+                 query = query.where(TI.pool.not_in(starved_pools))
+
+@@ -435,6 +513,12 @@ def _executable_task_instances_to_queued(self, max_tis: int, session: Session) -
+                 locked_query = with_row_locks(query, of=TI, session=session, skip_locked=True)
+                 task_instances_to_examine: list[TI] = list(session.scalars(locked_query).all())
+
++                self.log.debug("Length of the tis to examine is %d", len(task_instances_to_examine))
++                self.log.debug(
++                    "TaskInstance selection is: %s",
++                    dict(Counter(ti.dag_id for ti in task_instances_to_examine)),
++                )
++
+                 timer.stop(send=True)
+             except OperationalError as e:
+                 timer.stop(send=False)
+@@ -608,7 +692,9 @@ def _executable_task_instances_to_queued(self, max_tis: int, session: Session) -
+                     if executor_slots_available[executor_obj.name] <= 0:
+                         self.log.debug(
+                             "Not scheduling %s since its executor %s does not currently have any more "
+-                            "available slots"
++                            "available slots",
++                            task_instance.task_id,
++                            executor_obj.name,
+                         )
+                         starved_tasks.add((task_instance.dag_id, task_instance.task_id))
+                         continue
+diff --git a/airflow-core/tests/unit/jobs/test_scheduler_job.py b/airflow-core/tests/unit/jobs/test_scheduler_job.py
+index 9fd022b744c4c..083d3b941eb3b 100644
+--- a/airflow-core/tests/unit/jobs/test_scheduler_job.py
++++ b/airflow-core/tests/unit/jobs/test_scheduler_job.py
+@@ -177,6 +177,39 @@ def _create_dagrun(
+     return _create_dagrun
+
+
++def task_maker(dag_maker, session, dag_id: str, task_num: int, max_active_tasks: int):
++    dag_tasks = {}
++
++    with dag_maker(dag_id=dag_id):
++        for i in range(task_num):
++            # Assign priority weight to certain tasks.
++            if (i % 10) == 0:  # 10, 20, 30, 40, 50, ...
++                weight = int(i / 2)
++                dag_tasks[f"op{i}"] = EmptyOperator(task_id=f"dummy{i}", priority_weight=weight)
++            else:
++                # No executor specified, runs on default executor
++                dag_tasks[f"op{i}"] = EmptyOperator(task_id=f"dummy{i}")
++
++    # 'logical_date' is used to create the 'run_id'. Set it to 'now', in order to get distinct run ids.
++    dag_run = dag_maker.create_dagrun(run_type=DagRunType.SCHEDULED, logical_date=timezone.utcnow())
++
++    task_tis = {}
++
++    tis_list = []
++    for i in range(task_num):
++        task_tis[f"ti{i}"] = dag_run.get_task_instance(dag_tasks[f"op{i}"].task_id, session)
++        # Add to the list.
++        tis_list.append(task_tis[f"ti{i}"])
++
++    for ti in tis_list:
++        ti.state = State.SCHEDULED
++        ti.dag_model.max_active_tasks = max_active_tasks
++
++    session.flush()
++
++    return tis_list
++
++
+ @patch.dict(
+     ExecutorLoader.executors, {MOCK_EXECUTOR: f"{MockExecutor.__module__}.{MockExecutor.__qualname__}"}
+ )
+@@ -1083,6 +1116,65 @@ def test_find_executable_task_instances_executor(self, dag_maker, mock_executors
+         for ti in tis_tuple:
+             assert ti.key in res_ti_keys
+
++    @conf_vars(
++        {
++            ("scheduler", "max_tis_per_query"): "100",
++            ("scheduler", "max_dagruns_to_create_per_loop"): "10",
++            ("scheduler", "max_dagruns_per_loop_to_schedule"): "20",
++            ("core", "parallelism"): "100",
++            ("core", "max_active_tasks_per_dag"): "4",
++            ("core", "max_active_runs_per_dag"): "10",
++            ("core", "default_pool_task_slot_count"): "64",
++        }
++    )
++    def test_per_dr_limit_applied_in_task_query(self, dag_maker, mock_executors):
++        scheduler_job = Job()
++        scheduler_job.executor.parallelism = 100
++        scheduler_job.executor.slots_available = 70
++        scheduler_job.max_tis_per_query = 100
++        self.job_runner = SchedulerJobRunner(job=scheduler_job)
++        session = settings.Session()
++
++        task_maker(dag_maker, session, "dag_1300_tasks", 1300, 4)
++        task_maker(dag_maker, session, "dag_1200_tasks", 1200, 4)
++        task_maker(dag_maker, session, "dag_1100_tasks", 1100, 4)
++        task_maker(dag_maker, session, "dag_100_tasks", 100, 4)
++        task_maker(dag_maker, session, "dag_90_tasks", 90, 4)
++        task_maker(dag_maker, session, "dag_80_tasks", 80, 4)
++
++        count = 0
++        iterations = 0
++
++        from airflow.configuration import conf
++
++        task_num = conf.getint("core", "max_active_tasks_per_dag") * 6
++
++        # 6 dags * 4 = 24.
++        assert task_num == 24
++
++        queued_tis = None
++        while count < task_num:
++            # Use `_executable_task_instances_to_queued` because it returns a list of TIs
++            # while `_critical_section_enqueue_task_instances` just returns the number of the TIs.
++            queued_tis = self.job_runner._executable_task_instances_to_queued(
++                max_tis=scheduler_job.executor.slots_available, session=session
++            )
++            count += len(queued_tis)
++            iterations += 1
++
++        assert iterations == 1
++        assert count == task_num
++
++        assert queued_tis is not None
++
++        dag_counts = Counter(ti.dag_id for ti in queued_tis)
++
++        # Tasks from all 6 dags should have been queued.
++        assert len(dag_counts) == 6
++        assert all(count == 4 for count in dag_counts.values()), (
++            "Count for each dag_id should be 4 but it isn't"
++        )
++
+     def test_find_executable_task_instances_order_priority_with_pools(self, dag_maker):
+         """
+         The scheduler job should pick tasks with higher priority for execution
+@@ -1383,7 +1475,7 @@ def test_find_executable_task_instances_concurrency(self, dag_maker, active_stat
+         session.merge(t1)
+         session.merge(t2)
+         session.merge(t3)
+-        # set 1 ti from dr1 to running
++        # set 1 ti from dr2 to running
+         # one can be queued
+         t1, t2, t3 = dr2.get_task_instances(session=session)
+         t1.state = active_state
+@@ -1392,7 +1484,7 @@ def test_find_executable_task_instances_concurrency(self, dag_maker, active_stat
+         session.merge(t1)
+         session.merge(t2)
+         session.merge(t3)
+-        # set 0 tis from dr1 to running
++        # set 0 tis from dr3 to running
+         # two can be queued
+         t1, t2, t3 = dr3.get_task_instances(session=session)
+         t1.state = State.SCHEDULED

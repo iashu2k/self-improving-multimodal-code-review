@@ -1,0 +1,26 @@
+{
+  "example_id": "drewthomasson__ebook2audiobook__pr_002035",
+  "source": "github-codereview",
+  "repository": "DrewThomasson/ebook2audiobook",
+  "commit_sha": "8c21fbe9cb4661733c2686ac3539c68025a5ce08",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "v26.7.23",
+    "description": "",
+    "url": "https://github.com/DrewThomasson/ebook2audiobook/pull/2035"
+  },
+  "changed_files": [
+    "ebook2audiobook.egg-info/PKG-INFO",
+    "ebook2audiobook.egg-info/requires.txt",
+    "lib/classes/device_installer.py",
+    "lib/gradio.py"
+  ],
+  "diff_path": "text/holdout/drewthomasson__ebook2audiobook__pr_002035/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 131
+}

@@ -1,0 +1,40 @@
+{
+  "example_id": "all-hands-ai__openhands__pr_011405",
+  "source": "github-codereview",
+  "repository": "All-Hands-AI/OpenHands",
+  "commit_sha": "77818d3f906264d7f058f7426012741f9de30022",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "feat: make websocket client wait timeout configurable",
+    "description": "Add client_wait_timeout field to OpenHandsConfig with default 30s\nReplace hardcoded 2s timeout in session.py with configurable value  \nAdd progressive backoff and improved logging for timeout waiting\nSupport environment variable OPENHANDS_CLIENT_WAIT_TIMEOUT override\n\nThis addresses the issue where 2s timeout was too aggressive for websocket\nclient connections during initialization.",
+    "url": "https://github.com/OpenHands/OpenHands/pull/11405"
+  },
+  "changed_files": [
+    "openhands/core/config/openhands_config.py",
+    "openhands/server/session/session.py"
+  ],
+  "diff_path": "text/validation/all-hands-ai__openhands__pr_011405/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "openhands/server/session/session.py",
+      "line": 415,
+      "category": "bug_risk",
+      "severity": "low",
+      "issue_summary": "```suggestion\n                        self.logger.debug(\n```",
+      "evidence_requirement": "The log message at line 415 uses `self.logger.warning` instead of the reviewer-suggested `self.logger.debug`.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A warning-level log for routine waiting behavior during websocket initialization may be overly alarming; debug is more appropriate for expected operational delays.",
+      "_reviewer_comment_full": "```suggestion\n                        self.logger.debug(\n```",
+      "_gold_comment_url": "https://github.com/OpenHands/OpenHands/pull/11405#discussion_r2435806576"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 156
+}

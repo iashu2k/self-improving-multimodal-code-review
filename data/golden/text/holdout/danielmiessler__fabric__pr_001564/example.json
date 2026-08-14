@@ -1,0 +1,44 @@
+{
+  "example_id": "danielmiessler__fabric__pr_001564",
+  "source": "github-codereview",
+  "repository": "danielmiessler/fabric",
+  "commit_sha": "49658a3214e5fea323dd6b4fb51df2e925f35c55",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Add code_review pattern and updates in Pattern_Descriptions",
+    "description": "# Add code_review pattern and updates in Pattern_Descriptions\n\n## Summary\n\nThis PR introduces three new Fabric patterns (`extract_alpha`, `extract_mcp_servers`, and `review_code`), improves the pattern management documentation with better formatting, enhances the pattern extraction script with proper error handling and documentation, and fixes a typo in an existing pattern description.\n\n## Files Changed\n\n### Pattern_Descriptions/README_Pattern_Descriptions_and_Tags_MGT.md\n- **What changed**: Added proper markdown formatting with blank lines after headers and before code blocks\n- **Why**: Improves readability and ensures proper markdown rendering across different parsers\n\n### Pattern_Descriptions/extract_patterns.py\n- **What changed**: \n  - Added shebang line and module docstring\n  - Enhanced function documentation\n  - Improved error handling with specific `OSError` exception\n  - Better code organization and readability\n- **Why**: Makes the script more maintainable, self-documenting, and robust\n\n### Pattern_Descriptions/pattern_descriptions.json\n- **What changed**:\n  - Fixed typo: \"Consended\" \u2192 \"Condensed\" for `analyze_bill_short`\n  - Added three new pattern entries with descriptions and tags\n- **Why**: Corrects existing error and adds metadata for new patterns\n\n### Pattern_Descriptions/pattern_extracts.json\n- **What changed**: Added extracts for the three new patterns\n- **Why**: Provides context for pattern discovery and usage\n\n### patterns/review_code/system.md\n- **What changed**: Added complete pattern implementation for code review functionality\n- **Why**: Introduces a new pattern for comprehensive code review assistance\n\n### web/static/data/pattern_descriptions.json\n- **What changed**: Synchronized with main pattern_descriptions.json file\n- **Why**: Ensures web interface has latest pattern information\n\n## Code Changes\n\n### Key improvements in extract_patterns.py:\n\n```python\n#!/usr/bin/env python3\n\n\"\"\"Extracts pattern information from the ~/.config/fabric/patterns directory,\ncreates JSON files for pattern extracts and descriptions, and updates web static files.\n\"\"\"\n```\nAdded proper script header and module documentation for clarity.\n\n```python\nexcept OSError as e:\n    print(f\"Error processing {dirname}: {str(e)}\")\n```\nChanged from generic `Exception` to specific `OSError` for better error handling.\n\n### New pattern: review_code\n\nThe new code review pattern provides structured feedback with:\n- Overall assessment\n- Prioritized recommendations\n- Detailed feedback with original code, improvements, and rationale\n\n## Reason for Changes\n\n1. **New patterns**: Expands Fabric's capabilities with patterns for extracting novel ideas, analyzing MCP servers, and performing code reviews\n2. **Documentation improvements**: Makes the pattern management system easier to understand and use\n3. **Code quality**: Enhances the extraction script following Python best practices\n4. **Bug fix**: Corrects the typo in analyze_bill_short description\n\n## Impact of Changes\n\n- **Functionality**: Adds three new analysis capabilities to Fabric\n- **Maintainability**: Improved documentation and code quality make the system easier to maintain\n- **User Experience**: Better formatted documentation and new patterns enhance usability\n- **Reliability**: Specific error handling prevents unexpected crashes\n\n## Test Plan\n\n1. Run `extract_patterns.py` to verify it processes new patterns correctly\n2. Check that pattern_descriptions.json contains all three new patterns\n3. Verify web interface displays new patterns with correct descriptions and tags\n4. Test the review_code pattern with sample code to ensure proper output formatting\n5. Confirm markdown formatting improvements render correctly in documentation viewers\n\n## Additional Notes\n\n- The new patterns follow established Fabric conventions for structure and naming\n- All JSON files maintain proper formatting with 2-space indentation\n- The script improvements are backward compatible with existing functionality",
+    "url": "https://github.com/danielmiessler/Fabric/pull/1564"
+  },
+  "changed_files": [
+    "Pattern_Descriptions/README_Pattern_Descriptions_and_Tags_MGT.md",
+    "Pattern_Descriptions/extract_patterns.py",
+    "Pattern_Descriptions/pattern_descriptions.json",
+    "Pattern_Descriptions/pattern_extracts.json",
+    "patterns/review_code/system.md",
+    "web/static/data/pattern_descriptions.json"
+  ],
+  "diff_path": "text/holdout/danielmiessler__fabric__pr_001564/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "Pattern_Descriptions/extract_patterns.py",
+      "line": 52,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "[nitpick] The initial check for new patterns is redundant with the inner condition; you could merge logging and extract logic to reduce duplication.\n```suggestion\n\n```",
+      "evidence_requirement": "The code contains duplicate condition `if dirname not in existing_extract_names` at lines 47 and 61, causing redundant checks and duplicated logging.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would flag this to reduce code duplication and simplify control flow by merging the outer check with the inner logic.",
+      "_reviewer_comment_full": "[nitpick] The initial check for new patterns is redundant with the inner condition; you could merge logging and extract logic to reduce duplication.\n```suggestion\n\n```",
+      "_gold_comment_url": "https://github.com/danielmiessler/Fabric/pull/1564#discussion_r2178559001"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 195
+}

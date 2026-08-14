@@ -1,0 +1,50 @@
+{
+  "example_id": "ansible__awx__pr_015047",
+  "source": "github-codereview",
+  "repository": "ansible/awx",
+  "commit_sha": "2fa4ec07d3d888dbb985c10f8f43703abfc3f255",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Add OpenShift Virtualization Inventory source option",
+    "description": "##### SUMMARY\r\nAdding OpenShift Virtualization inventory source\r\n<!---\r\nAAP-22242\r\n-->\r\n\r\n##### ISSUE TYPE\r\n - New or Enhanced Feature\r\n\r\n##### COMPONENT NAME\r\n<!--- Name of the module/plugin/module/task -->\r\n - UI\r\n - API\r\n\r\n\r\n##### AWX VERSION\r\n<!--- Paste verbatim output from `make VERSION` between quotes below -->\r\n```\r\nWIP\r\n```\r\n\r\n\r\n##### ADDITIONAL INFORMATION\r\n<!---\r\nInclude additional information to help people understand the change here.\r\nFor bugs that don't have a linked bug report, a step-by-step reproduction\r\nof the problem is helpful.\r\n  -->\r\n\r\n<!--- Paste verbatim command output below, e.g. before and after your change -->\r\n```\r\nWIP\r\n```\r\n",
+    "url": "https://github.com/ansible/awx/pull/15047"
+  },
+  "changed_files": [
+    "awx/main/constants.py",
+    "awx/main/migrations/0194_alter_inventorysource_source_and_more.py",
+    "awx/main/models/inventory.py",
+    "awx/main/tests/data/inventory/plugins/openshift_virtualization/env.json",
+    "awx/main/tests/functional/test_inventory_source_injectors.py",
+    "awx/ui/src/screens/Inventory/InventorySourceAdd/InventorySourceAdd.test.js",
+    "awx/ui/src/screens/Inventory/shared/Inventory.helptext.js",
+    "awx/ui/src/screens/Inventory/shared/InventorySourceForm.js",
+    "awx/ui/src/screens/Inventory/shared/InventorySourceSubForms/OpenShiftVirtualizationSubForm.js",
+    "awx/ui/src/screens/Inventory/shared/InventorySourceSubForms/OpenShiftVirtualizationSubForm.test.js",
+    "awx/ui/src/screens/Inventory/shared/InventorySourceSubForms/index.js",
+    "awx_collection/plugins/modules/inventory_source.py"
+  ],
+  "diff_path": "text/holdout/ansible__awx__pr_015047/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "awx/main/models/inventory.py",
+      "line": 1061,
+      "category": "style",
+      "severity": "low",
+      "issue_summary": "```suggestion\r\n        elif source == 'openshift_virtualization' and cred and cred.credential_type.kind != 'kubernetes':\r\n```",
+      "evidence_requirement": "The comment must cite the `not in ('kubernetes')` single-element tuple and note that `!= 'kubernetes'` is the clearer equivalent.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would suggest simplifying the redundant tuple check to a direct inequality for clarity and consistency, as only one disallowed kind is excluded.",
+      "_reviewer_comment_full": "```suggestion\r\n        elif source == 'openshift_virtualization' and cred and cred.credential_type.kind != 'kubernetes':\r\n```",
+      "_gold_comment_url": "https://github.com/ansible/awx/pull/15047#discussion_r1638795722"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 162
+}

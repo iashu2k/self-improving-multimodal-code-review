@@ -1,0 +1,39 @@
+{
+  "example_id": "apache__airflow__pr_059643",
+  "source": "github-codereview",
+  "repository": "apache/airflow",
+  "commit_sha": "3b72efe68ff0082dcfb892421563507f952386c5",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Fix connection test API to restore masked password/extra from existing connections",
+    "description": "This PR fixes an issue where the connection test API (/connections/test) fails when testing existing connections that have masked sensitive fields (password, extra). \r\n\r\nPreviously, when a user tried to test an existing connection, the API would receive masked values like \"***\" for password and extra fields, causing the connection test to fail because the actual credentials were not available.\r\n\r\n## Before\r\n\r\n<img width=\"1832\" height=\"1527\" alt=\"Screenshot 2025-12-20 at 12 45 37\u202fAM\" src=\"https://github.com/user-attachments/assets/203bafc3-782b-42c9-843b-06b6cd0a4398\" />\r\n\r\n\r\n## After\r\n<img width=\"1832\" height=\"1527\" alt=\"Screenshot 2025-12-20 at 12 41 54\u202fAM\" src=\"https://github.com/user-attachments/assets/eec261d2-026a-4bdd-8576-adb030752f2a\" />\r\n<img width=\"1832\" height=\"1527\" alt=\"Screenshot 2025-12-20 at 12 41 24\u202fAM\" src=\"https://github.com/user-attachments/assets/e474c1f8-c5e2-4358-bce3-ebf316417a9b\" />\r\n<img width=\"1832\" height=\"1527\" alt=\"Screenshot 2025-12-20 at 12 54 45\u202fAM\" src=\"https://github.com/user-attachments/assets/92914246-78c6-4872-8039-e75276e68c92\" />\r\n<img width=\"1832\" height=\"1527\" alt=\"image\" src=\"https://github.com/user-attachments/assets/ff92cd7c-66d7-4f58-9574-58fbc8e99794\" />\r\n\r\n\r\ncloses: #59298\r\n\r\n<!--\r\n Licensed to the Apache Software Foundation (ASF) under one\r\n or more contributor license agreements.  See the NOTICE file\r\n distributed with this work for additional information\r\n regarding copyright ownership.  The ASF licenses this file\r\n to you under the Apache License, Version 2.0 (the\r\n \"License\"); you may not use this file except in compliance\r\n with the License.  You may obtain a copy of the License at\r\n\r\n   http://www.apache.org/licenses/LICENSE-2.0\r\n\r\n Unless required by applicable law or agreed to in writing,\r\n software distributed under the License is distributed on an\r\n \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\r\n KIND, either express or implied.  See the License for the\r\n specific language governing permissions and limitations\r\n under the License.\r\n -->\r\n\r\n<!--\r\nThank you for contributing! Please make sure that your code changes\r\nare covered with tests. And in case of new features or big changes\r\nremember to adjust the documentation.\r\n\r\nFeel free to ping committers for the review!\r\n\r\nIn case of an existing issue, reference it using one of the following:\r\n\r\ncloses: #ISSUE\r\nrelated: #ISSUE\r\n\r\nHow to write a good git commit message:\r\nhttp://chris.beams.io/posts/git-commit/\r\n-->\r\n\r\n\r\n\r\n<!-- Please keep an empty line above the dashes. -->\r\n---\r\n**^ Add meaningful description above**\r\nRead the **[Pull Request Guidelines](https://github.com/apache/airflow/blob/main/contributing-docs/05_pull_requests.rst#pull-request-guidelines)** for more information.\r\nIn case of fundamental code changes, an Airflow Improvement Proposal ([AIP](https://cwiki.apache.org/confluence/display/AIRFLOW/Airflow+Improvement+Proposals)) is needed.\r\nIn case of a new dependency, check compliance with the [ASF 3rd Party License Policy](https://www.apache.org/legal/resolved.html#category-x).\r\nIn case of backwards incompatible changes please leave a note in a newsfragment file, named `{pr_number}.significant.rst` or `{issue_number}.significant.rst`, in [airflow-core/newsfragments](https://github.com/apache/airflow/tree/main/airflow-core/newsfragments).\r\n",
+    "url": "https://github.com/apache/airflow/pull/59643"
+  },
+  "changed_files": [
+    "airflow-core/src/airflow/api_fastapi/core_api/routes/public/connections.py"
+  ],
+  "diff_path": "text/holdout/apache__airflow__pr_059643/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "airflow-core/src/airflow/api_fastapi/core_api/routes/public/connections.py",
+      "line": 241,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "Should not we use `Connection.get_connection_from_secrets` ? -> this is the \"canonical\" (even if badly named) way of retrieving connection. We should not read the connections directly from the database, because the connections might be defined in secrets?\n\nSurely you won't be able to test those \"secret backends only\" connections via UI, but since this is an API call, it should still handle running \"/test\" API with the conn_id that is defined in secrets.",
+      "evidence_requirement": "Must cite the use of session.scalar(select(Connection)...) to fetch existing_conn instead of Connection.get_connection_from_secrets(conn_id), and show that this bypasses secret backend resolution.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Reading connections directly from the database ignores connections defined only in secrets backends, causing the test API to fail for such connections even though they are valid.",
+      "_reviewer_comment_full": "Should not we use `Connection.get_connection_from_secrets` ? -> this is the \"canonical\" (even if badly named) way of retrieving connection. We should not read the connections directly from the database, because the connections might be defined in secrets?\n\nSurely you won't be able to test those \"secret backends only\" connections via UI, but since this is an API call, it should still handle running \"/test\" API with the conn_id that is defined in secrets.",
+      "_gold_comment_url": "https://github.com/apache/airflow/pull/59643#discussion_r2637124431"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 170
+}

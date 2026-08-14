@@ -1,0 +1,40 @@
+{
+  "example_id": "google__benchmark__pr_002052",
+  "source": "github-codereview",
+  "repository": "google/benchmark",
+  "commit_sha": "c801bffb80eadd9f6e4f34695099b4ae114fbc7b",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "bindings(python): Remove hard `absl-py` dependency",
+    "description": "This commit refactors the public `google_benchmark` APIs to work without `absl-py` installed in the current virtual environment. It also removes `absl-py` from the list of PyPI package dependencies.\r\n\r\nTo restore the previous behavior, users can implement a custom `main()` function using `absl.app` as command-line parser + runner, for example as the previous default `main()` function that is removed by this very commit.\r\n\r\n-----------------\r\n\r\nHappy to hear your thoughts, this is part of the analysis tools refactoring (#2017).",
+    "url": "https://github.com/google/benchmark/pull/2052"
+  },
+  "changed_files": [
+    "bindings/python/google_benchmark/__init__.py",
+    "pyproject.toml"
+  ],
+  "diff_path": "text/validation/google__benchmark__pr_002052/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "bindings/python/google_benchmark/__init__.py",
+      "line": 63,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "Not sure about this bit yet - 1), it still requires a `from absl import app` statement in all APIs below (it will be cached in `sys.modules` in all but the first call, but still), and 2) it could break users importing `contextlib` before `google-benchmark`, as this call marks _all_ previously loaded contextlib modules for GC.",
+      "evidence_requirement": "The diff deletes `contextlib` after use (`del contextlib`) and still conditionally imports `absl.app` in multiple functions, which the reviewer flagged as potentially breaking users who imported `contextlib` earlier.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Deleting `contextlib` after use can cause issues for users who imported it before loading google-benchmark, as it marks all previously loaded contextlib modules for garbage collection.",
+      "_reviewer_comment_full": "Not sure about this bit yet - 1), it still requires a `from absl import app` statement in all APIs below (it will be cached in `sys.modules` in all but the first call, but still), and 2) it could break users importing `contextlib` before `google-benchmark`, as this call marks _all_ previously loaded contextlib modules for GC.",
+      "_gold_comment_url": "https://github.com/google/benchmark/pull/2052#discussion_r2426056431"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 202
+}

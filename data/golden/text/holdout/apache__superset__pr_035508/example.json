@@ -1,0 +1,40 @@
+{
+  "example_id": "apache__superset__pr_035508",
+  "source": "github-codereview",
+  "repository": "apache/superset",
+  "commit_sha": "32039295f84301882ff150ce3c04945170ca17ff",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "fix: Support metric macro for  embedded users",
+    "description": "### SUMMARY\r\nThe `{{ metric() }}` macro checks if the current user has access to the dataset the metric syntax is coming from. This check is currently not working for embedded users, as they don't have access to datasets.\r\n\r\nThis PR fixes this issue by skipping this validation for embedded users, as the embedded permission is granted at the dashboard level (if the guest user has access to the dashboard, they should see all in it).\r\n\r\n### BEFORE/AFTER SCREENSHOTS OR ANIMATED GIF\r\nNo UI changes.\r\n\r\n### TESTING INSTRUCTIONS\r\n1. Create a chart using the `{{ metric() }}` macro.\r\n2. Access it in embedded mode and confirm the chart works properly.\r\n\r\n### ADDITIONAL INFORMATION\r\n<!--- Check any relevant boxes with \"x\" -->\r\n<!--- HINT: Include \"Fixes #nnn\" if you are fixing an existing issue -->\r\n- [ ] Has associated issue:\r\n- [ ] Required feature flags:\r\n- [ ] Changes UI\r\n- [ ] Includes DB Migration (follow approval process in [SIP-59](https://github.com/apache/superset/issues/13351))\r\n  - [ ] Migration is atomic, supports rollback & is backwards-compatible\r\n  - [ ] Confirm DB migration upgrade and downgrade tested\r\n  - [ ] Runtime estimates and downtime expectations provided\r\n- [ ] Introduces new feature or API\r\n- [ ] Removes existing feature or API\r\n",
+    "url": "https://github.com/apache/superset/pull/35508"
+  },
+  "changed_files": [
+    "superset/jinja_context.py",
+    "tests/unit_tests/jinja_context_test.py"
+  ],
+  "diff_path": "text/holdout/apache__superset__pr_035508/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "superset/jinja_context.py",
+      "line": 1095,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "```suggestion\n    dataset = DatasetDAO.find_by_id(\n        dataset_id,\n        skip_base_filter=security_manager.is_guest_user(),\n    )\n```",
+      "evidence_requirement": "The added code at lines 1089\u20131092 calls `DatasetDAO.find_by_id()` twice with different `skip_base_filter` arguments in a ternary, rather than passing the boolean expression directly as a single parameter.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Duplicating the function call with only the parameter differing is less maintainable and harder to read than a single call with a computed parameter.",
+      "_reviewer_comment_full": "```suggestion\n    dataset = DatasetDAO.find_by_id(\n        dataset_id,\n        skip_base_filter=security_manager.is_guest_user(),\n    )\n```",
+      "_gold_comment_url": "https://github.com/apache/superset/pull/35508#discussion_r2406745430"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 177
+}

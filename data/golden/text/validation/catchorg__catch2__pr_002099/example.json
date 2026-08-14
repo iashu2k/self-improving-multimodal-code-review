@@ -1,0 +1,39 @@
+{
+  "example_id": "catchorg__catch2__pr_002099",
+  "source": "github-codereview",
+  "repository": "catchorg/Catch2",
+  "commit_sha": "d913837a5dd40a2a5bdc30d7ce6482d0a626746b",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Adds license check in CI",
+    "description": "<!--\r\nPlease do not submit pull requests changing the `version.hpp`\r\nor the single-include `catch.hpp` file, these are changed\r\nonly when a new release is made.\r\n\r\nBefore submitting a PR you should probably read the contributor documentation\r\nat docs/contributing.md. It will tell you how to properly test your changes.\r\n-->\r\n\r\n\r\n## Description\r\nAdds checkLicense.py that runs on a per-commit basis in CI checking the license for all source files.  \r\n<!--\r\nDescribe the what and the why of your pull request. Remember that these two\r\nare usually a bit different. As an example, if you have made various changes\r\nto decrease the number of new strings allocated, that's what. The why probably\r\nwas that you have a large set of tests and found that this speeds them up.\r\n-->\r\n\r\n## GitHub Issues\r\nCloses #2077 \r\n<!-- \r\nIf this PR was motivated by some existing issues, reference them here.\r\n\r\nIf it is a simple bug-fix, please also add a line like 'Closes #123'\r\nto your commit message, so that it is automatically closed.\r\nIf it is not, don't, as it might take several iterations for a feature\r\nto be done properly. If in doubt, leave it open and reference it in the\r\nPR itself, so that maintainers can decide.\r\n-->\r\n",
+    "url": "https://github.com/catchorg/Catch2/pull/2099"
+  },
+  "changed_files": [
+    ".github/workflows/validate-header-guards.yml",
+    "tools/scripts/checkLicense.py"
+  ],
+  "diff_path": "text/validation/catchorg__catch2__pr_002099/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "tools/scripts/checkLicense.py",
+      "line": 14,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "You can simplify this into single line, but at that point you might just get rid of the function altogether.\r\n\r\n```suggestion\r\n    return ''.join(split_license)\r\n```",
+      "evidence_requirement": "The code at tools/scripts/checkLicense.py:14 still uses `failed = 0` and a multi-line return pattern instead of the reviewer's suggested `return ''.join(split_license)` (though note the suggestion appears mismatched to the actual code).",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would suggest simplifying the function to reduce boilerplate and improve readability.",
+      "_reviewer_comment_full": "You can simplify this into single line, but at that point you might just get rid of the function altogether.\r\n\r\n```suggestion\r\n    return ''.join(split_license)\r\n```",
+      "_gold_comment_url": "https://github.com/catchorg/Catch2/pull/2099#discussion_r519482433"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 54
+}

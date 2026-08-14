@@ -1,0 +1,52 @@
+{
+  "example_id": "hpcaitech__colossalai__pr_005043",
+  "source": "github-codereview",
+  "repository": "hpcaitech/ColossalAI",
+  "commit_sha": "3cf515ea422a6fa82b528a8697a53660eb568cd8",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[gemini] gemini support extra-dp",
+    "description": "## \ud83d\udccc Checklist before creating the PR\r\n\r\n- [x] I have created an issue for this PR for traceability\r\n- [x] The title follows the standard format: `[doc/gemini/tensor/...]: A concise description`\r\n- [x] I have added relevant tags if possible for us to better distinguish different PRs\r\n\r\n\r\n## \ud83d\udea8 Issue number\r\n\r\n> Link this PR to your issue with words like fixed to automatically close the linked issue upon merge\r\n>\r\n> e.g. `fixed #1234`, `closed #1234`, `resolved #1234`\r\n\r\n#5042 \r\n\r\n## \ud83d\udcdd What does this PR do?\r\n\r\n> Summarize your work here.\r\n> if you have any plots/diagrams/screenshots/tables, please attach them here.\r\n\r\ngemini support extra-dp\r\n\r\n## \ud83d\udca5 Checklist before requesting a review\r\n\r\n- [x] I have linked my PR to an issue ([instruction](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue))\r\n- [x] My issue clearly describes the problem/feature/proposal, with diagrams/charts/table/code if possible\r\n- [x] I have performed a self-review of my code\r\n- [x] I have added thorough tests.\r\n- [ ] I have added docstrings for all the functions/methods I implemented\r\n\r\n## \u2b50\ufe0f Do you enjoy contributing to Colossal-AI?\r\n\r\n- [x] \ud83c\udf1d Yes, I do.\r\n- [ ] \ud83c\udf1a No, I don't.\r\n\r\nTell us more if you don't enjoy contributing to Colossal-AI.\r\n",
+    "url": "https://github.com/hpcaitech/ColossalAI/pull/5043"
+  },
+  "changed_files": [
+    "colossalai/booster/plugin/gemini_plugin.py",
+    "colossalai/zero/gemini/chunk/chunk.py",
+    "colossalai/zero/gemini/chunk/manager.py",
+    "colossalai/zero/gemini/gemini_ddp.py",
+    "tests/test_booster/test_plugin/test_gemini_plugin.py",
+    "tests/test_checkpoint_io/test_gemini_checkpoint_io.py",
+    "tests/test_shardformer/test_hybrid_parallel_grad_clip_norm/test_amp_optimizer.py",
+    "tests/test_shardformer/test_hybrid_parallel_grad_clip_norm/test_naive_optimizer.py",
+    "tests/test_shardformer/test_hybrid_parallel_grad_clip_norm/test_zero_optimizer.py",
+    "tests/test_zero/test_gemini/test_chunkv2.py"
+  ],
+  "diff_path": "text/validation/hpcaitech__colossalai__pr_005043/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "colossalai/booster/plugin/gemini_plugin.py",
+      "line": 408,
+      "category": "maintainability",
+      "severity": "medium",
+      "issue_summary": "This is complicated. Actually, creating an instance of ProcessGroupMesh won't take too long.\r\nHere is pseudo-code:\r\n```python\r\nDP_AXIS, ZERO_AXIS, TP_AXIS = 0, 1, 2\r\nself.pg_mesh = ProcessGroupMesh(self.extra_dp_size, self.zero_size, self.tp_size)\r\nself.zero_group = self.pg_mesh.get_group_along_axis(ZERO_AXIS) if self.zero_size < world_size else _get_default_group()\r\nself.extra_dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS) if self.extra_dp_size > 1 else None\r\nself.tp_group = self.pg_mesh",
+      "evidence_requirement": "The added code at lines 408-423 uses conditional branching to construct ProcessGroupMesh with varying dimensions instead of a single unified initialization pattern.",
+      "must_not_claim": [
+        "causes crash",
+        "breaks functionality",
+        "exposes secrets"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The conditional group creation logic is unnecessarily complex and harder to maintain than the reviewer's proposed unified approach using ProcessGroupMesh with fixed axis semantics.",
+      "_reviewer_comment_full": "This is complicated. Actually, creating an instance of ProcessGroupMesh won't take too long.\r\nHere is pseudo-code:\r\n```python\r\nDP_AXIS, ZERO_AXIS, TP_AXIS = 0, 1, 2\r\nself.pg_mesh = ProcessGroupMesh(self.extra_dp_size, self.zero_size, self.tp_size)\r\nself.zero_group = self.pg_mesh.get_group_along_axis(ZERO_AXIS) if self.zero_size < world_size else _get_default_group()\r\nself.extra_dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS) if self.extra_dp_size > 1 else None\r\nself.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS) if self.tp_size > 1 else None\r\n```",
+      "_gold_comment_url": "https://github.com/hpcaitech/ColossalAI/pull/5043#discussion_r1395467735"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 211
+}

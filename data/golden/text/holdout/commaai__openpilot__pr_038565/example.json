@@ -1,0 +1,24 @@
+{
+  "example_id": "commaai__openpilot__pr_038565",
+  "source": "github-codereview",
+  "repository": "commaai/openpilot",
+  "commit_sha": "1e10ae7b6ba2704c46f901f9f47d2d9090fe0368",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "fix telemetry hanging big model",
+    "description": "On chestnut brownout, telemetry can hang, causing driving model lagging instead of falling back to small model.",
+    "url": "https://github.com/commaai/openpilot/pull/38565"
+  },
+  "changed_files": [
+    "openpilot/selfdrive/modeld/modeld.py",
+    "openpilot/selfdrive/selfdrived/selfdrived.py"
+  ],
+  "diff_path": "text/holdout/commaai__openpilot__pr_038565/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 96
+}

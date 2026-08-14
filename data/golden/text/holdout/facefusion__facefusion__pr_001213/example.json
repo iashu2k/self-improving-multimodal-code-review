@@ -1,0 +1,23 @@
+{
+  "example_id": "facefusion__facefusion__pr_001213",
+  "source": "github-codereview",
+  "repository": "facefusion/facefusion",
+  "commit_sha": "89bd2900e8b8aec3994bb196f407002acaa40640",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Hotfix memory leak",
+    "description": "",
+    "url": "https://github.com/facefusion/facefusion/pull/1213"
+  },
+  "changed_files": [
+    "facefusion/workflows/to_video.py"
+  ],
+  "diff_path": "text/holdout/facefusion__facefusion__pr_001213/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 137
+}

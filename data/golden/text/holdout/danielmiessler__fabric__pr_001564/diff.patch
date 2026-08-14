@@ -1,0 +1,546 @@
+diff --git a/Pattern_Descriptions/README_Pattern_Descriptions_and_Tags_MGT.md b/Pattern_Descriptions/README_Pattern_Descriptions_and_Tags_MGT.md
+index 9914ec4285..7477606cda 100644
+--- a/Pattern_Descriptions/README_Pattern_Descriptions_and_Tags_MGT.md
++++ b/Pattern_Descriptions/README_Pattern_Descriptions_and_Tags_MGT.md
+@@ -5,6 +5,7 @@ This document explains the complete workflow for managing pattern descriptions a
+ ## System Overview
+
+ The pattern system follows this hierarchy:
++
+ 1. `~/.config/fabric/patterns/` directory: The source of truth for available patterns
+ 2. `pattern_extracts.json`: Contains first 500 words of each pattern for reference
+ 3. `pattern_descriptions.json`: Stores pattern metadata (descriptions and tags)
+@@ -13,17 +14,21 @@ The pattern system follows this hierarchy:
+ ## Pattern Processing Workflow
+
+ ### 1. Adding New Patterns
++
+ - Add patterns to `~/.config/fabric/patterns/`
+ - Run extract_patterns.py to process new additions:
++
+   ```bash
+   python extract_patterns.py
+
+ The Python Script automatically:
++
+ - Creates pattern extracts for reference
+ - Adds placeholder entries in descriptions file
+ - Syncs to web interface
+
+ ### 2. Pattern Extract Creation
++
+ The script extracts first 500 words from each pattern's system.md file to:
+
+ - Provide context for writing descriptions
+@@ -31,8 +36,8 @@ The script extracts first 500 words from each pattern's system.md file to:
+ - Aid in pattern categorization
+
+ ### 3. Description and Tag Management
+-Pattern descriptions and tags are managed in pattern_descriptions.json:
+
++Pattern descriptions and tags are managed in pattern_descriptions.json:
+
+ {
+   "patterns": [
+@@ -44,20 +49,21 @@ Pattern descriptions and tags are managed in pattern_descriptions.json:
+   ]
+ }
+
+-
+ ## Completing Pattern Metadata
+
+ ### Writing Descriptions
++
+ 1. Check pattern_descriptions.json for "[Description pending]" entries
+ 2. Reference pattern_extracts.json for context
+
+-3. How to update Pattern short descriptions (one sentence).
++3. How to update Pattern short descriptions (one sentence).
+
+-You can update your descriptions in pattern_descriptions.json manually or using LLM assistance (preferred approach).
++You can update your descriptions in pattern_descriptions.json manually or using LLM assistance (preferred approach).
+
+-Tell AI to look for "Description pending" entries in this file and write a short description based on the extract info in the pattern_extracts.json file. You can also ask your LLM to add tags for those newly added patterns, using other patterns tag assignments as example.
++Tell AI to look for "Description pending" entries in this file and write a short description based on the extract info in the pattern_extracts.json file. You can also ask your LLM to add tags for those newly added patterns, using other patterns tag assignments as example.
+
+ ### Managing Tags
++
+ 1. Add appropriate tags to new patterns
+ 2. Update existing tags as needed
+ 3. Tags are stored as arrays: ["TAG1", "TAG2"]
+@@ -67,6 +73,7 @@ Tell AI to look for "Description pending" entries in this file and write a short
+ ## File Synchronization
+
+ The script maintains synchronization between:
++
+ - Local pattern_descriptions.json
+ - Web interface copy in static/data/
+ - No manual file copying needed
+@@ -91,6 +98,7 @@ The script maintains synchronization between:
+ ## Troubleshooting
+
+ If patterns are not showing in the web interface:
++
+ 1. Verify pattern_descriptions.json format
+ 2. Check web static copy exists
+ 3. Ensure proper file permissions
+@@ -108,17 +116,3 @@ fabric/
+     └── static/
+         └── data/
+             └── pattern_descriptions.json # Web interface copy
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+-
+diff --git a/Pattern_Descriptions/extract_patterns.py b/Pattern_Descriptions/extract_patterns.py
+old mode 100644
+new mode 100755
+index 154f84e1d7..1b156c927f
+--- a/Pattern_Descriptions/extract_patterns.py
++++ b/Pattern_Descriptions/extract_patterns.py
+@@ -1,81 +1,93 @@
++#!/usr/bin/env python3
++
++"""Extracts pattern information from the ~/.config/fabric/patterns directory,
++creates JSON files for pattern extracts and descriptions, and updates web static files.
++"""
+ import os
+ import json
+ import shutil
+
++
+ def load_existing_file(filepath):
+     """Load existing JSON file or return default structure"""
+     if os.path.exists(filepath):
+-        with open(filepath, 'r', encoding='utf-8') as f:
++        with open(filepath, "r", encoding="utf-8") as f:
+             return json.load(f)
+     return {"patterns": []}
+
++
+ def get_pattern_extract(pattern_path):
+     """Extract first 500 words from pattern's system.md file"""
+     system_md_path = os.path.join(pattern_path, "system.md")
+-    with open(system_md_path, 'r', encoding='utf-8') as f:
+-        content = ' '.join(f.read().split()[:500])
++    with open(system_md_path, "r", encoding="utf-8") as f:
++        content = " ".join(f.read().split()[:500])
+     return content
+
++
+ def extract_pattern_info():
++    """Extract pattern information from the patterns directory"""
+     script_dir = os.path.dirname(os.path.abspath(__file__))
+     patterns_dir = os.path.expanduser("~/.config/fabric/patterns")
+     print(f"\nScanning patterns directory: {patterns_dir}")
+-
++
+     extracts_path = os.path.join(script_dir, "pattern_extracts.json")
+     descriptions_path = os.path.join(script_dir, "pattern_descriptions.json")
+-
++
+     existing_extracts = load_existing_file(extracts_path)
+     existing_descriptions = load_existing_file(descriptions_path)
+-
++
+     existing_extract_names = {p["patternName"] for p in existing_extracts["patterns"]}
+-    existing_description_names = {p["patternName"] for p in existing_descriptions["patterns"]}
++    existing_description_names = {
++        p["patternName"] for p in existing_descriptions["patterns"]
++    }
+     print(f"Found existing patterns: {len(existing_extract_names)}")
+-
++
+     new_extracts = []
+     new_descriptions = []
+-
+-
++
+     for dirname in sorted(os.listdir(patterns_dir)):
+         # Only log new pattern processing
+         if dirname not in existing_extract_names:
+             print(f"Processing new pattern: {dirname}")
+-
+-
++
+         pattern_path = os.path.join(patterns_dir, dirname)
+         system_md_path = os.path.join(pattern_path, "system.md")
+         print(f"Checking system.md at: {system_md_path}")
+-
++
+         if os.path.isdir(pattern_path) and os.path.exists(system_md_path):
+             print(f"Valid pattern directory found: {dirname}")
+             try:
+                 if dirname not in existing_extract_names:
+                     print(f"Creating new extract for: {dirname}")
+-                    pattern_extract = get_pattern_extract(pattern_path)  # Pass directory path
+-                    new_extracts.append({
+-                        "patternName": dirname,
+-                        "pattern_extract": pattern_extract
+-                    })
+-
++                    pattern_extract = get_pattern_extract(
++                        pattern_path
++                    )  # Pass directory path
++                    new_extracts.append(
++                        {"patternName": dirname, "pattern_extract": pattern_extract}
++                    )
++
+                 if dirname not in existing_description_names:
+                     print(f"Creating new description for: {dirname}")
+-                    new_descriptions.append({
+-                        "patternName": dirname,
+-                        "description": "[Description pending]",
+-                        "tags": []
+-                    })
+-
+-            except Exception as e:
++                    new_descriptions.append(
++                        {
++                            "patternName": dirname,
++                            "description": "[Description pending]",
++                            "tags": [],
++                        }
++                    )
++
++            except OSError as e:
+                 print(f"Error processing {dirname}: {str(e)}")
+         else:
+             print(f"Invalid pattern directory or missing system.md: {dirname}")
+-
+-    print(f"\nProcessing summary:")
++
++    print("\nProcessing summary:")
+     print(f"New extracts created: {len(new_extracts)}")
+     print(f"New descriptions added: {len(new_descriptions)}")
+-
++
+     existing_extracts["patterns"].extend(new_extracts)
+     existing_descriptions["patterns"].extend(new_descriptions)
+-
++
+     return existing_extracts, existing_descriptions, len(new_descriptions)
+
+
+@@ -87,28 +99,29 @@ def update_web_static(descriptions_path):
+     static_path = os.path.join(static_dir, "pattern_descriptions.json")
+     shutil.copy2(descriptions_path, static_path)
+
++
+ def save_pattern_files():
+     """Save both pattern files and sync to web"""
+     script_dir = os.path.dirname(os.path.abspath(__file__))
+     extracts_path = os.path.join(script_dir, "pattern_extracts.json")
+     descriptions_path = os.path.join(script_dir, "pattern_descriptions.json")
+-
++
+     pattern_extracts, pattern_descriptions, new_count = extract_pattern_info()
+-
++
+     # Save files
+-    with open(extracts_path, 'w', encoding='utf-8') as f:
++    with open(extracts_path, "w", encoding="utf-8") as f:
+         json.dump(pattern_extracts, f, indent=2, ensure_ascii=False)
+-
+-    with open(descriptions_path, 'w', encoding='utf-8') as f:
++
++    with open(descriptions_path, "w", encoding="utf-8") as f:
+         json.dump(pattern_descriptions, f, indent=2, ensure_ascii=False)
+-
++
+     # Update web static
+     update_web_static(descriptions_path)
+-
+-    print(f"\nProcessing complete:")
++
++    print("\nProcessing complete:")
+     print(f"Total patterns: {len(pattern_descriptions['patterns'])}")
+     print(f"New patterns added: {new_count}")
+
++
+ if __name__ == "__main__":
+     save_pattern_files()
+-
+diff --git a/Pattern_Descriptions/pattern_descriptions.json b/Pattern_Descriptions/pattern_descriptions.json
+index deffcb272c..2111718626 100644
+--- a/Pattern_Descriptions/pattern_descriptions.json
++++ b/Pattern_Descriptions/pattern_descriptions.json
+@@ -1710,7 +1710,7 @@
+     },
+     {
+       "patternName": "analyze_bill_short",
+-      "description": "Consended - Analyze a legislative bill and implications.",
++      "description": "Condensed - Analyze a legislative bill and implications.",
+       "tags": [
+         "ANALYSIS",
+         "BILL"
+@@ -1815,6 +1815,35 @@
+         "WRITING",
+         "CREATIVITY"
+       ]
++    },
++    {
++      "patternName": "extract_alpha",
++      "description": "Extracts the most novel and surprising ideas (\"alpha\") from content, inspired by information theory.",
++      "tags": [
++        "EXTRACT",
++        "ANALYSIS",
++        "CR THINKING",
++        "WISDOM"
++      ]
++    },
++    {
++      "patternName": "extract_mcp_servers",
++      "description": "Analyzes content to identify and extract detailed information about Model Context Protocol (MCP) servers.",
++      "tags": [
++        "ANALYSIS",
++        "EXTRACT",
++        "DEVELOPMENT",
++        "AI"
++      ]
++    },
++    {
++      "patternName": "review_code",
++      "description": "Performs a comprehensive code review, providing detailed feedback on correctness, security, and performance.",
++      "tags": [
++        "DEVELOPMENT",
++        "REVIEW",
++        "SECURITY"
++      ]
+     }
+   ]
+-}
++}
+\ No newline at end of file
+diff --git a/Pattern_Descriptions/pattern_extracts.json b/Pattern_Descriptions/pattern_extracts.json
+index 2c30b4d9e7..0c6ae99987 100644
+--- a/Pattern_Descriptions/pattern_extracts.json
++++ b/Pattern_Descriptions/pattern_extracts.json
+@@ -883,6 +883,18 @@
+     {
+       "patternName": "write_essay",
+       "pattern_extract": "# Identity and Purpose You are an expert on writing clear, and illuminating essays on the topic of the input provided. # Output Instructions - Write the essay in the style of {{author_name}}, embodying all the qualities that they are known for. - Look up some example Essays by {{author_name}} (Use web search if the tool is available) - Write the essay exactly like {{author_name}} would write it as seen in the examples you find. - Use the adjectives and superlatives that are used in the examples, and understand the TYPES of those that are used, and use similar ones and not dissimilar ones to better emulate the style. - Use the same style, vocabulary level, and sentence structure as {{author_name}}. # Output Format - Output a full, publish-ready essay about the content provided using the instructions above. - Write in {{author_name}}'s natural and clear style, without embellishment. - Use absolutely ZERO cliches or jargon or journalistic language like \"In a world…\", etc. - Do not use cliches or jargon. - Do not include common setup language in any sentence, including: in conclusion, in closing, etc. - Do not output warnings or notes—just the output requested. # INPUT: INPUT:"
++    },
++    {
++      "patternName": "extract_alpha",
++      "pattern_extract": "# IDENTITY You're an expert at finding Alpha in content. # PHILOSOPHY I love the idea of Claude Shannon's information theory where basically the only real information is the stuff that's different and anything that's the same as kind of background noise. I love that idea for novelty and surprise inside of content when I think about a presentation or a talk or a podcast or an essay or anything I'm looking for the net new ideas or the new presentation of ideas for the new frameworks of how to use ideas or combine ideas so I'm looking for a way to capture that inside of content. # INSTRUCTIONS I want you to extract the 24 highest alpha ideas and thoughts and insights and recommendations in this piece of content, and I want you to output them in unformatted marked down in 8-word bullets written in the approachable style of Paul Graham. # INPUT"
++    },
++    {
++      "patternName": "extract_mcp_servers",
++      "pattern_extract": "# IDENTITY and PURPOSE You are an expert at analyzing content related to MCP (Model Context Protocol) servers. You excel at identifying and extracting mentions of MCP servers, their features, capabilities, integrations, and usage patterns. Take a step back and think step-by-step about how to achieve the best results for extracting MCP server information. # STEPS - Read and analyze the entire content carefully - Identify all mentions of MCP servers, including: - Specific MCP server names - Server capabilities and features - Integration details - Configuration examples - Use cases and applications - Installation or setup instructions - API endpoints or methods exposed - Any limitations or requirements # OUTPUT SECTIONS - Output a summary of all MCP servers mentioned with the following sections: ## SERVERS FOUND - List each MCP server found with a 15-word description - Include the server name and its primary purpose - Use bullet points for each server ## SERVER DETAILS For each server found, provide: - **Server Name**: The official name - **Purpose**: Main functionality in 25 words or less - **Key Features**: Up to 5 main features as bullet points - **Integration**: How it integrates with systems (if mentioned) - **Configuration**: Any configuration details mentioned - **Requirements**: Dependencies or requirements (if specified) ## USAGE EXAMPLES - Extract any code snippets or usage examples - Include configuration files or setup instructions - Present each example with context ## INSIGHTS - Provide 3-5 insights about the MCP servers mentioned - Focus on patterns, trends, or notable characteristics - Each insight should be a 20-word bullet point # OUTPUT INSTRUCTIONS - Output in clean, readable Markdown - Use proper heading hierarchy - Include code blocks with appropriate language tags - Do not include warnings or notes about the content - If no MCP servers are found, simply state \"No MCP servers mentioned in the content\" - Ensure all server names are accurately captured - Preserve technical details and specifications # INPUT: INPUT:"
++    },
++    {
++      "patternName": "review_code",
++      "pattern_extract": "# Code Review Task ## ROLE AND GOAL You are a Principal Software Engineer, renowned for your meticulous attention to detail and your ability to provide clear, constructive, and educational code reviews. Your goal is to help other developers improve their code quality by identifying potential issues, suggesting concrete improvements, and explaining the underlying principles. ## TASK You will be given a snippet of code or a diff. Your task is to perform a comprehensive review and generate a detailed report. ## STEPS 1. **Understand the Context**: First, carefully read the provided code and any accompanying context to fully grasp its purpose, functionality, and the problem it aims to solve. 2. **Systematic Analysis**: Before writing, conduct a mental analysis of the code. Evaluate it against the following key aspects. Do not write this analysis in the output; use it to form your review. * **Correctness**: Are there bugs, logic errors, or race conditions? * **Security**: Are there any potential vulnerabilities (e.g., injection attacks, improper handling of sensitive data)? * **Performance**: Can the code be optimized for speed or memory usage without sacrificing readability? * **Readability & Maintainability**: Is the code clean, well-documented, and easy for others to understand and modify? * **Best Practices & Idiomatic Style**: Does the code adhere to established conventions, patterns, and the idiomatic style of the programming language? * **Error Handling & Edge Cases**: Are errors handled gracefully? Have all relevant edge cases been considered? 3. **Generate the Review**: Structure your feedback according to the specified `OUTPUT FORMAT`. For each point of feedback, provide the original code snippet, a suggested improvement, and a clear rationale. ## OUTPUT FORMAT Your review must be in Markdown and follow this exact structure: --- ### Overall Assessment A brief, high-level summary of the code's quality. Mention its strengths and the primary areas for improvement. ### **Prioritized Recommendations** A numbered list of the most important changes, ordered from most to least critical. 1. (Most critical change) 2. (Second most critical change) 3. ... ### **Detailed Feedback** For each issue you identified, provide a detailed breakdown in the following format. --- **[ISSUE TITLE]** - (e.g., `Security`, `Readability`, `Performance`) **Original Code:** ```[language] // The specific lines of code with the issue ``` **Suggested Improvement:** ```[language] // The revised, improved code ``` **Rationale:** A clear and concise explanation of why the change is recommended. Reference best practices, design patterns, or potential risks. If you use advanced concepts, briefly explain them. --- (Repeat this section for each issue) ## EXAMPLE Here is an example of a review for a simple Python function: --- ### **Overall Assessment** The function correctly fetches user data, but it can be made more robust and efficient. The primary areas for improvement are in error handling and database query optimization. ### **Prioritized Recommendations** 1. Avoid making database queries inside a loop to prevent performance issues (N+1 query problem). 2. Add specific error handling for when a user is not found. ### **Detailed Feedback** --- **[PERFORMANCE]** - N+1 Database Query **Original Code:**"
+     }
+   ]
+-}
++}
+\ No newline at end of file
+diff --git a/patterns/review_code/system.md b/patterns/review_code/system.md
+new file mode 100644
+index 0000000000..3d214320ad
+--- /dev/null
++++ b/patterns/review_code/system.md
+@@ -0,0 +1,140 @@
++# Code Review Task
++
++## ROLE AND GOAL
++
++You are a Principal Software Engineer, renowned for your meticulous attention to detail and your ability to provide clear, constructive, and educational code reviews. Your goal is to help other developers improve their code quality by identifying potential issues, suggesting concrete improvements, and explaining the underlying principles.
++
++## TASK
++
++You will be given a snippet of code or a diff. Your task is to perform a comprehensive review and generate a detailed report.
++
++## STEPS
++
++1. **Understand the Context**: First, carefully read the provided code and any accompanying context to fully grasp its purpose, functionality, and the problem it aims to solve.
++2. **Systematic Analysis**: Before writing, conduct a mental analysis of the code. Evaluate it against the following key aspects. Do not write this analysis in the output; use it to form your review.
++    * **Correctness**: Are there bugs, logic errors, or race conditions?
++    * **Security**: Are there any potential vulnerabilities (e.g., injection attacks, improper handling of sensitive data)?
++    * **Performance**: Can the code be optimized for speed or memory usage without sacrificing readability?
++    * **Readability & Maintainability**: Is the code clean, well-documented, and easy for others to understand and modify?
++    * **Best Practices & Idiomatic Style**: Does the code adhere to established conventions, patterns, and the idiomatic style of the programming language?
++    * **Error Handling & Edge Cases**: Are errors handled gracefully? Have all relevant edge cases been considered?
++3. **Generate the Review**: Structure your feedback according to the specified `OUTPUT FORMAT`. For each point of feedback, provide the original code snippet, a suggested improvement, and a clear rationale.
++
++## OUTPUT FORMAT
++
++Your review must be in Markdown and follow this exact structure:
++
++---
++
++### Overall Assessment
++
++A brief, high-level summary of the code's quality. Mention its strengths and the primary areas for improvement.
++
++### **Prioritized Recommendations**
++
++A numbered list of the most important changes, ordered from most to least critical.
++
++1. (Most critical change)
++2. (Second most critical change)
++3. ...
++
++### **Detailed Feedback**
++
++For each issue you identified, provide a detailed breakdown in the following format.
++
++---
++
++**[ISSUE TITLE]** - (e.g., `Security`, `Readability`, `Performance`)
++
++**Original Code:**
++
++```[language]
++// The specific lines of code with the issue
++```
++
++**Suggested Improvement:**
++
++```[language]
++// The revised, improved code
++```
++
++**Rationale:**
++A clear and concise explanation of why the change is recommended. Reference best practices, design patterns, or potential risks. If you use advanced concepts, briefly explain them.
++
++---
++(Repeat this section for each issue)
++
++## EXAMPLE
++
++Here is an example of a review for a simple Python function:
++
++---
++
++### **Overall Assessment**
++
++The function correctly fetches user data, but it can be made more robust and efficient. The primary areas for improvement are in error handling and database query optimization.
++
++### **Prioritized Recommendations**
++
++1. Avoid making database queries inside a loop to prevent performance issues (N+1 query problem).
++2. Add specific error handling for when a user is not found.
++
++### **Detailed Feedback**
++
++---
++
++**[PERFORMANCE]** - N+1 Database Query
++
++**Original Code:**
++
++```python
++def get_user_emails(user_ids):
++    emails = []
++    for user_id in user_ids:
++        user = db.query(User).filter(User.id == user_id).one()
++        emails.append(user.email)
++    return emails
++```
++
++**Suggested Improvement:**
++
++```python
++def get_user_emails(user_ids):
++    if not user_ids:
++        return []
++    users = db.query(User).filter(User.id.in_(user_ids)).all()
++    return [user.email for user in users]
++```
++
++**Rationale:**
++The original code executes one database query for each `user_id` in the list. This is known as the "N+1 query problem" and performs very poorly on large lists. The suggested improvement fetches all users in a single query using `IN`, which is significantly more efficient.
++
++---
++
++**[CORRECTNESS]** - Lacks Specific Error Handling
++
++**Original Code:**
++
++```python
++user = db.query(User).filter(User.id == user_id).one()
++```
++
++**Suggested Improvement:**
++
++```python
++from sqlalchemy.orm.exc import NoResultFound
++
++try:
++    user = db.query(User).filter(User.id == user_id).one()
++except NoResultFound:
++    # Handle the case where the user doesn't exist
++    # e.g., log a warning, skip the user, or raise a custom exception
++    continue
++```
++
++**Rationale:**
++The `.one()` method will raise a `NoResultFound` exception if a user with the given ID doesn't exist, which would crash the entire function. It's better to explicitly handle this case using a try/except block to make the function more resilient.
++
++---
++
++## INPUT
+diff --git a/web/static/data/pattern_descriptions.json b/web/static/data/pattern_descriptions.json
+index deffcb272c..2111718626 100644
+--- a/web/static/data/pattern_descriptions.json
++++ b/web/static/data/pattern_descriptions.json
+@@ -1710,7 +1710,7 @@
+     },
+     {
+       "patternName": "analyze_bill_short",
+-      "description": "Consended - Analyze a legislative bill and implications.",
++      "description": "Condensed - Analyze a legislative bill and implications.",
+       "tags": [
+         "ANALYSIS",
+         "BILL"
+@@ -1815,6 +1815,35 @@
+         "WRITING",
+         "CREATIVITY"
+       ]
++    },
++    {
++      "patternName": "extract_alpha",
++      "description": "Extracts the most novel and surprising ideas (\"alpha\") from content, inspired by information theory.",
++      "tags": [
++        "EXTRACT",
++        "ANALYSIS",
++        "CR THINKING",
++        "WISDOM"
++      ]
++    },
++    {
++      "patternName": "extract_mcp_servers",
++      "description": "Analyzes content to identify and extract detailed information about Model Context Protocol (MCP) servers.",
++      "tags": [
++        "ANALYSIS",
++        "EXTRACT",
++        "DEVELOPMENT",
++        "AI"
++      ]
++    },
++    {
++      "patternName": "review_code",
++      "description": "Performs a comprehensive code review, providing detailed feedback on correctness, security, and performance.",
++      "tags": [
++        "DEVELOPMENT",
++        "REVIEW",
++        "SECURITY"
++      ]
+     }
+   ]
+-}
++}
+\ No newline at end of file

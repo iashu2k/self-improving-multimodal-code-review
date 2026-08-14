@@ -1,0 +1,40 @@
+{
+  "example_id": "apache__airflow__pr_053368",
+  "source": "github-codereview",
+  "repository": "apache/airflow",
+  "commit_sha": "97f052c68ff28a55f3c819160d20ef64c2cc6af8",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Fix duplicate pod creation in KubernetesJobOperator",
+    "description": "Fix KubernetesJobOperator.get_or_create_pod() sometimes creating duplicate pods.\r\n\r\n(re-raised from #52885)\r\n<!--\r\n Licensed to the Apache Software Foundation (ASF) under one\r\n or more contributor license agreements.  See the NOTICE file\r\n distributed with this work for additional information\r\n regarding copyright ownership.  The ASF licenses this file\r\n to you under the Apache License, Version 2.0 (the\r\n \"License\"); you may not use this file except in compliance\r\n with the License.  You may obtain a copy of the License at\r\n\r\n   http://www.apache.org/licenses/LICENSE-2.0\r\n\r\n Unless required by applicable law or agreed to in writing,\r\n software distributed under the License is distributed on an\r\n \"AS IS\" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\r\n KIND, either express or implied.  See the License for the\r\n specific language governing permissions and limitations\r\n under the License.\r\n -->\r\n\r\n<!--\r\nThank you for contributing! Please make sure that your code changes\r\nare covered with tests. And in case of new features or big changes\r\nremember to adjust the documentation.\r\n\r\nFeel free to ping committers for the review!\r\n\r\nIn case of an existing issue, reference it using one of the following:\r\n\r\ncloses: #ISSUE\r\nrelated: #ISSUE\r\n\r\nHow to write a good git commit message:\r\nhttp://chris.beams.io/posts/git-commit/\r\n-->\r\n\r\nduring `execute()` the KubernetesJobOperator attempts to find the pod associated with the Job object using `self.get_or_create_pod()`. If Kubernetes is being slow then the Job object will not create a pod before this method gets called, which will result in the underlying `find_pod()` method returning `None`, and a duplicate headless pod being created for this task.\r\n\r\nThis PR removes references to the `get_or_create_pod()` method in favour of `KubernetesJobOperator.get_pod()` to prevent creating headless pods.\r\n\r\n<!-- Please keep an empty line above the dashes. -->\r\n---\r\n\r\n**^ Add meaningful description above**\r\nRead the **[Pull Request Guidelines](https://github.com/apache/airflow/blob/main/contributing-docs/05_pull_requests.rst#pull-request-guidelines)** for more information.\r\nIn case of fundamental code changes, an Airflow Improvement Proposal ([AIP](https://cwiki.apache.org/confluence/display/AIRFLOW/Airflow+Improvement+Proposals)) is needed.\r\nIn case of a new dependency, check compliance with the [ASF 3rd Party License Policy](https://www.apache.org/legal/resolved.html#category-x).\r\nIn case of backwards incompatible changes please leave a note in a newsfragment file, named `{pr_number}.significant.rst` or `{issue_number}.significant.rst`, in [airflow-core/newsfragments](https://github.com/apache/airflow/tree/main/airflow-core/newsfragments).\r\n",
+    "url": "https://github.com/apache/airflow/pull/53368"
+  },
+  "changed_files": [
+    "providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/job.py",
+    "providers/cncf/kubernetes/tests/unit/cncf/kubernetes/operators/test_job.py"
+  ],
+  "diff_path": "text/holdout/apache__airflow__pr_053368/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/job.py",
+      "line": 460,
+      "category": "bug_risk",
+      "severity": "low",
+      "issue_summary": "The error message at line 465 states \"No pods running with labels\" but this might not be accurate. The pods could exist but not be in a running state yet (e.g., pending, initializing). Consider updating the error message to be more accurate, such as \"Failed to find expected number of pods with labels\" or \"No pods found with labels\" to avoid confusion.",
+      "evidence_requirement": "The comment must cite the unchanged error message text 'No pods running with labels' in the get_pods method.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The error message is misleading because the method checks for pod count matching parallelism, not pod running state; pods may exist but be pending/initializing.",
+      "_reviewer_comment_full": "The error message at line 465 states \"No pods running with labels\" but this might not be accurate. The pods could exist but not be in a running state yet (e.g., pending, initializing). Consider updating the error message to be more accurate, such as \"Failed to find expected number of pods with labels\" or \"No pods found with labels\" to avoid confusion.",
+      "_gold_comment_url": "https://github.com/apache/airflow/pull/53368#discussion_r2644067942"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 166
+}

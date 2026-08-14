@@ -1,0 +1,13 @@
+diff --git a/celery/beat.py b/celery/beat.py
+index 3e1d31a59ac..d1e72837664 100644
+--- a/celery/beat.py
++++ b/celery/beat.py
+@@ -381,7 +381,7 @@ def apply_async(self, entry, producer=None, advance=True, **kwargs):
+
+         try:
+             entry_args = [v() if isinstance(v, BeatLazyFunc) else v for v in (entry.args or [])]
+-            entry_kwargs = {k: v() if isinstance(v, BeatLazyFunc) else v for k, v in entry.kwargs.items()}
++            entry_kwargs = {k: v() if isinstance(v, BeatLazyFunc) else v for k, v in (entry.kwargs or {}).items()}
+             if task:
+                 return task.apply_async(entry_args, entry_kwargs,
+                                         producer=producer,

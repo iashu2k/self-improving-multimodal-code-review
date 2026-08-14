@@ -1,0 +1,28 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index dc77f10c4..21a483471 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+ - Add GSM8K to in-loop evals (BPB over correct continuation)
+ - Support for specifying custom dataset objects in the `data` section of the config file.
+
++### Fixed
++
++- Changed a Union definition to be compatible with Python 3.9
++
+ ## [v0.6.1](https://github.com/allenai/OLMo/releases/tag/v0.6.1) - 2025-01-22
+
+ ### Added
+diff --git a/olmo/util.py b/olmo/util.py
+index bc0e904a2..af163e524 100644
+--- a/olmo/util.py
++++ b/olmo/util.py
+@@ -728,7 +728,7 @@ def _http_get_bytes_range(scheme: str, host_name: str, path: str, bytes_start: i
+
+
+ def save_hf_dataset_to_disk(
+-    dataset: datasets.DatasetDict | datasets.Dataset,
++    dataset: Union[datasets.DatasetDict, datasets.Dataset],
+     hf_path: str,
+     name: Optional[str],
+     split: str,

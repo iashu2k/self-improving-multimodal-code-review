@@ -1,0 +1,43 @@
+{
+  "example_id": "dragonflydb__dragonfly__pr_005627",
+  "source": "github-codereview",
+  "repository": "dragonflydb/dragonfly",
+  "commit_sha": "33838e04dee07293320d46613c6a3bcfc96aa80e",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "test(acl): Fix flaky ACL tests with long-running Lua scripts",
+    "description": "- Removed `@pytest.mark.skip(\"Non deterministic\")`\r\n- Lowered number of keys\r\n",
+    "url": "https://github.com/dragonflydb/dragonfly/pull/5627"
+  },
+  "changed_files": [
+    "tests/dragonfly/acl_family_test.py"
+  ],
+  "diff_path": "text/validation/dragonflydb__dragonfly__pr_005627/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "tests/dragonfly/acl_family_test.py",
+      "line": 286,
+      "category": "bug_risk",
+      "severity": "high",
+      "issue_summary": "The reason that we are getting `NOPERM` now instead of `ConnectionError` is because by the time we disabled the test we added support for `acl keys`. So even if we enabled the test, its semantics got changed because of the new feature. To get it back we need to add `~*` in the acl list of the user `kostas`:\r\n\r\n```\r\n//notice the addition of ~* at the end of the acl list\r\nawait client.execute_command(\"ACL SETUSER kostas ON >kk +@string +@scripting ~*\")\r\n```\r\n\r\nSo now we delete a user while they ar",
+      "evidence_requirement": "The test sets kostas with `+@string +@scripting` but no key permissions (`~*` missing), yet expects `NOPERM` on key access during script execution — this mismatch causes incorrect test behavior.",
+      "must_not_claim": [
+        "causes crash",
+        "exposes secrets",
+        "breaks functionality"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Without `~*` in kostas's ACL, the script cannot access keys, so the `NOPERM` error is expected, but the test's assertion and logic assume the script ran successfully before user deletion — the semantics changed after `acl keys` support was added.",
+      "_reviewer_comment_full": "The reason that we are getting `NOPERM` now instead of `ConnectionError` is because by the time we disabled the test we added support for `acl keys`. So even if we enabled the test, its semantics got changed because of the new feature. To get it back we need to add `~*` in the acl list of the user `kostas`:\r\n\r\n```\r\n//notice the addition of ~* at the end of the acl list\r\nawait client.execute_command(\"ACL SETUSER kostas ON >kk +@string +@scripting ~*\")\r\n```\r\n\r\nSo now we delete a user while they are running a command! \r\n\r\nThe second problem with this test, is the `load`. It's really slow. So I suggest to edit the script above and iterate less times: `for i = 1, 1000 do`. This will also require an `await async.sleep(2)` before the assertion below to give time for the script to execute.\r\n",
+      "_gold_comment_url": "https://github.com/dragonflydb/dragonfly/pull/5627#discussion_r2257342511"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 196
+}

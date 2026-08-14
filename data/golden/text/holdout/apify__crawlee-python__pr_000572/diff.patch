@@ -1,0 +1,108 @@
+diff --git a/src/crawlee/base_storage_client/_base_key_value_store_client.py b/src/crawlee/base_storage_client/_base_key_value_store_client.py
+index 3eed990891..096ca59dfa 100644
+--- a/src/crawlee/base_storage_client/_base_key_value_store_client.py
++++ b/src/crawlee/base_storage_client/_base_key_value_store_client.py
+@@ -114,3 +114,17 @@ async def delete_record(self, key: str) -> None:
+         Args:
+             key: The key of the record which to delete
+         """
++
++    @abstractmethod
++    async def get_public_url(self, key: str) -> str:
++        """Get the public URL for the given key.
++
++        Args:
++            key: Key of the record for which URL is required.
++
++        Returns:
++            The public URL for the given key.
++
++        Raises:
++            ValueError: If the key does not exist.
++        """
+diff --git a/src/crawlee/memory_storage_client/_key_value_store_client.py b/src/crawlee/memory_storage_client/_key_value_store_client.py
+index 907070ef6d..68cd1f4e70 100644
+--- a/src/crawlee/memory_storage_client/_key_value_store_client.py
++++ b/src/crawlee/memory_storage_client/_key_value_store_client.py
+@@ -287,6 +287,28 @@ async def delete_record(self, key: str) -> None:
+                 if self._memory_storage_client.persist_storage:
+                     await existing_store_by_id.delete_persisted_record(record)
+
++    @override
++    async def get_public_url(self, key: str) -> str:
++        existing_store_by_id = find_or_create_client_by_id_or_name_inner(
++            resource_client_class=KeyValueStoreClient,
++            memory_storage_client=self._memory_storage_client,
++            id=self.id,
++            name=self.name,
++        )
++
++        if existing_store_by_id is None:
++            raise_on_non_existing_storage(StorageTypes.KEY_VALUE_STORE, self.id)
++
++        record = await self._get_record_internal(key)
++
++        if not record:
++            raise ValueError(f'Record with key "{key}" was not found.')
++
++        resource_dir = existing_store_by_id.resource_directory
++        record_filename = self._filename_from_record(record)
++        record_path = os.path.join(resource_dir, record_filename)
++        return f'file://{record_path}'
++
+     async def persist_record(self, record: KeyValueStoreRecord) -> None:
+         """Persist the specified record to the key-value store."""
+         store_directory = self.resource_directory
+diff --git a/src/crawlee/storages/_key_value_store.py b/src/crawlee/storages/_key_value_store.py
+index b012ea74f7..9d480fdc6f 100644
+--- a/src/crawlee/storages/_key_value_store.py
++++ b/src/crawlee/storages/_key_value_store.py
+@@ -157,3 +157,14 @@ async def set_value(
+             return await self._resource_client.delete_record(key)
+
+         return await self._resource_client.set_record(key, value, content_type)
++
++    async def get_public_url(self, key: str) -> str:
++        """Get the public URL for the given key.
++
++        Args:
++            key: Key of the record for which URL is required.
++
++        Returns:
++            The public URL for the given key.
++        """
++        return await self._resource_client.get_public_url(key)
+diff --git a/tests/unit/storages/test_key_value_store.py b/tests/unit/storages/test_key_value_store.py
+index 5e73558321..6740c44814 100644
+--- a/tests/unit/storages/test_key_value_store.py
++++ b/tests/unit/storages/test_key_value_store.py
+@@ -1,6 +1,8 @@
+ from __future__ import annotations
+
++import asyncio
+ from typing import AsyncGenerator
++from urllib.parse import urlparse
+
+ import pytest
+
+@@ -100,3 +102,20 @@ async def test_static_get_set_value(key_value_store: KeyValueStore) -> None:
+     await key_value_store.set_value('test-static', 'static')
+     value = await key_value_store.get_value('test-static')
+     assert value == 'static'
++
++
++async def test_get_public_url_raises_for_non_existing_key(key_value_store: KeyValueStore) -> None:
++    with pytest.raises(ValueError, match='was not found'):
++        await key_value_store.get_public_url('i-do-not-exist')
++
++
++async def test_get_public_url(key_value_store: KeyValueStore) -> None:
++    await key_value_store.set_value('test-static', 'static')
++    public_url = await key_value_store.get_public_url('test-static')
++
++    url = urlparse(public_url)
++    path = url.netloc if url.netloc else url.path
++
++    with open(path) as f:  # noqa: ASYNC230
++        content = await asyncio.to_thread(f.read)
++        assert content == 'static'

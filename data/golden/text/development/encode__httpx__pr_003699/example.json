@@ -1,0 +1,25 @@
+{
+  "example_id": "encode__httpx__pr_003699",
+  "source": "github-codereview",
+  "repository": "encode/httpx",
+  "commit_sha": "4b9f63e507c4ea75fa59f6bbdfb103e2f014a6f9",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Expose `FunctionAuth` in `__all__`",
+    "description": "# Summary\r\n\r\nJust adding `FunctionAuth` to `httpx._auth`'s `__all__` so it can be imported as `httpx.FunctionAuth`.\r\n\r\n(Note this just seems to be an omission in https://github.com/encode/httpx/pull/3106)\r\n\r\n# Checklist\r\n\r\n- [x] I understand that this PR may be closed in case there was no previous discussion. (This doesn't apply to typos!)\r\n- [ ] ~I've added a test for each change that was introduced, and I tried as much as possible to make a single atomic change.~\r\n  - `tests/test_exported_members.py:test_exported_members` covers this\r\n- [ ] ~I've updated the documentation accordingly.~\r\n  - Also didn't seem worth documenting \ud83e\udd37\u200d\u2642\ufe0f \r\n",
+    "url": "https://github.com/encode/httpx/pull/3699"
+  },
+  "changed_files": [
+    "CHANGELOG.md",
+    "httpx/__init__.py",
+    "httpx/_auth.py"
+  ],
+  "diff_path": "text/development/encode__httpx__pr_003699/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "development",
+  "snapshot_id": 133
+}

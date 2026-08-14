@@ -1,0 +1,45 @@
+diff --git a/scripts/create_compdb.py b/scripts/create_compdb.py
+index 452a2247a96c6..e718e7c012b28 100755
+--- a/scripts/create_compdb.py
++++ b/scripts/create_compdb.py
+@@ -39,24 +39,24 @@
+ import scripts_utils
+
+ _CPP_EXTENSIONS = {
+-    "c",
+-    "cc",
+-    "cpp",
+-    "cxx",
+-    "c++",
+-    "C",
+-    "h",
+-    "hpp",
+-    "hxx",
+-    "h++",
+-    "hh",
+-    "H",
+-    "inc",
+-    "def",
+-    "ipp",
+-    "s",
+-    "S",
+-    "asm",
++    ".c",
++    ".cc",
++    ".cpp",
++    ".cxx",
++    ".c++",
++    ".C",
++    ".h",
++    ".hpp",
++    ".hxx",
++    ".h++",
++    ".hh",
++    ".H",
++    ".inc",
++    ".def",
++    ".ipp",
++    ".s",
++    ".S",
++    ".asm",
+ }

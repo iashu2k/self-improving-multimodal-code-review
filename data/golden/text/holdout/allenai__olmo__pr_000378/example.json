@@ -1,0 +1,40 @@
+{
+  "example_id": "allenai__olmo__pr_000378",
+  "source": "github-codereview",
+  "repository": "allenai/OLMo",
+  "commit_sha": "a22cddc50a19a3f81601ed3d0d1c6ba1dbb97b9e",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[Storage Cleaner] Migrate to cached_path",
+    "description": "The cloud file download and unarchiving functionality of `scripts/storage_cleaner.py` can be implemented with the `cached_path` module instead of manual implementations. I initially avoided this because `cached_path` does not natively support R2, but in the long run I have found that implementing R2 for `cached_path` is the lesser of the 2 poisons.\r\n\r\nPR Train (in repair):\r\n1. https://github.com/allenai/LLM/pull/364\r\n2. **This PR** https://github.com/allenai/LLM/pull/378\r\n3. https://github.com/allenai/LLM/pull/379\r\n4. https://github.com/allenai/LLM/pull/390",
+    "url": "https://github.com/allenai/OLMo/pull/378"
+  },
+  "changed_files": [
+    "scripts/storage_cleaner.py"
+  ],
+  "diff_path": "text/holdout/allenai__olmo__pr_000378/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "scripts/storage_cleaner.py",
+      "line": 659,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "How does authentication work for this? It reads environment variables? Then I assume there is no way to have both R2 and S3 work at the same time, because they read auth information from the same place?",
+      "evidence_requirement": "The comment must note that after the cached_path migration, R2 and S3 auth both read the same environment variables (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), so the two backends cannot be configured simultaneously.",
+      "must_not_claim": [
+        "claims credentials are logged or exposed"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The reviewer correctly identified that S3 and R2 share the same auth environment variables, and the migration to cached_path removes the explicit R2_ACCOUNT_ID handling, raising concern about simultaneous R2/S3 support.",
+      "_reviewer_comment_full": "How does authentication work for this? It reads environment variables? Then I assume there is no way to have both R2 and S3 work at the same time, because they read auth information from the same place?",
+      "_gold_comment_url": "https://github.com/allenai/OLMo/pull/378#discussion_r1409975193"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 37
+}

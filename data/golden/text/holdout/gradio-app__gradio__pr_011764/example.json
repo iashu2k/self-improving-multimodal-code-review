@@ -1,0 +1,49 @@
+{
+  "example_id": "gradio-app__gradio__pr_011764",
+  "source": "github-codereview",
+  "repository": "gradio-app/gradio",
+  "commit_sha": "db344c7b5605cbf511e766f76e546d52c3628fe0",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Display performance metrics for API/MCP requests in View API page",
+    "description": "## Description\r\n\r\nFor each MCP tool/resource/prompt and API request show the % of successful requests along with some latency percentiles. Only tracks events that go through the queue.\r\n\r\nFor efficiency, the metrics are re-computed every 10 requests. This can be controlled via the `GRADIO_ANALYTICS_CACHE_FREQUENCY` env variable (purposely undocumented. Used mainly for tests).\r\n\r\nWhile testing, if you want to see the metrics more frequently launch the app like this: `GRADIO_ANALYTICS_CACHE_FREQUENCY=2 python <script>.py`\r\n\r\n### MCP Requests\r\n<img width=\"996\" height=\"327\" alt=\"MCPMetrics\" src=\"https://github.com/user-attachments/assets/ca33ea1f-832c-4acc-b501-d1ee3c6fbdfc\" />\r\n\r\n### API Requests\r\n<img width=\"1001\" height=\"299\" alt=\"APIRequests\" src=\"https://github.com/user-attachments/assets/a39c577f-fcb8-4f60-9f1e-af23a75fe3b5\" />\r\n\r\n\r\n\r\nCloses: #11474 \r\n\r\n## \ud83c\udfaf PRs Should Target Issues\r\n\r\nBefore your create a PR, please check to see if there is [an existing issue](https://github.com/gradio-app/gradio/issues) for this change. If not, please create an issue before you create this PR, unless the fix is very small. \r\n\r\nNot adhering to this guideline will result in the PR being closed. \r\n\r\n## Testing and Formatting Your Code\r\n\r\n1. PRs will only be merged if tests pass on CI. We recommend at least running the backend tests locally, please set up [your Gradio environment locally](https://github.com/gradio-app/gradio/blob/main/CONTRIBUTING.md) and run the backed tests: `bash scripts/run_backend_tests.sh`\r\n\r\n2. Please run these bash scripts to automatically format your code: `bash scripts/format_backend.sh`, and (if you made any changes to non-Python files) `bash scripts/format_frontend.sh`\r\n  \r\n",
+    "url": "https://github.com/gradio-app/gradio/pull/11764"
+  },
+  "changed_files": [
+    ".changeset/thin-mails-behave.md",
+    "gradio/mcp.py",
+    "gradio/queueing.py",
+    "gradio/routes.py",
+    "js/core/src/api_docs/ApiDocs.svelte",
+    "js/core/src/api_docs/CodeSnippet.svelte",
+    "js/core/src/api_docs/EndpointDetail.svelte",
+    "js/core/src/api_docs/MCPSnippet.svelte",
+    "js/core/src/api_docs/utils.ts",
+    "test/test_mcp.py",
+    "test/test_queueing.py"
+  ],
+  "diff_path": "text/holdout/gradio-app__gradio__pr_011764/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "gradio/queueing.py",
+      "line": 155,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "This variable name is confusing since it sounds like the number of events since the last analytics cache, but actually, it's the number of events _at the time_ analytics were last cached. I'd suggest `n_events_at_last_cache` or even `event_count_at_last_cache`. ",
+      "evidence_requirement": "The variable `self.n_events_since_last_analytics_cache` is declared and used in `gradio/queueing.py:143` and `gradio/queueing.py:155` with misleading semantics\u2014it stores the count *at* the last cache, not *since* the last cache.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The variable name incorrectly implies it tracks events *since* the last cache, when it actually stores the total event count *at the time* of the last cache, which could mislead future maintainers about its purpose and cause logic errors.",
+      "_reviewer_comment_full": "This variable name is confusing since it sounds like the number of events since the last analytics cache, but actually, it's the number of events _at the time_ analytics were last cached. I'd suggest `n_events_at_last_cache` or even `event_count_at_last_cache`. ",
+      "_gold_comment_url": "https://github.com/gradio-app/gradio/pull/11764#discussion_r2308458951"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 205
+}

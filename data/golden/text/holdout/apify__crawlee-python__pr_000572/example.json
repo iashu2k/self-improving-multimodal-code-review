@@ -1,0 +1,41 @@
+{
+  "example_id": "apify__crawlee-python__pr_000572",
+  "source": "github-codereview",
+  "repository": "apify/crawlee-python",
+  "commit_sha": "d9cca16ce4a4132b8a10cd402009f795754d778b",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "feat: Added get_public_url method to KeyValueStore",
+    "description": "### Description\r\n\r\n- Implement get_public_url method in KeyValueStore\r\n\r\n### Issues\r\n\r\n<!-- If applicable, reference any related GitHub issues -->\r\n\r\n- Closes: #514 \r\n\r\n### Testing\r\n\r\n- Unit tests added\r\n\r\n### Checklist\r\n\r\n- [x] CI passed\r\n",
+    "url": "https://github.com/apify/crawlee-python/pull/572"
+  },
+  "changed_files": [
+    "src/crawlee/base_storage_client/_base_key_value_store_client.py",
+    "src/crawlee/memory_storage_client/_key_value_store_client.py",
+    "src/crawlee/storages/_key_value_store.py",
+    "tests/unit/storages/test_key_value_store.py"
+  ],
+  "diff_path": "text/holdout/apify__crawlee-python__pr_000572/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "tests/unit/storages/test_key_value_store.py",
+      "line": 111,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "```suggestion\r\n    path = unquote(urlparse(public_url).path)  # extract path from a 'file:///' URI\r\n```",
+      "evidence_requirement": "The added line `path = url.netloc if url.netloc else url.path` fails to decode URL-encoded paths, risking incorrect file access when the path contains percent-encoded characters.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A public URL may contain percent-encoded characters in its path; using the raw path without decoding can cause file-system lookups to fail or access wrong files.",
+      "_reviewer_comment_full": "```suggestion\r\n    path = unquote(urlparse(public_url).path)  # extract path from a 'file:///' URI\r\n```",
+      "_gold_comment_url": "https://github.com/apify/crawlee-python/pull/572#discussion_r1794829734"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 49
+}

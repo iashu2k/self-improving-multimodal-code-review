@@ -1,0 +1,39 @@
+{
+  "example_id": "block__goose__pr_007209",
+  "source": "github-codereview",
+  "repository": "block/goose",
+  "commit_sha": "77ea89b6e77caad597703e364b7887c2451a861e",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Diagnostic files copying",
+    "description": "## Summary\r\n\r\nHitting c now copies the current file - prettifies json for response/requests",
+    "url": "https://github.com/aaif-goose/goose/pull/7209"
+  },
+  "changed_files": [
+    "scripts/diagnostics-viewer.py"
+  ],
+  "diff_path": "text/validation/block__goose__pr_007209/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "scripts/diagnostics-viewer.py",
+      "line": 549,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "This list comprehension will fail if any response line has invalid JSON, causing the entire operation to fall back to copying raw text. This is inconsistent with `_show_jsonl` (lines 344-349) which parses responses individually and skips malformed lines. Consider using a similar approach: iterate through lines[1:] with individual try-except blocks to collect only valid responses, matching the viewing behavior.\n```suggestion\n                responses = []\n                for line in lines[1:]:\n  ",
+      "evidence_requirement": "The added code at line 549 uses a list comprehension that calls `json.loads` on all lines without individual error handling, causing the entire operation to fall back to raw text on any invalid JSON.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would raise this to ensure consistent behavior with `_show_jsonl`, where malformed lines are skipped rather than causing total failure, improving robustness for real-world diagnostic files that may contain corrupted entries.",
+      "_reviewer_comment_full": "This list comprehension will fail if any response line has invalid JSON, causing the entire operation to fall back to copying raw text. This is inconsistent with `_show_jsonl` (lines 344-349) which parses responses individually and skips malformed lines. Consider using a similar approach: iterate through lines[1:] with individual try-except blocks to collect only valid responses, matching the viewing behavior.\n```suggestion\n                responses = []\n                for line in lines[1:]:\n                    try:\n                        responses.append(json.loads(line))\n                    except json.JSONDecodeError:\n                        # Skip malformed JSON lines to match _show_jsonl behavior\n                        continue\n                if responses:\n                    if len(responses) == 1:\n                        content = json.dumps(responses[0], indent=2)\n                    else:\n                        content = json.dumps(responses, indent=2)\n                else:\n```",
+      "_gold_comment_url": "https://github.com/aaif-goose/goose/pull/7209#discussion_r2804289850"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 103
+}

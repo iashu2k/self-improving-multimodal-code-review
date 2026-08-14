@@ -1,0 +1,41 @@
+{
+  "example_id": "hpcaitech__colossalai__pr_004185",
+  "source": "github-codereview",
+  "repository": "hpcaitech/ColossalAI",
+  "commit_sha": "526d2e175e96645c10b6e493f173c9f76d6d6ca0",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[shardformer] llama support flash attention",
+    "description": "## \ud83d\udccc Checklist before creating the PR\r\n\r\n- [x] I have created an issue for this PR for traceability\r\n- [x] The title follows the standard format: `[doc/gemini/tensor/...]: A concise description`\r\n- [x] I have added relevant tags if possible for us to better distinguish different PRs\r\n\r\n\r\n## \ud83d\udea8 Issue number\r\n\r\n> Link this PR to your issue with words like fixed to automatically close the linked issue upon merge\r\n>\r\n> e.g. `fixed #1234`, `closed #1234`, `resolved #1234`\r\n\r\n#4184 \r\n\r\n## \ud83d\udcdd What does this PR do?\r\n\r\n> Summarize your work here.\r\n> if you have any plots/diagrams/screenshots/tables, please attach them here.\r\n\r\nllama support flash attention\r\n\r\n## \ud83d\udca5 Checklist before requesting a review\r\n\r\n- [x] I have linked my PR to an issue ([instruction](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue))\r\n- [x] My issue clearly describes the problem/feature/proposal, with diagrams/charts/table/code if possible\r\n- [x] I have performed a self-review of my code\r\n- [x] I have added thorough tests.\r\n- [x] I have added docstrings for all the functions/methods I implemented\r\n\r\n## \u2b50\ufe0f Do you enjoy contributing to Colossal-AI?\r\n\r\n- [ ] \ud83c\udf1d Yes, I do.\r\n- [ ] \ud83c\udf1a No, I don't.\r\n\r\nTell us more if you don't enjoy contributing to Colossal-AI.\r\n",
+    "url": "https://github.com/hpcaitech/ColossalAI/pull/4185"
+  },
+  "changed_files": [
+    "colossalai/shardformer/modeling/llama.py",
+    "colossalai/shardformer/policies/llama.py",
+    "tests/test_shardformer/test_model/test_shard_llama.py"
+  ],
+  "diff_path": "text/validation/hpcaitech__colossalai__pr_004185/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "colossalai/shardformer/modeling/llama.py",
+      "line": 69,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "We can refactor this part as mentioned this morning.\r\n\r\n```python\r\ndef get_llama_forward_with_flash_attention():\r\n       try:\r\n            from xformers.ops import ...\r\n       except:\r\n            ...\r\n\r\n       def llama_flash_attention_forward(...):\r\n              ...\r\n       return llama_flash_attention_forward\r\n```",
+      "evidence_requirement": "The code must show the xformers import and ImportError raised inline inside llama_flash_attention_forward instead of being moved into a factory function that returns the forward function.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The reviewer suggested refactoring to isolate the optional dependency import in a factory function to avoid raising ImportError on every call and to improve code organization.",
+      "_reviewer_comment_full": "We can refactor this part as mentioned this morning.\r\n\r\n```python\r\ndef get_llama_forward_with_flash_attention():\r\n       try:\r\n            from xformers.ops import ...\r\n       except:\r\n            ...\r\n\r\n       def llama_flash_attention_forward(...):\r\n              ...\r\n       return llama_flash_attention_forward\r\n```",
+      "_gold_comment_url": "https://github.com/hpcaitech/ColossalAI/pull/4185#discussion_r1254081182"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 210
+}

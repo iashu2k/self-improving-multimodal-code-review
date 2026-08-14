@@ -1,0 +1,39 @@
+{
+  "example_id": "blackjack4494__yt-dlc__pr_000030",
+  "source": "github-codereview",
+  "repository": "blackjack4494/yt-dlc",
+  "commit_sha": "87ab4fb11a70c61e46cd7ee642f830b475b89c93",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Added DRM logic to brightcove",
+    "description": "## Please follow the guide below\r\n\r\n- You will be asked some questions, please read them **carefully** and answer honestly\r\n- Put an `x` into all the boxes [ ] relevant to your *pull request* (like that [x])\r\n- Use *Preview* tab to see how your *pull request* will actually look like\r\n\r\n---\r\n\r\n### Before submitting a *pull request* make sure you have:\r\n- [x] At least skimmed through [adding new extractor tutorial](https://github.com/ytdl-org/youtube-dl#adding-support-for-a-new-site) and [youtube-dl coding conventions](https://github.com/ytdl-org/youtube-dl#youtube-dl-coding-conventions) sections\r\n- [x] [Searched](https://github.com/ytdl-org/youtube-dl/search?q=is%3Apr&type=Issues) the bugtracker for similar pull requests\r\n- [x] Checked the code with [flake8](https://pypi.python.org/pypi/flake8)\r\n\r\n### In order to be accepted and merged into youtube-dl each piece of code must be in public domain or released under [Unlicense](http://unlicense.org/). Check one of the following options:\r\n- [ ] I am the original author of this code and I am willing to release it under [Unlicense](http://unlicense.org/)\r\n- [x] I am not the original author of this code but it is in public domain or released under [Unlicense](http://unlicense.org/) (provide reliable evidence)\r\n\r\n### What is the purpose of your *pull request*?\r\n- [x] Bug fix\r\n- [ ] Improvement\r\n- [ ] New extractor\r\n- [ ] New feature\r\n\r\n---\r\n\r\n### Description of your *pull request* and other information\r\n\r\nIn the event when there are no available sources due to DRM controlled sources, return a DRM error and don't proceed with trying.\r\n\r\n#28 reports that an ExtractorError \"No video formats found\". Which is true, because the formats list is empty, however it's empty because they are all locked. This provides a more informative message to the end-user.\r\n\r\n# TESTING\r\nTried the URL provided in #28 and confirmed a DRM message is returned.\r\n",
+    "url": "https://github.com/blackjack4494/yt-dlc/pull/30"
+  },
+  "changed_files": [
+    "youtube_dlc/extractor/brightcove.py"
+  ],
+  "diff_path": "text/holdout/blackjack4494__yt-dlc__pr_000030/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "youtube_dlc/extractor/brightcove.py",
+      "line": 542,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "wouldn't it be better or more elegant to move the raise extractor error to `if not formats` and check there if there have been drm protected streams?",
+      "evidence_requirement": "The diff adds a DRM check after format collection (`if sources_num == key_systems_present`) but does not integrate it into the `if not formats` block as suggested, leaving the error placement suboptimal.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would raise this to improve code clarity and ensure DRM detection is handled consistently with other format-validation logic.",
+      "_reviewer_comment_full": "wouldn't it be better or more elegant to move the raise extractor error to `if not formats` and check there if there have been drm protected streams?",
+      "_gold_comment_url": "https://github.com/blackjack4494/yt-dlc/pull/30#discussion_r512702398"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 51
+}

@@ -1,0 +1,40 @@
+{
+  "example_id": "activeloopai__hub__pr_002711",
+  "source": "github-codereview",
+  "repository": "activeloopai/Hub",
+  "commit_sha": "ee06c68faa03962fb0cf41cda0e89d81fc5d038d",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Remove cached chunks from dataset pickle",
+    "description": "## \ud83d\ude80 \ud83d\ude80 Pull Request\r\n\r\n### Impact\r\n\r\n<!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: -->\r\n- [X] Bug fix (non-breaking change which fixes expected existing functionality)\r\n- [ ] Enhancement/New feature (adds functionality without impacting existing logic)\r\n- [ ] Breaking change (fix or feature that would cause existing functionality to change)\r\n\r\n\r\n### Description\r\n- Cached chunks should not be present in the serialized dataset\r\n- Set these attributes to `None` in the `ChunkEngine` before returning the state in `__getstate__`\r\n<!--\r\nA clear and concise description of the change being made.  \r\n\r\nThe title should introduce what was/will be done\r\n  - Titles show in release notes and search results, so make them useful \r\n  - Be specific about what was fixed or changed\r\n  - Imagine yourself looking for this PR in 6 months -- what will make it findable and valuable to future you?\r\n  - Good Example: `Correctly apply passed S3 credentials when using VectorStore`\r\n  - Bad Example: `Fixed creds issue`  \r\n\r\nThe description gives the details on what was/will be done \r\n- If there is an existing issue this addresses, include \"Fixes #XXXX\" to auto-link the issue to this PR\r\n- If there is NOT an existing issue, consider creating one.\r\n  - In general, issues describe wanted change from an end-user perspective and PRs describe the technical change.\r\n  - If this change is very small and not worth splitting off an issue, include `Steps To Reproduce`, `Expected Behavior`, and `Actual Behavior` sections in this PR as you would have in the issue.\r\n- Describe what users need to know and how the fix will affect them\r\n- Describe how the code change addresses the problem\r\n- Imagine yourself looking for this PR in 6 months -- what will make it findable and valuable to future you?\r\n- Ensure private information is redacted.\r\n-->\r\n\r\n### Things to be aware of\r\n\r\n<!--\r\n- Describe the technical choices you made\r\n- Describe impacts on the codebase\r\n-->\r\n\r\n### Things to worry about\r\n\r\n<!--\r\n- List any questions or concerns you have with the change\r\n- List unknowns you have \r\n-->\r\n\r\n### Additional Context\r\n\r\n<!--\r\nAdd any other context about the problem here.\r\n-->\r\n",
+    "url": "https://github.com/activeloopai/deeplake/pull/2711"
+  },
+  "changed_files": [
+    "deeplake/api/tests/test_pickle.py",
+    "deeplake/core/chunk_engine.py"
+  ],
+  "diff_path": "text/development/activeloopai__hub__pr_002711/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "deeplake/api/tests/test_pickle.py",
+      "line": 58,
+      "category": "bug_risk",
+      "severity": "low",
+      "issue_summary": "```suggestion\r\ndef test_pickling_dataset_should_not_store_cached_chunks(local_ds):\r\n```\r\n\r\nRenaming this test to `test_pickling_dataset_should_not_store_cached_chunks`, will make test name more clear so that if it fails, developer knows from the traceback what happened",
+      "evidence_requirement": "The test function name in the diff must be `test_no_chunks_present` instead of the clearer name suggested by the reviewer.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A more descriptive test name improves debugging clarity when the test fails, helping developers quickly understand the failing behavior from the traceback.",
+      "_reviewer_comment_full": "```suggestion\r\ndef test_pickling_dataset_should_not_store_cached_chunks(local_ds):\r\n```\r\n\r\nRenaming this test to `test_pickling_dataset_should_not_store_cached_chunks`, will make test name more clear so that if it fails, developer knows from the traceback what happened",
+      "_gold_comment_url": "https://github.com/activeloopai/deeplake/pull/2711#discussion_r1411614250"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "development",
+  "snapshot_id": 153
+}

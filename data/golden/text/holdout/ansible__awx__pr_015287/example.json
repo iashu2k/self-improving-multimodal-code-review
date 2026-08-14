@@ -1,0 +1,45 @@
+{
+  "example_id": "ansible__awx__pr_015287",
+  "source": "github-codereview",
+  "repository": "ansible/awx",
+  "commit_sha": "30857f47c80f451dfc6ece498a712bafa8008291",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Various RBAC fixes related to managed RoleDefinitions",
+    "description": "##### SUMMARY\r\nFixes https://github.com/ansible/awx/issues/15224\r\n\r\nAlso fixes bug not reported here - undesired RoleDefinitions were created in migrations because a criteria was not hitting right. I discovered I couldn't reproduce in the tests (likely why I didn't see it before). This was because of criteria like `if 'object_admin' in to_create and cls != Organization:`, which I can't believe I ever wrote. Obviously, `Organization` isn't `Organization` because of Django migration state, at least if this is called from a migration step, which it totally is.\r\n\r\nThis PR was originally created to run the tests, and (see comment), I got the failure I wanted, and then more commits here fixed the bug.\r\n\r\nInternal refs:\r\n\r\n- AAP-25603 just testing JT permissions working (doesn't fix anything)\r\n- AAP-25084 organization workflow role mapping issue caused server errors\r\n- AAP-25635 organization workflow role mapping issue didn't give permission like intended\r\n- AAP-24847 Project Update role missing\r\n- AAP-25491 org-IG-admin role created unintentionally\r\n- AAP-23816 org-org-admin role created unintentionally\r\n\r\n##### ISSUE TYPE\r\n - Bug, Docs Fix or other nominal change\r\n\r\n##### COMPONENT NAME\r\n - API\r\n\r\n",
+    "url": "https://github.com/ansible/awx/pull/15287"
+  },
+  "changed_files": [
+    "awx/main/migrations/_dab_rbac.py",
+    "awx/main/models/rbac.py",
+    "awx/main/tests/functional/dab_rbac/test_access_list.py",
+    "awx/main/tests/functional/dab_rbac/test_dab_rbac_api.py",
+    "awx/main/tests/functional/dab_rbac/test_managed_roles.py",
+    "awx/main/tests/functional/dab_rbac/test_translation_layer.py",
+    "awx/main/tests/functional/test_migrations.py"
+  ],
+  "diff_path": "text/holdout/ansible__awx__pr_015287/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "awx/main/tests/functional/dab_rbac/test_managed_roles.py",
+      "line": 28,
+      "category": "bug_risk",
+      "severity": "low",
+      "issue_summary": "```suggestion\r\n        assert 'add_' in str(rd.permissions.values_list('codename', flat=True)), f'The {rd.name} role definition expected to contain add_ permissions'\r\n```",
+      "evidence_requirement": "The comment must cite the incorrect assertion message on line 28 that contradicts the test's intent.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The assertion message is logically inverted \u2014 it claims the role is expected to NOT contain add_ permissions when the test is verifying that it DOES contain them, causing misleading test failures.",
+      "_reviewer_comment_full": "```suggestion\r\n        assert 'add_' in str(rd.permissions.values_list('codename', flat=True)), f'The {rd.name} role definition expected to contain add_ permissions'\r\n```",
+      "_gold_comment_url": "https://github.com/ansible/awx/pull/15287#discussion_r1648289489"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 163
+}

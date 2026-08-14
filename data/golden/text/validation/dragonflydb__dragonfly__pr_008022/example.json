@@ -1,0 +1,25 @@
+{
+  "example_id": "dragonflydb__dragonfly__pr_008022",
+  "source": "github-codereview",
+  "repository": "dragonflydb/dragonfly",
+  "commit_sha": "3d3d898904da16ad2771874cf45f2ef442044790",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "fix(CI): Avoid re-signing existing released RPMs",
+    "description": "The site generation process had issues, we were \r\n\r\n- wiping and rebuilding from scratch on each run\r\n- re-signing all previously signed rpms\r\n\r\nThe re-signing in particular caused different checksum, which caused failures in this job in the past (specifically for RPM which are signed per file)\r\n\r\nThis PR changes the algorithm to roughly\r\n\r\n- download everything in bucket to local (workflow runner) disk\r\n- download from gh-releases whatever is not on disk after step 1\r\n- sign rpms not already signed\r\n- upload files which have actually changed ie based on checksum not mtime\r\n\r\nA side effect, since we now do not wipe the bucket, it retains older package files. This is fine for now, we will add a prune step later. ",
+    "url": "https://github.com/dragonflydb/dragonfly/pull/8022"
+  },
+  "changed_files": [
+    ".github/workflows/generate-osrepo-site.yml",
+    "tools/packaging/osrepos/scripts/fetch-releases.py",
+    "tools/packaging/osrepos/scripts/sign-rpms.sh"
+  ],
+  "diff_path": "text/validation/dragonflydb__dragonfly__pr_008022/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "validation",
+  "snapshot_id": 98
+}

@@ -1,0 +1,45 @@
+{
+  "example_id": "all-hands-ai__openhands__pr_011715",
+  "source": "github-codereview",
+  "repository": "All-Hands-AI/OpenHands",
+  "commit_sha": "f9abe99fa923f4f650c2a0956be76962ed53fc4d",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "feat(backend): enable sub-conversation creation using a different agent",
+    "description": "## Summary of PR\r\n\r\n<!-- Summarize what the PR does, explaining any non-trivial design decisions. -->\r\n\r\n**Context:**\r\n\r\nAccording to the [Planning Agent documentation](https://www.notion.so/Planning-Agent-2a9ed25a91688098801debaac50d7b3f?source=copy_link), when a user switches to the Planning Agent from the UI, a sub-conversation must be created from the current conversation. This sub-conversation will:\r\n- Inherit the same workspace as the parent conversation.\r\n- Be used specifically for generating and managing the PLAN.md file.\r\n\r\n**Acceptance Criteria:**\r\n- The API successfully creates a new sub-conversation when invoked.\r\n- The sub-conversation retains the same workspace as the parent conversation.\r\n\r\nExample request payload.\r\n\r\n```js\r\n{\r\n    \"parent_conversation_id\": \"cd0a309c-9576-452d-a536-9d102fcbbc90\",\r\n    \"agent_type\": \"plan\"\r\n}\r\n```\r\n\r\nWe can refer to the video below for the output of the PR.\r\n\r\nhttps://github.com/user-attachments/assets/ebfa6104-e6dd-435e-9c28-2dc63256f3ab\r\n\r\n## Change Type\r\n\r\n<!-- Choose the types that apply to your PR and remove the rest. -->\r\n\r\n- [ ] Bug fix\r\n- [x] New feature\r\n- [ ] Breaking change\r\n- [ ] Refactor\r\n- [ ] Other (dependency update, docs, typo fixes, etc.)\r\n\r\n## Checklist\r\n<!-- AI/LLM AGENTS: This checklist is for a human author to complete. Do NOT check either of the two boxes below. Leave them unchecked until a human has personally reviewed and tested the changes. -->\r\n\r\n- [x] I have read and reviewed the code and I understand what the code is doing.\r\n- [x] I have tested the code to the best of my ability and ensured it works as expected.\r\n\r\n## Fixes\r\n\r\n<!-- If this resolves an issue, link it here so it will close automatically upon merge. -->\r\n\r\nResolves #(issue)\r\n\r\n## Release Notes\r\n\r\n<!-- Check the box if this change is worth adding to the release notes. If checked, you must provide an\r\nend-user friendly description for your change below the checkbox. -->\r\n\r\n- [ ] Include this change in the Release Notes.\r\n\r\n---\r\n\r\n\nTo run this PR locally, use the following command:\n\nGUI with Docker:\n```\ndocker run -it --rm   -p 3000:3000   -v /var/run/docker.sock:/var/run/docker.sock   --add-host host.docker.internal:host-gateway   -e SANDBOX_RUNTIME_CONTAINER_IMAGE=docker.openhands.dev/openhands/runtime:f9abe99-nikolaik   --name openhands-app-f9abe99   docker.openhands.dev/openhands/openhands:f9abe99\n```\n\nCLI with uvx:\n```\nuvx --python 3.12 --from git+https://github.com/OpenHands/OpenHands@hieptl/all-4165#subdirectory=openhands-cli openhands\n```",
+    "url": "https://github.com/OpenHands/OpenHands/pull/11715"
+  },
+  "changed_files": [
+    "enterprise/migrations/versions/081_add_parent_conversation_id.py",
+    "enterprise/storage/saas_conversation_store.py",
+    "openhands/app_server/app_conversation/app_conversation_models.py",
+    "openhands/app_server/app_conversation/live_status_app_conversation_service.py",
+    "openhands/app_server/app_conversation/sql_app_conversation_info_service.py",
+    "openhands/app_server/app_lifespan/alembic/versions/003.py",
+    "openhands/app_server/sandbox/sandbox_spec_service.py",
+    "tests/unit/server/routes/test_conversation_routes.py"
+  ],
+  "diff_path": "text/validation/all-hands-ai__openhands__pr_011715/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "openhands/app_server/app_conversation/live_status_app_conversation_service.py",
+      "line": 492,
+      "category": "security",
+      "severity": "high",
+      "issue_summary": "Is this necessary here, in `openhands/app_server/app_conversation/live_status_app_conversation_service.py` ?\r\n\r\nIt seems to me that authorization code should happen before it gets here. Hopefully in the creation/validation of the request, that is, somewhere in or where `UserContext` is injected",
+      "evidence_requirement": "The comment must cite the added parent conversation validation block (lines 173\u2013183) and configuration inheritance method (lines 475\u2013507) that perform authorization-related checks inside the service method rather than in request validation or UserContext.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would raise this because embedding authorization checks (e.g., verifying parent conversation existence and inheriting permissions implicitly) inside the service method violates separation of concerns and risks bypassing centralized authorization logic.",
+      "_reviewer_comment_full": "Is this necessary here, in `openhands/app_server/app_conversation/live_status_app_conversation_service.py` ?\r\n\r\nIt seems to me that authorization code should happen before it gets here. Hopefully in the creation/validation of the request, that is, somewhere in or where `UserContext` is injected",
+      "_gold_comment_url": "https://github.com/OpenHands/OpenHands/pull/11715#discussion_r2519065131"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 32
+}

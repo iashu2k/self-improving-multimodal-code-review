@@ -1,0 +1,40 @@
+{
+  "example_id": "avaiga__taipy__pr_001868",
+  "source": "github-codereview",
+  "repository": "Avaiga/taipy",
+  "commit_sha": "e192a64ea88ee7b30186c5547f96b91d7e1348cd",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "feature/#1858-add-s3-object-data-node",
+    "description": "This pull request addresses issue #1858.\r\n\r\nHello Maintainers,\r\n\r\nCould you please review my code? I would appreciate any suggestions or feedback you might have.\r\n\r\nThank you!",
+    "url": "https://github.com/Avaiga/taipy/pull/1868"
+  },
+  "changed_files": [
+    "taipy/core/config/data_node_config.py",
+    "taipy/core/data/aws_s3.py"
+  ],
+  "diff_path": "text/validation/avaiga__taipy__pr_001868/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "taipy/core/config/data_node_config.py",
+      "line": 1101,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "```suggestion\r\n            aws_access_key (str): Amazon Web Services (AWS) ID for to identify account.\r\n            aws_secret_access_key (str): Amazon Web Services (AWS) access key to authenticate\r\n                programmatic requests.\r\n            aws_s3_bucket_name (str): The Amazon Web Services (AWS) S3 bucket to read from and \r\n                to write the data to.\r\n```",
+      "evidence_requirement": "The docstring at line 1101 must be updated to reflect the new parameter names instead of referencing aws_s3_object_parameters.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The reviewer pointed out that the parameter name aws_s3_object_parameters was misleading and should be split into three more specific parameters; the docstring must be updated accordingly to avoid confusion.",
+      "_reviewer_comment_full": "```suggestion\r\n            aws_access_key (str): Amazon Web Services (AWS) ID for to identify account.\r\n            aws_secret_access_key (str): Amazon Web Services (AWS) access key to authenticate\r\n                programmatic requests.\r\n            aws_s3_bucket_name (str): The Amazon Web Services (AWS) S3 bucket to read from and \r\n                to write the data to.\r\n```",
+      "_gold_comment_url": "https://github.com/Avaiga/taipy/pull/1868#discussion_r1800648081"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 189
+}

@@ -1,0 +1,43 @@
+{
+  "example_id": "apache__superset__pr_034199",
+  "source": "github-codereview",
+  "repository": "apache/superset",
+  "commit_sha": "6ca944734ec4a02e24e2c5847956fe58da0eebe3",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "fix: proper handling of boolean filters with snowflake",
+    "description": " ## Summary\r\n\r\n  Fixes boolean column filtering for Snowflake databases by generating `= true/false` instead of `IS true/false` SQL syntax.\r\n\r\n  - Add `use_equality_for_boolean_filters` property to `BaseEngineSpec` (default: `False`)\r\n  - Add `handle_boolean_filter` method for engine-specific boolean filter handling\r\n  - Override property in `SnowflakeEngineSpec` to use equality operators\r\n  - Refactor filter handling in `helpers.py` to use new engine-specific methods\r\n\r\n  ## Problem\r\n\r\n  Snowflake doesn't support `IS true/false` syntax for boolean filters, causing queries like:\r\n  ```sql\r\n  SELECT * FROM table WHERE column IS true  -- \u274c Invalid in Snowflake\r\n\r\n  Solution\r\n\r\n  Generate Snowflake-compatible SQL while maintaining backward compatibility:\r\n  SELECT * FROM table WHERE column = true   -- \u2705 Valid in Snowflake\r\n\r\n  Other databases continue using IS true/false as before.\r\n\r\n  Test Plan\r\n\r\n  - Added unit tests for boolean filter handling\r\n  - Verified Snowflake generates = true/false\r\n  - Verified other engines still use IS true/false\r\n  - All existing tests pass\r\n  - Ruff linting passes\r\n\r\n  Fixes #33235",
+    "url": "https://github.com/apache/superset/pull/34199"
+  },
+  "changed_files": [
+    "superset/db_engine_specs/base.py",
+    "superset/db_engine_specs/snowflake.py",
+    "superset/models/helpers.py",
+    "tests/unit_tests/db_engine_specs/test_base.py",
+    "tests/unit_tests/db_engine_specs/test_snowflake.py"
+  ],
+  "diff_path": "text/holdout/apache__superset__pr_034199/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "superset/db_engine_specs/base.py",
+      "line": 1231,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "We could be more strict in the `op` type here, to have the type checker catch incorrect calls to this method:\r\n\r\n```suggestion\r\n    def handle_null_filter(\r\n        cls,\r\n        sqla_col: Any,\r\n        op: utils.FilterOperator.IS_NULL | utils.FilterOperator.IS_NOT_NULL,\r\n    ) -> BinaryExpression:\r\n```",
+      "evidence_requirement": "The `handle_null_filter` method signature accepts `op: str` instead of a constrained union type for null operators, missing the reviewer's suggested type safety improvement.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would leave this comment to improve type safety and catch incorrect operator usage at type-check time, preventing runtime errors from invalid `op` values.",
+      "_reviewer_comment_full": "We could be more strict in the `op` type here, to have the type checker catch incorrect calls to this method:\r\n\r\n```suggestion\r\n    def handle_null_filter(\r\n        cls,\r\n        sqla_col: Any,\r\n        op: utils.FilterOperator.IS_NULL | utils.FilterOperator.IS_NOT_NULL,\r\n    ) -> BinaryExpression:\r\n```",
+      "_gold_comment_url": "https://github.com/apache/superset/pull/34199#discussion_r2213484674"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 176
+}

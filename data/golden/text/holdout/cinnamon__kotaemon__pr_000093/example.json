@@ -1,0 +1,42 @@
+{
+  "example_id": "cinnamon__kotaemon__pr_000093",
+  "source": "github-codereview",
+  "repository": "Cinnamon/kotaemon",
+  "commit_sha": "3b3117611a97281439f5e5bffba2a4e37eaaeeab",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "feat/save-azuredi-mhtml-to-markdown",
+    "description": "save-azuredi-mhtml-to-markdown",
+    "url": "https://github.com/Cinnamon/kotaemon/pull/93"
+  },
+  "changed_files": [
+    "libs/kotaemon/kotaemon/indices/vectorindex.py",
+    "libs/kotaemon/kotaemon/loaders/azureai_document_intelligence_loader.py",
+    "libs/kotaemon/kotaemon/loaders/html_loader.py",
+    "libs/ktem/ktem/index/file/ui.py"
+  ],
+  "diff_path": "text/holdout/cinnamon__kotaemon__pr_000093/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "libs/kotaemon/kotaemon/loaders/azureai_document_intelligence_loader.py",
+      "line": 230,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "@jacky0218 I think you should perform the full Markdown save before this chunk\r\n\r\n```\r\n        for span in removed_spans:\r\n            text_content = (\r\n                text_content[: span[\"offset\"]]\r\n                + text_content[span[\"offset\"] + span[\"length\"] :]\r\n            )\r\n```\r\n\r\nSince this chunk will remove the tables and figures to avoid duplicates in our database.",
+      "evidence_requirement": "The diff shows text_content is written to .md file after removed_spans processing, contradicting the reviewer's request to save before removing tables/figures.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Saving the Markdown after removing tables and figures means the saved file will lack those elements, potentially causing inconsistency between saved output and loaded content if the saved file is used elsewhere.",
+      "_reviewer_comment_full": "@jacky0218 I think you should perform the full Markdown save before this chunk\r\n\r\n```\r\n        for span in removed_spans:\r\n            text_content = (\r\n                text_content[: span[\"offset\"]]\r\n                + text_content[span[\"offset\"] + span[\"length\"] :]\r\n            )\r\n```\r\n\r\nSince this chunk will remove the tables and figures to avoid duplicates in our database.",
+      "_gold_comment_url": "https://github.com/Cinnamon/kotaemon/pull/93#discussion_r1635792319"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 193
+}

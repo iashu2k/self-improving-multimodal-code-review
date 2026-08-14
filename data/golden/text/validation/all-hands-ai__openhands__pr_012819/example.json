@@ -1,0 +1,39 @@
+{
+  "example_id": "all-hands-ai__openhands__pr_012819",
+  "source": "github-codereview",
+  "repository": "All-Hands-AI/OpenHands",
+  "commit_sha": "ddbc9138a28952c3806d04677fca7e6600f0e0c7",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Check event types before making expensive API calls in GitHub webhook handler",
+    "description": "## Summary of PR\n\nThis PR moves the event type check in `is_job_requested()` above the conversation starter check to avoid making expensive GitHub API calls (via `_user_has_write_access_to_repo`) for events that cannot trigger jobs.\n\n**Problem:** Previously, for events eligible for conversation starters, `_user_has_write_access_to_repo` was called before checking if the event was a job-triggering type. This meant API calls were made for events that would be filtered out immediately after.\n\n**Solution:** Reorder the checks so that event type filtering happens first:\n\n```python\n# Check event types before making expensive API calls (e.g., _user_has_write_access_to_repo)\nif not (\n    GithubFactory.is_labeled_issue(message)\n    or GithubFactory.is_issue_comment(message)\n    or GithubFactory.is_pr_comment(message)\n    or GithubFactory.is_inline_pr_comment(message)\n):\n    return False\n\nif GithubFactory.is_eligible_for_conversation_starter(\n    message\n) and self._user_has_write_access_to_repo(installation_id, repo_name, username):\n    await GithubFactory.trigger_conversation_starter(message)\n```\n\n### Changes:\n\n- **`enterprise/integrations/github/github_manager.py`**: Move event type check above conversation starter check and add explanatory comment\n\n## Demo Screenshots/Videos\n\nN/A - Backend optimization\n\n## Change Type\n\n- [ ] Bug fix\n- [ ] New feature\n- [ ] Breaking change\n- [x] Refactor\n- [ ] Other (dependency update, docs, typo fixes, etc.)\n\n## Checklist\n\n- [ ] I have read and reviewed the code and I understand what the code is doing.\n- [ ] I have tested the code to the best of my ability and ensured it works as expected.\n\n## Fixes\n\nN/A\n\n## Release Notes\n\n- [ ] Include this change in the Release Notes.\n\n---\n\nTo run this PR locally, use the following command:\n\nGUI with Docker:\n```\ndocker run -it --rm   -p 3000:3000   -v /var/run/docker.sock:/var/run/docker.sock   --add-host host.docker.internal:host-gateway   -e SANDBOX_RUNTIME_CONTAINER_IMAGE=docker.openhands.dev/openhands/runtime:3db2b49-nikolaik   --name openhands-app-3db2b49   docker.openhands.dev/openhands/openhands:3db2b49\n```",
+    "url": "https://github.com/OpenHands/OpenHands/pull/12819"
+  },
+  "changed_files": [
+    "enterprise/integrations/github/github_manager.py"
+  ],
+  "diff_path": "text/validation/all-hands-ai__openhands__pr_012819/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "enterprise/integrations/github/github_manager.py",
+      "line": 163,
+      "category": "performance",
+      "severity": "medium",
+      "issue_summary": "🟠 **Important**: Redundant API call - `_user_has_write_access_to_repo()` is called twice when conversation starters are triggered (once on line 158 and again here on line 163). This expensive GitHub API call should be cached.\n\n```suggestion\n        user_has_write_access = self._user_has_write_access_to_repo(installation_id, repo_name, username)\n\n        if GithubFactory.is_eligible_for_conversation_starter(\n            message\n        ) and user_has_write_access:\n            await GithubFactory.",
+      "evidence_requirement": "The diff must show two calls to `_user_has_write_access_to_repo` in the same function path, specifically on lines 158 and 167.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The expensive GitHub API call is invoked twice per invocation when conversation starters are triggered, doubling latency and resource usage unnecessarily.",
+      "_reviewer_comment_full": "🟠 **Important**: Redundant API call - `_user_has_write_access_to_repo()` is called twice when conversation starters are triggered (once on line 158 and again here on line 163). This expensive GitHub API call should be cached.\n\n```suggestion\n        user_has_write_access = self._user_has_write_access_to_repo(installation_id, repo_name, username)\n\n        if GithubFactory.is_eligible_for_conversation_starter(\n            message\n        ) and user_has_write_access:\n            await GithubFactory.trigger_conversation_starter(message)\n\n        logger.info(f'[GitHub] Checking permissions for {username} in {repo_name}')\n\n        return user_has_write_access\n```\n\nThis ensures the expensive API call only happens once per invocation.",
+      "_gold_comment_url": "https://github.com/OpenHands/OpenHands/pull/12819#discussion_r2799333742"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 157
+}

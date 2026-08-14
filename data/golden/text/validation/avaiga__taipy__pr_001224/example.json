@@ -1,0 +1,39 @@
+{
+  "example_id": "avaiga__taipy__pr_001224",
+  "source": "github-codereview",
+  "repository": "Avaiga/taipy",
+  "commit_sha": "afc03c7411bd3a122fcc1b01d7013492edd6c11c",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "<DataNode>.is_up_to_date raises error when never written before",
+    "description": "# Fixes #1198 ",
+    "url": "https://github.com/Avaiga/taipy/pull/1224"
+  },
+  "changed_files": [
+    "taipy/core/data/data_node.py"
+  ],
+  "diff_path": "text/validation/avaiga__taipy__pr_001224/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "taipy/core/data/data_node.py",
+      "line": 512,
+      "category": "bug_risk",
+      "severity": "low",
+      "issue_summary": "We have a wrong indentation here.\r\n```suggestion\r\n        Returns:\r\n            False if a preceding data node has been updated before the selected data node\r\n            or the selected data is invalid.<br/>\r\n            True otherwise.\r\n        \"\"\"\r\n```",
+      "evidence_requirement": "The docstring's 'Returns:' section must be indented to align with the function body content (8 spaces), not the function definition (4 spaces).",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Docstrings should follow PEP 257 and maintain consistent indentation relative to the code they describe; misaligned docstrings reduce readability and may confuse documentation generators.",
+      "_reviewer_comment_full": "We have a wrong indentation here.\r\n```suggestion\r\n        Returns:\r\n            False if a preceding data node has been updated before the selected data node\r\n            or the selected data is invalid.<br/>\r\n            True otherwise.\r\n        \"\"\"\r\n```",
+      "_gold_comment_url": "https://github.com/Avaiga/taipy/pull/1224#discussion_r1577950676"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 187
+}

@@ -1,0 +1,39 @@
+{
+  "example_id": "ansible__awx__pr_009907",
+  "source": "github-codereview",
+  "repository": "ansible/awx",
+  "commit_sha": "8ab81216f3d450b263bf6506e40c363bfdfaed6f",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Add cleanup_images scheduled task",
+    "description": "##### SUMMARY\r\n<!--- Describe the change, including rationale and design decisions -->\r\nhttps://github.com/ansible/awx/issues/9212\r\nRemoves dangling podman images on the system\r\n\r\n`[70e6cc8a] awx.main.tasks Cleanup execution environment images: deleting quay.io/fosterseth/awx-ee:v1, 643 MB`\r\n<!---\r\nIf you are fixing an existing issue, please include \"related #nnn\" in your\r\ncommit message and your description; but you should still explain what\r\nthe change does.\r\n-->\r\n\r\n##### ISSUE TYPE\r\n<!--- Pick one below and delete the rest: -->\r\n - Feature Pull Request\r\n\r\n##### COMPONENT NAME\r\n<!--- Name of the module/plugin/module/task -->\r\n - API\r\n\r\n##### AWX VERSION\r\n<!--- Paste verbatim output from `make VERSION` between quotes below -->\r\n```\r\nawx: 19.0.0\r\n```",
+    "url": "https://github.com/ansible/awx/pull/9907"
+  },
+  "changed_files": [
+    "awx/main/tasks.py",
+    "awx/settings/defaults.py"
+  ],
+  "diff_path": "text/holdout/ansible__awx__pr_009907/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "awx/main/tasks.py",
+      "line": 415,
+      "category": "bug_risk",
+      "severity": "high",
+      "issue_summary": "What if my EE has set `quay.io/project-receptor/receptor` but the reported output from `podman images -a --format json` gives:\r\n\r\n```json\r\n    {\r\n        \"Id\": \"bf4de35112248c7c5b1db46c43f87346f31e2717850831433af1fee6dfd0c2b4\",\r\n        \"ParentId\": \"\",\r\n        \"Size\": 387129820,\r\n        \"Labels\": {\r\n            \"license\": \"ASL2\",\r\n            \"name\": \"receptor\",\r\n            \"vendor\": \"project-receptor\",\r\n            \"version\": \"0.9.1\"\r\n        },\r\n        \"Names\": [\r\n            \"quay.io/proj",
+      "evidence_requirement": "The code deletes images using only `e[Id]` without verifying the image name matches expected execution environment patterns, risking deletion of unrelated dangling images.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would raise this because deleting images by ID alone without name validation could remove unintended images (e.g., `quay.io/project-receptor/receptor:latest` vs untagged dangling images), causing unnecessary re-downloads and potential job failures.",
+      "_reviewer_comment_full": "What if my EE has set `quay.io/project-receptor/receptor` but the reported output from `podman images -a --format json` gives:\r\n\r\n```json\r\n    {\r\n        \"Id\": \"bf4de35112248c7c5b1db46c43f87346f31e2717850831433af1fee6dfd0c2b4\",\r\n        \"ParentId\": \"\",\r\n        \"Size\": 387129820,\r\n        \"Labels\": {\r\n            \"license\": \"ASL2\",\r\n            \"name\": \"receptor\",\r\n            \"vendor\": \"project-receptor\",\r\n            \"version\": \"0.9.1\"\r\n        },\r\n        \"Names\": [\r\n            \"quay.io/project-receptor/receptor:latest\"\r\n        ],\r\n        \"Digest\": \"sha256:11d9a25f07ea27146d94772eb3c6f2faf5d5c75d9c3313fcad7390c7e417c32a\",\r\n        \"Digests\": [\r\n            \"sha256:11d9a25f07ea27146d94772eb3c6f2faf5d5c75d9c3313fcad7390c7e417c32a\"\r\n        ],\r\n        \"Created\": 1602187764,\r\n        \"CreatedAt\": \"2020-10-08T20:09:24Z\"\r\n    }\r\n```\r\n\r\nI think it's valid to not include `:latest` so I'm wondering if it might confuse this code.\r\n\r\nIt's also going to be tricky to validate this. If it incorrectly deletes images and layers that it shouldn't, it will be quite difficult for QE to track down what was _successfully_ deleted, but shouldn't have been (triggering an expensive download on the next run).",
+      "_gold_comment_url": "https://github.com/ansible/awx/pull/9907#discussion_r614329111"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 138
+}

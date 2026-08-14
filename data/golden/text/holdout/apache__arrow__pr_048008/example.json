@@ -1,0 +1,44 @@
+{
+  "example_id": "apache__arrow__pr_048008",
+  "source": "github-codereview",
+  "repository": "apache/arrow",
+  "commit_sha": "d301489ccd15908c93d0a742aaf9689aa529e67c",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "GH-47728: [Python] Check the source argument in parquet.read_table",
+    "description": "### Rationale for this change\r\nSee #47728. Check `source` argument in `pyarrow.parquet.read_table` if `pyarrow.dataset` is not available.\r\n\r\n### What changes are included in this PR?\r\nCheck the `source` argument, raise `ValueError` if the `source` argument is either a list of `.parquet` files or a directory.\r\n\r\n### Are these changes tested?\r\nYes\r\n\r\n### Are there any user-facing changes?\r\nNo\r\n\r\nIn case if the `source` argument is a directory, I decided not to check it directly, but to catch the exceptions coming from the `fs.open_input_file`, since it already checks for it, and add extra exception on top of the stack that explains the actual reason.\n* GitHub Issue: #47728",
+    "url": "https://github.com/apache/arrow/pull/48008"
+  },
+  "changed_files": [
+    "python/pyarrow/parquet/core.py",
+    "python/pyarrow/tests/parquet/test_basic.py"
+  ],
+  "diff_path": "text/holdout/apache__arrow__pr_048008/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "python/pyarrow/parquet/core.py",
+      "line": 1900,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "Will `filesystem.open_input_file` raise `OSError` and/or `FileNotFoundError` only when source is not a file and is a dir? Could for example raise `OSError` when the process doesn't have permission to read the file or others? \nIf one of those exceptions can raise on other cases, we might be misleading users as we will always raise a `ValueError` with the description pointing to the dir vs file issue.\nWe might want to check with something like (I haven't tested just checked at the filesystem API):",
+      "evidence_requirement": "The code must catch OSError/FileNotFoundError and raise a ValueError only when the path is a directory, not for other I/O errors.",
+      "must_not_claim": [
+        "causes crash",
+        "exposes secrets",
+        "breaks functionality"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A generic OSError/FileNotFoundError may indicate permission issues or other non-directory problems; misattributing them to a directory issue misleads users.",
+      "_reviewer_comment_full": "Will `filesystem.open_input_file` raise `OSError` and/or `FileNotFoundError` only when source is not a file and is a dir? Could for example raise `OSError` when the process doesn't have permission to read the file or others? \nIf one of those exceptions can raise on other cases, we might be misleading users as we will always raise a `ValueError` with the description pointing to the dir vs file issue.\nWe might want to check with something like (I haven't tested just checked at the filesystem API):\n```python\nfilesystem.get_file_info(path).is_file()\n```\n\n",
+      "_gold_comment_url": "https://github.com/apache/arrow/pull/48008#discussion_r2480656767"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 172
+}

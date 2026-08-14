@@ -1,0 +1,24 @@
+{
+  "example_id": "chia-network__chia-blockchain__pr_021021",
+  "source": "github-codereview",
+  "repository": "Chia-Network/chia-blockchain",
+  "commit_sha": "185d396ce3cc9434f8a2a4bcaba8989f392b164c",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Harden cheap block parser bounds",
+    "description": "### Purpose:\n\nFail fast on malformed or truncated local block buffers in the cheap full block parser, while preserving the canonical full-block parser fallback paths.\n\n### Current Behavior:\n\nThe cheap parser could continue after truncated or oversized serialized count/length fields in a few fast-path helpers. Some callers already fall back to `FullBlock.from_bytes()` when the cheap parser raises.\n\n### New Behavior:\n\nThe cheap parser now raises `ValueError` when list counts, byte lengths, or generator-ref counts cannot fit in the remaining buffer, including short count/length prefixes.\n\nInvariants unchanged:\n- Well-formed block bytes continue to parse to the same height, transaction status, generator info, refs list, and header block data.\n- Callers that already fall back on cheap-parser exceptions keep using the canonical full-block parser path.\n- No serialization format, database schema, or wire message shape changes.\n- Malformed/truncated buffers now fail fast instead of silently advancing through an impossible count or length.\n\n### Testing Notes:\n\n- `ruff check chia/full_node/full_block_utils.py chia/_tests/util/test_full_block_utils.py`\n- `ruff format --check chia/full_node/full_block_utils.py chia/_tests/util/test_full_block_utils.py`\n- `./tools/py -m mypy chia/full_node/full_block_utils.py chia/_tests/util/test_full_block_utils.py --config-file mypy.ini`\n- `unset CI && ./tools/pytest chia/_tests/util/test_full_block_utils.py::test_skip_list_rejects_count_exceeding_remaining_buffer chia/_tests/util/test_full_block_utils.py::test_skip_list_rejects_short_count_prefix chia/_tests/util/test_full_block_utils.py::test_skip_bytes_rejects_length_exceeding_remaining_buffer chia/_tests/util/test_full_block_utils.py::test_skip_bytes_rejects_short_length_prefix chia/_tests/util/test_full_block_utils.py::test_block_info_from_block_rejects_refs_count_exceeding_remaining_buffer chia/_tests/util/test_full_block_utils.py::test_block_info_from_block_rejects_short_refs_count_prefix chia/_tests/util/test_full_block_utils.py::test_cheap_parser_matches_round_tripped_block -v --override-ini=\"addopts=--verbose --tb=short\" --cov=chia --cov-config=.coveragerc --cov-report=`\n- `$HOME/Projects/dotfiles/bin/chia-diff-cover --compare-branch origin/main` - 100% diff coverage\n- `pre-commit run --all-files`\n- `unset CI && ./tools/pytest -m benchmark -n 0 --capture no --ignore=chia/_tests/tools/test_legacy_keyring.py chia/_tests/` was attempted twice locally and failed in unrelated hard-fork 3 test plot proof generation setup (`assert proof != b\"\"` in `chia/simulator/block_tools.py`). The second attempt rebuilt the generated plot operation cache and failed with the same benchmark-only cases.\n\n<!-- CURSOR_SUMMARY -->\n---\n\n> [!NOTE]\n> **Low Risk**\n> Localized parsing hardening with existing BlockStore fallback; no wire format or schema changes, and well-formed blocks stay behavior-identical.\n> \n> **Overview**\n> The **cheap full-block parser** in `full_block_utils` now **fails fast** on truncated or inconsistent serialized buffers instead of advancing past impossible list counts, byte lengths, or generator-ref tails.\n> \n> `skip_list` and `skip_bytes` raise **`ValueError`** when the 4-byte count/length prefix is missing or when the declared size exceeds what remains in the buffer; `skip_bytes` drops the old non-negative length assert in favor of that check. **`block_info_from_block`** applies the same rules to the **transactions generator ref list** at the end of a block.\n> \n> **Tests** cover each new error path plus a round-trip check that well-formed blocks still match `FullBlock.from_bytes()` and the existing cheap-parser entry points. **`BlockStore`** already catches cheap-parser failures and falls back to the canonical parser, so behavior for valid stored blocks is unchanged.\n> \n> <sup>Reviewed by [Cursor Bugbot](https://cursor.com/bugbot) for commit 185d396ce3cc9434f8a2a4bcaba8989f392b164c. Bugbot is set up for automated code reviews on this repo. Configure [here](https://www.cursor.com/dashboard/bugbot).</sup>\n<!-- /CURSOR_SUMMARY -->",
+    "url": "https://github.com/Chia-Network/chia-blockchain/pull/21021"
+  },
+  "changed_files": [
+    "chia/_tests/util/test_full_block_utils.py",
+    "chia/full_node/full_block_utils.py"
+  ],
+  "diff_path": "text/holdout/chia-network__chia-blockchain__pr_021021/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 94
+}

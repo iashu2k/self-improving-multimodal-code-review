@@ -1,0 +1,39 @@
+{
+  "example_id": "genesis-embodied-ai__genesis__pr_001089",
+  "source": "github-codereview",
+  "repository": "Genesis-Embodied-AI/Genesis",
+  "commit_sha": "619f531680820ee660791c0c9fcfc2ada16b7f69",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "[FEATURE] Add an example for multi-gpu using multi processing",
+    "description": "<!--  Thanks for sending a pull request!  Please:\r\n\r\n1. Follow our contributor guidelines: \r\n   https://github.com/Genesis-Embodied-AI/Genesis/blob/main/.github/CONTRIBUTING.md\r\n2. Prepare your PR according to the \"Submitting Code Changes\" \r\n   section of https://github.com/Genesis-Embodied-AI/Genesis/blob/main/.github/CONTRIBUTING.md\r\n3. Provide a concise summary of your changes in the Title above\r\n4. Prefix the title according to the type of issue you are addressing. Use:\r\n    - [BUG FIX] for non-breaking changes which fix an issue\r\n    - [FEATURE] for non-breaking changes which add functionality\r\n    - [MISC] for minor changes such as improved inline documentation or fixing typos\r\n    - [BREAKING] **in addition to the above** for breaking changes, i.e., a fix or feature that would cause existing APIs or functionality to change\r\n-->\r\n\r\n## Description\r\n<!--- Describe your changes in detail -->\r\n\r\nA simple way to run on multi-gpu utilizing multi-processing. Try\r\n```\r\npython examples/rigid/multi_gpu.py\r\n```\r\n\r\n\r\n## Related Issue\r\n<!--- This project only accepts pull requests related to open issues.\r\nIf suggesting a new feature or change, please discuss it in an issue first.\r\nIf fixing a bug, there should be an issue describing it with steps to reproduce.\r\n\r\nPlease link to the relevant issue here, e.g. via `Resolves <issue-url>`.\r\nCf. https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue -->\r\n\r\nResolves Genesis-Embodied-AI/Genesis#<your-issue-number>\r\n\r\n## Motivation and Context\r\n<!--- Why is this change required? What problem does it solve? -->\r\n\r\n## How Has This Been / Can This Be Tested?\r\n<!--- Please describe in detail how you tested your changes.\r\nInclude details of your testing environment, and the tests you ran to\r\nsee how your change affects other areas of the code, etc. -->\r\n\r\n## Screenshots (if appropriate):\r\n\r\n## Checklist:\r\n<!--- Go over all the following points, and put an `x` in all the boxes that apply. -->\r\n- [x] I read the **CONTRIBUTING** document.\r\n- [x] I followed the `Submitting Code Changes` section of **CONTRIBUTING** document.\r\n- [x] I tagged the title correctly (including BUG FIX/FEATURE/MISC/BREAKING)\r\n- [ ] I updated the [documentation](https://github.com/Genesis-Embodied-AI/genesis-doc) accordingly or no change is needed.\r\n- [x] I tested my changes and added instructions on how to test it for reviewers.\r\n\r\n<!--- Optionally -->\r\n- [ ] I have added tests to cover my changes.\r\n- [ ] All new and existing tests passed.\r\n",
+    "url": "https://github.com/Genesis-Embodied-AI/genesis-world/pull/1089"
+  },
+  "changed_files": [
+    "examples/rigid/multi_gpu.py"
+  ],
+  "diff_path": "text/validation/genesis-embodied-ai__genesis__pr_001089/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "examples/rigid/multi_gpu.py",
+      "line": 52,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "The parameter 'data_part' is not used in the function. Consider removing it to simplify the function signature or update the function to utilize it if necessary.\n```suggestion\ndef run(gpu_id, func):\n```",
+      "evidence_requirement": "The `run` function declares `data_part` as a parameter but does not reference it anywhere in its body.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Unused parameters reduce code clarity and can mislead readers about the function's intent; removing them simplifies the signature.",
+      "_reviewer_comment_full": "The parameter 'data_part' is not used in the function. Consider removing it to simplify the function signature or update the function to utilize it if necessary.\n```suggestion\ndef run(gpu_id, func):\n```",
+      "_gold_comment_url": "https://github.com/Genesis-Embodied-AI/genesis-world/pull/1089#discussion_r2067059767"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 200
+}

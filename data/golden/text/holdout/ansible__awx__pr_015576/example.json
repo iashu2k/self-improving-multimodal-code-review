@@ -1,0 +1,41 @@
+{
+  "example_id": "ansible__awx__pr_015576",
+  "source": "github-codereview",
+  "repository": "ansible/awx",
+  "commit_sha": "e33d9eab3bbd03dfba06772a01a94365c732ab94",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Add gateway support to awxkit",
+    "description": "##### SUMMARY\r\n<!--- Describe the change, including rationale and design decisions -->\r\nThis updates awxkit to add support for gateway when fetching oauth tokens, which is used during the `login` subcommand. awxkit will first try fetching a token from gateway and if that fails, fallback to existing behavior. This change is backwards compatible.\r\n<!---\r\nIf you are fixing an existing issue, please include \"related #nnn\" in your\r\ncommit message and your description; but you should still explain what\r\nthe change does.\r\n-->\r\n\r\n##### ISSUE TYPE\r\n<!--- Pick one below and delete the rest: -->\r\n - New or Enhanced Feature\r\n\r\n##### COMPONENT NAME\r\n<!--- Name of the module/plugin/module/task -->\r\n - CLI\r\n\r\n##### AWX VERSION\r\n<!--- Paste verbatim output from `make VERSION` between quotes below -->\r\n```\r\n\r\n```\r\n\r\n\r\n##### ADDITIONAL INFORMATION\r\n<!---\r\nInclude additional information to help people understand the change here.\r\nFor bugs that don't have a linked bug report, a step-by-step reproduction\r\nof the problem is helpful.\r\n  -->\r\n\r\n<!--- Paste verbatim command output below, e.g. before and after your change -->\r\n```\r\n\r\n```\r\n",
+    "url": "https://github.com/ansible/awx/pull/15576"
+  },
+  "changed_files": [
+    "awxkit/awxkit/api/pages/base.py",
+    "awxkit/awxkit/config.py",
+    "awxkit/test/api/pages/test_base.py"
+  ],
+  "diff_path": "text/holdout/ansible__awx__pr_015576/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "awxkit/test/api/pages/test_base.py",
+      "line": 52,
+      "category": "style",
+      "severity": "low",
+      "issue_summary": "Mind annotating this with types?\r\n```suggestion\r\ndef test_get_oauth2_token_from_controller(mocker: MockerFixture, response: Response, kwargs: dict[str, str], url: str, token: str) -> None:\r\n```\r\nThis needs a `from requests import Response` and `from pytest_mock import MockerFixture` at the top.",
+      "evidence_requirement": "The function signature at line 52 must be shown to lack type annotations on parameters (`mocker`, `response`, `kwargs`, `url`, `token`) and return type.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Type annotations improve code readability, enable static analysis, and help prevent type-related bugs in tests.",
+      "_reviewer_comment_full": "Mind annotating this with types?\r\n```suggestion\r\ndef test_get_oauth2_token_from_controller(mocker: MockerFixture, response: Response, kwargs: dict[str, str], url: str, token: str) -> None:\r\n```\r\nThis needs a `from requests import Response` and `from pytest_mock import MockerFixture` at the top.",
+      "_gold_comment_url": "https://github.com/ansible/awx/pull/15576#discussion_r1801245026"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 164
+}

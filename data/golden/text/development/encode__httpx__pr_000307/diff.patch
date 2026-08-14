@@ -1,0 +1,149 @@
+diff --git a/docs/environment_variables.md b/docs/environment_variables.md
+index d8f3960d49..9255f85b51 100644
+--- a/docs/environment_variables.md
++++ b/docs/environment_variables.md
+@@ -2,6 +2,13 @@ Environment Variables
+ =====================
+
+ The HTTPX library can be configured via environment variables.
++Environment variables are used by default. To ignore environment variables, `trust_env` has to be set `False`.
++There are three ways to set `trust_env` to disable environment variables:
++
++* On the client via `httpx.Client(trust_env=False)`
++* Per request via `client.get("<url>", trust_env=False)`
++* On the `SSLConfig` via `httpx.SSLConfig(trust_env=False)`
++
+ Here is a list of environment variables that HTTPX recognizes
+ and what function they serve:
+
+@@ -79,3 +86,19 @@ SERVER_TRAFFIC_SECRET_0 XXXX
+ CLIENT_HANDSHAKE_TRAFFIC_SECRET XXXX
+ CLIENT_TRAFFIC_SECRET_0 XXXX
+ ```
++
++`SSL_CERT_FILE` `SSL_CERT_DIR`
++-----------
++
++Valid values: a filename, directory
++
++If one of these environment variables is set then HTTPX will load
++CA certificates from the specified location instead of the default
++location.
++
++Example:
++
++```console
++SSL_CERT_FILE=/path/to/ca-certs/ca-bundle.crt python -c "import httpx; httpx.get('https://example.com')"
++SSL_CERT_DIR=/path/to/ca-certs/ python -c "import httpx; httpx.get('https://example.com')"
++```
+diff --git a/httpx/config.py b/httpx/config.py
+index 07b0a73959..3dad944714 100644
+--- a/httpx/config.py
++++ b/httpx/config.py
+@@ -6,6 +6,7 @@
+ import certifi
+
+ from .__version__ import __version__
++from .utils import get_ca_bundle_from_env
+
+ CertTypes = typing.Union[str, typing.Tuple[str, str], typing.Tuple[str, str, str]]
+ VerifyTypes = typing.Union[str, bool, ssl.SSLContext]
+@@ -90,6 +91,12 @@ def load_ssl_context(
+     ) -> ssl.SSLContext:
+         http_versions = HTTPVersionConfig() if http_versions is None else http_versions
+
++        if self.trust_env:
++            if self.verify is True or self.verify is None:
++                ssl_cert_file = get_ca_bundle_from_env()
++                if ssl_cert_file is not None:
++                    self.verify = ssl_cert_file  # type: ignore
++
+         if self.ssl_context is None:
+             self.ssl_context = (
+                 self.load_ssl_context_verify(http_versions=http_versions)
+diff --git a/httpx/utils.py b/httpx/utils.py
+index 0357ea2bd2..a7d52bbace 100644
+--- a/httpx/utils.py
++++ b/httpx/utils.py
+@@ -107,6 +107,16 @@ def get_netrc_login(host: str) -> typing.Optional[typing.Tuple[str, str, str]]:
+     return netrc_info.authenticators(host)  # type: ignore
+
+
++def get_ca_bundle_from_env() -> typing.Optional[str]:
++    ssl_path = Path(os.getenv("SSL_CERT_FILE", ""))
++    if ssl_path and ssl_path.is_file():
++        return str(ssl_path)
++    ssl_path = Path(os.getenv("SSL_CERT_DIR", ""))
++    if ssl_path and ssl_path.is_dir():
++        return str(ssl_path)
++    return None
++
++
+ def parse_header_links(value: str) -> typing.List[typing.Dict[str, str]]:
+     """
+     Returns a list of parsed link headers, for more info see:
+diff --git a/tests/test_config.py b/tests/test_config.py
+index fefc06d3ac..2f3eed5de7 100644
+--- a/tests/test_config.py
++++ b/tests/test_config.py
+@@ -1,5 +1,7 @@
++import os
+ import ssl
+ import sys
++from pathlib import Path
+
+ import pytest
+
+@@ -26,6 +28,18 @@ def test_load_ssl_config_verify_existing_file():
+     assert context.check_hostname is True
+
+
++@pytest.mark.parametrize("config", ("SSL_CERT_FILE", "SSL_CERT_DIR"))
++def test_load_ssl_config_verify_env_file(cert_pem_file, config):
++    os.environ[config] = (
++        cert_pem_file if config.endswith("_FILE") else str(Path(cert_pem_file).parent)
++    )
++    ssl_config = httpx.SSLConfig(trust_env=True)
++    context = ssl_config.load_ssl_context()
++    assert context.verify_mode == ssl.VerifyMode.CERT_REQUIRED
++    assert context.check_hostname is True
++    assert ssl_config.verify == os.environ[config]
++
++
+ def test_load_ssl_config_verify_directory():
+     path = httpx.config.DEFAULT_CA_BUNDLE_PATH.parent
+     ssl_config = httpx.SSLConfig(verify=path)
+diff --git a/tests/test_utils.py b/tests/test_utils.py
+index d3dad731f2..677cf0028c 100644
+--- a/tests/test_utils.py
++++ b/tests/test_utils.py
+@@ -5,7 +5,12 @@
+
+ import httpx
+ from httpx import utils
+-from httpx.utils import get_netrc_login, guess_json_utf, parse_header_links
++from httpx.utils import (
++    get_ca_bundle_from_env,
++    get_netrc_login,
++    guess_json_utf,
++    parse_header_links,
++)
+
+
+ @pytest.mark.parametrize(
+@@ -111,3 +116,15 @@ async def test_httpx_debug_enabled_stderr_logging(server, capsys, httpx_debug):
+
+     # Reset the logger so we don't have verbose output in all unit tests
+     logging.getLogger("httpx").handlers = []
++
++
++def test_get_ssl_cert_file():
++    os.environ["SSL_CERT_FILE"] = "tests/test_utils.py"
++    os.environ["SSL_CERT_DIR"] = "tests/"
++    assert get_ca_bundle_from_env() == "tests/test_utils.py"
++
++    os.environ["SSL_CERT_FILE"] = "wrongpath"
++    assert get_ca_bundle_from_env() == "tests"
++
++    os.environ["SSL_CERT_DIR"] = "wrongpath"
++    assert get_ca_bundle_from_env() is None

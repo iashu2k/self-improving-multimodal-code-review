@@ -1,0 +1,228 @@
+diff --git a/enterprise/server/routes/org_models.py b/enterprise/server/routes/org_models.py
+index ed2616d529f6..98265eed23ee 100644
+--- a/enterprise/server/routes/org_models.py
++++ b/enterprise/server/routes/org_models.py
+@@ -45,6 +45,16 @@ def __init__(self, message: str = 'Not authorized to delete organization'):
+         super().__init__(message)
+
+
++class OrphanedUserError(OrgDeletionError):
++    """Raised when deleting an org would leave users without any organization."""
++
++    def __init__(self, user_ids: list[str]):
++        self.user_ids = user_ids
++        super().__init__(
++            f'Cannot delete organization: {len(user_ids)} user(s) would have no remaining organization'
++        )
++
++
+ class OrgNotFoundError(Exception):
+     """Raised when organization is not found or user doesn't have access."""
+
+diff --git a/enterprise/server/routes/orgs.py b/enterprise/server/routes/orgs.py
+index fb04be5bede9..b2662c29b85a 100644
+--- a/enterprise/server/routes/orgs.py
++++ b/enterprise/server/routes/orgs.py
+@@ -23,6 +23,7 @@
+     OrgPage,
+     OrgResponse,
+     OrgUpdate,
++    OrphanedUserError,
+     RoleNotFoundError,
+ )
+ from server.services.org_member_service import OrgMemberService
+@@ -304,7 +305,7 @@ async def get_me(
+ @org_router.delete('/{org_id}', status_code=status.HTTP_200_OK)
+ async def delete_org(
+     org_id: UUID,
+-    user_id: str = Depends(get_admin_user_id),
++    user_id: str = Depends(get_user_id),
+ ) -> dict:
+     """Delete an organization.
+
+@@ -376,6 +377,19 @@ async def delete_org(
+             status_code=status.HTTP_403_FORBIDDEN,
+             detail=str(e),
+         )
++    except OrphanedUserError as e:
++        logger.warning(
++            'Cannot delete organization: users would be orphaned',
++            extra={
++                'user_id': user_id,
++                'org_id': str(org_id),
++                'orphaned_users': e.user_ids,
++            },
++        )
++        raise HTTPException(
++            status_code=status.HTTP_400_BAD_REQUEST,
++            detail=str(e),
++        )
+     except OrgDatabaseError as e:
+         logger.error(
+             'Database error during organization deletion',
+diff --git a/enterprise/storage/org_store.py b/enterprise/storage/org_store.py
+index 5d807ddb6367..153c2726e5ca 100644
+--- a/enterprise/storage/org_store.py
++++ b/enterprise/storage/org_store.py
+@@ -10,6 +10,7 @@
+     ORG_SETTINGS_VERSION,
+     get_default_litellm_model,
+ )
++from server.routes.org_models import OrphanedUserError
+ from sqlalchemy import text
+ from sqlalchemy.orm import joinedload
+ from storage.database import session_maker
+@@ -320,17 +321,41 @@ async def delete_org_cascade(org_id: UUID) -> Org | None:
+                     {'org_id': str(org_id)},
+                 )
+
+-                # 3. Delete organization memberships
++                # 3. Handle users with this as current_org_id BEFORE deleting memberships
++                # Single query to find orphaned users (those with no alternative org)
++                orphaned_users = session.execute(
++                    text("""
++                        SELECT u.id
++                        FROM "user" u
++                        WHERE u.current_org_id = :org_id
++                        AND NOT EXISTS (
++                            SELECT 1 FROM org_member om
++                            WHERE om.user_id = u.id AND om.org_id != :org_id
++                        )
++                    """),
++                    {'org_id': str(org_id)},
++                ).fetchall()
++
++                if orphaned_users:
++                    raise OrphanedUserError([str(row[0]) for row in orphaned_users])
++
++                # Batch update: reassign current_org_id to an alternative org for all affected users
+                 session.execute(
+-                    text('DELETE FROM org_member WHERE org_id = :org_id'),
++                    text("""
++                        UPDATE "user" u
++                        SET current_org_id = (
++                            SELECT om.org_id FROM org_member om
++                            WHERE om.user_id = u.id AND om.org_id != :org_id
++                            LIMIT 1
++                        )
++                        WHERE u.current_org_id = :org_id
++                    """),
+                     {'org_id': str(org_id)},
+                 )
+
+-                # 4. Handle users with this as current_org_id
++                # 4. Delete organization memberships (now safe)
+                 session.execute(
+-                    text(
+-                        'UPDATE "user" SET current_org_id = NULL WHERE current_org_id = :org_id'
+-                    ),
++                    text('DELETE FROM org_member WHERE org_id = :org_id'),
+                     {'org_id': str(org_id)},
+                 )
+
+diff --git a/enterprise/tests/unit/server/routes/test_orgs.py b/enterprise/tests/unit/server/routes/test_orgs.py
+index a57bea6378b6..a2a4aa225686 100644
+--- a/enterprise/tests/unit/server/routes/test_orgs.py
++++ b/enterprise/tests/unit/server/routes/test_orgs.py
+@@ -32,6 +32,7 @@
+         OrgMemberUpdate,
+         OrgNameExistsError,
+         OrgNotFoundError,
++        OrphanedUserError,
+         RoleNotFoundError,
+     )
+     from server.routes.orgs import (
+@@ -1403,30 +1404,52 @@ async def test_delete_org_invalid_uuid(mock_app):
+
+
+ @pytest.mark.asyncio
+-async def test_delete_org_unauthorized():
++async def test_delete_org_unauthorized(mock_app):
+     """
+     GIVEN: User is not authenticated
+     WHEN: DELETE /api/organizations/{org_id} is called
+-    THEN: 401 Unauthorized error is returned
++    THEN: 403 Forbidden error is returned (user not authorized)
+     """
+     # Arrange
+-    app = FastAPI()
+-    app.include_router(org_router)
++    org_id = uuid.uuid4()
+
+-    # Override to simulate unauthenticated user
+-    async def mock_unauthenticated():
+-        raise HTTPException(status_code=401, detail='User not authenticated')
++    with patch(
++        'server.routes.orgs.OrgService.delete_org_with_cleanup',
++        AsyncMock(side_effect=OrgAuthorizationError('User not authorized')),
++    ):
++        client = TestClient(mock_app)
++
++        # Act
++        response = client.delete(f'/api/organizations/{org_id}')
++
++        # Assert
++        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+-    app.dependency_overrides[get_admin_user_id] = mock_unauthenticated
+
++@pytest.mark.asyncio
++async def test_delete_org_orphaned_users(mock_app):
++    """
++    GIVEN: Deleting org would leave users without any organization
++    WHEN: DELETE /api/organizations/{org_id} is called
++    THEN: 400 Bad Request error is returned with user count in message
++    """
++    # Arrange
+     org_id = uuid.uuid4()
+-    client = TestClient(app)
++    orphaned_user_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+
+-    # Act
+-    response = client.delete(f'/api/organizations/{org_id}')
++    with patch(
++        'server.routes.orgs.OrgService.delete_org_with_cleanup',
++        AsyncMock(side_effect=OrphanedUserError(orphaned_user_ids)),
++    ):
++        client = TestClient(mock_app)
+
+-    # Assert
+-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
++        # Act
++        response = client.delete(f'/api/organizations/{org_id}')
++
++        # Assert
++        assert response.status_code == status.HTTP_400_BAD_REQUEST
++        assert '2 user(s)' in response.json()['detail']
++        assert 'no remaining organization' in response.json()['detail']
+
+
+ @pytest.fixture
+diff --git a/enterprise/tests/unit/test_org_store.py b/enterprise/tests/unit/test_org_store.py
+index ff020982b385..2547958550b8 100644
+--- a/enterprise/tests/unit/test_org_store.py
++++ b/enterprise/tests/unit/test_org_store.py
+@@ -786,3 +786,23 @@ def test_get_user_orgs_paginated_ordering(session_maker, mock_litellm_api):
+     assert orgs[0].name == 'Apple Org'
+     assert orgs[1].name == 'Banana Org'
+     assert orgs[2].name == 'Zebra Org'
++
++
++def test_orphaned_user_error_contains_user_ids():
++    """
++    GIVEN: OrphanedUserError is created with a list of user IDs
++    WHEN: The error message is accessed
++    THEN: Message includes the count and stores user IDs
++    """
++    # Arrange
++    from server.routes.org_models import OrphanedUserError
++
++    user_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
++
++    # Act
++    error = OrphanedUserError(user_ids)
++
++    # Assert
++    assert error.user_ids == user_ids
++    assert '2 user(s)' in str(error)
++    assert 'no remaining organization' in str(error)

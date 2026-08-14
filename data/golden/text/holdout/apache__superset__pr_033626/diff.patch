@@ -1,0 +1,334 @@
+diff --git a/superset/connectors/sqla/models.py b/superset/connectors/sqla/models.py
+index 275cc0cdbf4e..860dc7e422f1 100644
+--- a/superset/connectors/sqla/models.py
++++ b/superset/connectors/sqla/models.py
+@@ -49,7 +49,6 @@
+     String,
+     Table as DBTable,
+     Text,
+-    update,
+ )
+ from sqlalchemy.engine.base import Connection
+ from sqlalchemy.ext.declarative import declared_attr
+@@ -2022,21 +2021,6 @@ def before_update(
+         target.load_database()
+         security_manager.dataset_before_update(mapper, connection, target)
+
+-    @staticmethod
+-    def update_column(  # pylint: disable=unused-argument
+-        mapper: Mapper, connection: Connection, target: SqlMetric | TableColumn
+-    ) -> None:
+-        """
+-        :param mapper: Unused.
+-        :param connection: Unused.
+-        :param target: The metric or column that was updated.
+-        """
+-        session = inspect(target).session  # pylint: disable=disallowed-name
+-
+-        # Forces an update to the table's changed_on value when a metric or column on the  # noqa: E501
+-        # table is updated. This busts the cache key for all charts that use the table.
+-        session.execute(update(SqlaTable).where(SqlaTable.id == target.table.id))
+-
+     @staticmethod
+     def after_insert(
+         mapper: Mapper,
+@@ -2072,8 +2056,6 @@ def load_database(self: SqlaTable) -> None:
+ sa.event.listen(SqlaTable, "before_update", SqlaTable.before_update)
+ sa.event.listen(SqlaTable, "after_insert", SqlaTable.after_insert)
+ sa.event.listen(SqlaTable, "after_delete", SqlaTable.after_delete)
+-sa.event.listen(SqlMetric, "after_update", SqlaTable.update_column)
+-sa.event.listen(TableColumn, "after_update", SqlaTable.update_column)
+
+ RLSFilterRoles = DBTable(
+     "rls_filter_roles",
+diff --git a/superset/daos/dataset.py b/superset/daos/dataset.py
+index 57d498661fe8..e49585dced24 100644
+--- a/superset/daos/dataset.py
++++ b/superset/daos/dataset.py
+@@ -17,7 +17,7 @@
+ from __future__ import annotations
+
+ import logging
+-from datetime import datetime
++from datetime import datetime, timezone
+ from typing import Any
+
+ import dateutil.parser
+@@ -184,15 +184,21 @@ def update(
+         """
+
+         if item and attributes:
++            force_update: bool = False
+             if "columns" in attributes:
+                 cls.update_columns(
+                     item,
+                     attributes.pop("columns"),
+                     override_columns=bool(attributes.get("override_columns")),
+                 )
++                force_update = True
+
+             if "metrics" in attributes:
+                 cls.update_metrics(item, attributes.pop("metrics"))
++                force_update = True
++
++            if force_update:
++                attributes["changed_on"] = datetime.now(tz=timezone.utc)
+
+         return super().update(item, attributes)
+
+diff --git a/tests/integration_tests/datasets/api_tests.py b/tests/integration_tests/datasets/api_tests.py
+index 8ed7ec216ba0..05709f39718c 100644
+--- a/tests/integration_tests/datasets/api_tests.py
++++ b/tests/integration_tests/datasets/api_tests.py
+@@ -16,6 +16,7 @@
+ # under the License.
+ from __future__ import annotations
+
++import time
+ import unittest
+ from io import BytesIO
+ from unittest.mock import ANY, patch
+@@ -1147,6 +1148,7 @@ def test_update_dataset_create_column_and_metric(self):
+
+         # create example dataset by Command
+         dataset = self.insert_default_dataset()
++        current_changed_on = dataset.changed_on
+
+         new_column_data = {
+             "column_name": "new_col",
+@@ -1188,6 +1190,10 @@ def test_update_dataset_create_column_and_metric(self):
+             metric.pop("type_generic", None)
+
+         data["result"]["metrics"].append(new_metric_data)
++
++        # Sleep to ensure that the changed_on is updated
++        time.sleep(3)
++
+         rv = self.client.put(
+             uri,
+             json={
+@@ -1233,6 +1239,10 @@ def test_update_dataset_create_column_and_metric(self):
+         assert metrics[1].warning_text == new_metric_data["warning_text"]
+         assert str(metrics[1].uuid) == new_metric_data["uuid"]
+
++        # Validate that the changed_on is updated
++        updated_dataset = db.session.query(SqlaTable).filter_by(id=dataset.id).first()
++        assert updated_dataset.changed_on > current_changed_on
++
+         self.items_to_delete = [dataset]
+
+     def test_update_dataset_delete_column(self):
+diff --git a/tests/integration_tests/query_context_tests.py b/tests/integration_tests/query_context_tests.py
+index a56e83383525..f0df058e4d0a 100644
+--- a/tests/integration_tests/query_context_tests.py
++++ b/tests/integration_tests/query_context_tests.py
+@@ -14,6 +14,7 @@
+ # KIND, either express or implied.  See the License for the
+ # specific language governing permissions and limitations
+ # under the License.
++import copy
+ import re
+ import time
+ from typing import Any
+@@ -30,7 +31,7 @@
+ from superset.common.query_context import QueryContext
+ from superset.common.query_context_factory import QueryContextFactory
+ from superset.common.query_object import QueryObject
+-from superset.connectors.sqla.models import SqlMetric
++from superset.daos.dataset import DatasetDAO
+ from superset.daos.datasource import DatasourceDAO
+ from superset.extensions import cache_manager
+ from superset.superset_typing import AdhocColumn
+@@ -47,6 +48,7 @@
+     only_sqlite,
+     with_feature_flags,
+ )
++from tests.integration_tests.constants import ADMIN_USERNAME
+ from tests.integration_tests.fixtures.birth_names_dashboard import (
+     load_birth_names_dashboard_with_slices,  # noqa: F401
+     load_birth_names_data,  # noqa: F401
+@@ -171,17 +173,28 @@ def test_query_cache_key_changes_when_datasource_is_updated(self):
+         assert cache_key_original != cache_key_new
+
+     def test_query_cache_key_changes_when_metric_is_updated(self):
++        """
++        Test that the query cache key changes when a metric is updated.
++        """
++        self.login(ADMIN_USERNAME)
+         payload = get_query_context("birth_names")
+
+-        # make temporary change and revert it to refresh the changed_on property
+-        datasource = DatasourceDAO.get_datasource(
+-            datasource_type=DatasourceType(payload["datasource"]["type"]),
+-            datasource_id=payload["datasource"]["id"],
+-        )
+-
+-        datasource.metrics.append(SqlMetric(metric_name="foo", expression="select 1;"))
++        dataset = DatasetDAO.find_by_id(payload["datasource"]["id"])
++        dataset_payload = {
++            "metrics": [
++                {
++                    "metric_name": "foo",
++                    "expression": "select 1;",
++                }
++            ]
++        }
++        DatasetDAO.update(dataset, copy.deepcopy(dataset_payload))
+         db.session.commit()
+
++        # Add metric ID to the payload for future update
++        updated_dataset = DatasetDAO.find_by_id(dataset.id)
++        dataset_payload["metrics"][0]["id"] = updated_dataset.metrics[0].id
++
+         # construct baseline query_cache_key
+         query_context = ChartDataQueryContextSchema().load(payload)
+         query_object = query_context.queries[0]
+@@ -190,7 +203,8 @@ def test_query_cache_key_changes_when_metric_is_updated(self):
+         # wait a second since mysql records timestamps in second granularity
+         time.sleep(1)
+
+-        datasource.metrics[0].expression = "select 2;"
++        dataset_payload["metrics"][0]["expression"] = "select 2;"
++        DatasetDAO.update(updated_dataset, copy.deepcopy(dataset_payload))
+         db.session.commit()
+
+         # create new QueryContext with unchanged attributes, extract new query_cache_key
+@@ -198,7 +212,8 @@ def test_query_cache_key_changes_when_metric_is_updated(self):
+         query_object = query_context.queries[0]
+         cache_key_new = query_context.query_cache_key(query_object)
+
+-        datasource.metrics = []
++        dataset_payload["metrics"] = []
++        DatasetDAO.update(updated_dataset, dataset_payload)
+         db.session.commit()
+
+         # the new cache_key should be different due to updated datasource
+diff --git a/tests/unit_tests/commands/dataset/update_test.py b/tests/unit_tests/commands/dataset/update_test.py
+index 45a1a4160d80..452d60cda4f1 100644
+--- a/tests/unit_tests/commands/dataset/update_test.py
++++ b/tests/unit_tests/commands/dataset/update_test.py
+@@ -95,7 +95,7 @@ def test_update_dataset_forbidden(mocker: MockerFixture) -> None:
+         ),
+     ],
+ )
+-def test_update_validation_errors(
++def test_update_dataset_validation_errors(
+     payload: dict[str, Any],
+     exception: Exception,
+     error_msg: str,
+diff --git a/tests/unit_tests/dao/dataset_test.py b/tests/unit_tests/dao/dataset_test.py
+index ff6d93a8647b..001e8ba9cba8 100644
+--- a/tests/unit_tests/dao/dataset_test.py
++++ b/tests/unit_tests/dao/dataset_test.py
+@@ -15,8 +15,16 @@
+ # specific language governing permissions and limitations
+ # under the License.
+
++import copy
++from datetime import datetime, timezone
++from typing import Any
++from unittest.mock import MagicMock, patch
++
++import pytest
++from freezegun import freeze_time
+ from sqlalchemy.orm.session import Session
+
++from superset.daos.base import BaseDAO
+ from superset.daos.dataset import DatasetDAO
+ from superset.sql_parse import Table
+
+@@ -77,3 +85,94 @@ def test_validate_update_uniqueness(session: Session) -> None:
+         )
+         is True
+     )
++
++
++@freeze_time("2025-01-01 00:00:00")
++@patch.object(DatasetDAO, "update_columns")
++@patch.object(DatasetDAO, "update_metrics")
++@patch.object(BaseDAO, "update")
++@pytest.mark.parametrize(
++    "attributes,expected_attributes",
++    [
++        (
++            {
++                "columns": [{"id": 1, "name": "col1"}],
++                "metrics": [{"id": 1, "name": "metric1"}],
++            },
++            {"changed_on": datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)},
++        ),
++        (
++            {
++                "columns": [{"id": 1, "name": "col1"}],
++                "metrics": [{"id": 1, "name": "metric1"}],
++                "description": "test description",
++            },
++            {
++                "description": "test description",
++                "changed_on": datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
++            },
++        ),
++        (
++            {
++                "columns": [{"id": 1, "name": "col1"}],
++            },
++            {"changed_on": datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)},
++        ),
++        (
++            {
++                "columns": [{"id": 1, "name": "col1"}],
++                "description": "test description",
++            },
++            {
++                "description": "test description",
++                "changed_on": datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
++            },
++        ),
++        (
++            {
++                "metrics": [{"id": 1, "name": "metric1"}],
++            },
++            {"changed_on": datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)},
++        ),
++        (
++            {
++                "metrics": [{"id": 1, "name": "metric1"}],
++                "description": "test description",
++            },
++            {
++                "description": "test description",
++                "changed_on": datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
++            },
++        ),
++        (
++            {"description": "test description"},
++            {"description": "test description"},
++        ),
++    ],
++)
++def test_update_dataset_related_metadata_updates_changed_on(
++    base_update_mock: MagicMock,
++    update_metrics_mock: MagicMock,
++    update_columns_mock: MagicMock,
++    attributes: dict[str, Any],
++    expected_attributes: dict[str, Any],
++) -> None:
++    """
++    Test that the changed_on property is updated when a metric or column is updated.
++    """
++    item = MagicMock()
++    DatasetDAO.update(item, copy.deepcopy(attributes))
++
++    if "columns" in attributes:
++        update_columns_mock.assert_called_once_with(
++            item, attributes["columns"], override_columns=False
++        )
++    else:
++        update_columns_mock.assert_not_called()
++
++    if "metrics" in attributes:
++        update_metrics_mock.assert_called_once_with(item, attributes["metrics"])
++    else:
++        update_metrics_mock.assert_not_called()
++
++    base_update_mock.assert_called_once_with(item, expected_attributes)

@@ -1,0 +1,23 @@
+{
+  "example_id": "dragonflydb__dragonfly__pr_008025",
+  "source": "github-codereview",
+  "repository": "dragonflydb/dragonfly",
+  "commit_sha": "210cbd58aa049d1adbf05a0d23b679168cedf408",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "fix(test_client_kill): wait for client kill cleanup",
+    "description": "Poll CLIENT LIST until the asynchronously shut down client is removed from the listener before asserting that only the admin connection remains.\r\n\r\nRetain the connection error check to verify that CLIENT KILL still closes the target client. This covers the intermittent test race reproduced with the iouring RESP I/O loop.\r\n\r\nTested by reproducing locally, and then with the fix passed 1000 iterations.\r\n",
+    "url": "https://github.com/dragonflydb/dragonfly/pull/8025"
+  },
+  "changed_files": [
+    "tests/dragonfly/server_family_test.py"
+  ],
+  "diff_path": "text/validation/dragonflydb__dragonfly__pr_008025/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "validation",
+  "snapshot_id": 99
+}

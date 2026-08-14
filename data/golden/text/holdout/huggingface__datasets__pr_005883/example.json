@@ -1,0 +1,41 @@
+{
+  "example_id": "huggingface__datasets__pr_005883",
+  "source": "github-codereview",
+  "repository": "huggingface/datasets",
+  "commit_sha": "9becd8194d64895e0218d78f36b0d10b3cd8138c",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Fix string-encoding, make `batch_size` optional, and minor improvements in `Dataset.to_tf_dataset`",
+    "description": "## What's in this PR?\r\n\r\nThis PR addresses some minor fixes and general improvements in the `to_tf_dataset` method of `datasets.Dataset`, to convert a \ud83e\udd17HuggingFace Dataset as a TensorFlow Dataset.\r\n\r\nThe main bug solved in this PR comes with the string-encoding, since for safety purposes the internal conversion of `numpy.arrays` when `dtype` is unicode/string, is to convert it into `numpy.bytes`, more information in the docstring of https://github.com/tensorflow/tensorflow/blob/388d952114e59a1aeda440ed4737b29f8b7c6e8a/tensorflow/python/ops/script_ops.py#L210. That's triggered when using `tensorflow.numpy_function` as it's applying another type cast besides the one that `datasets` does, so the casting is applied at least twice per entry/batch. So this means that the definition of the `numpy.unicode_` dtype when the data in the batch is a string, is ignored, and replaced by `numpy.bytes_`.\r\n\r\nBesides that, some other minor things have been fixed:\r\n\r\n* Made `batch_size` an optional parameter in `to_tf_dataset`\r\n* Map the `tensorflow` output dtypes just once, and not in every `tf.function` call during `map`\r\n* Keep `numpy` formatting in the `datasets.Dataset` if already formatted like it, no need to format it again as `numpy`\r\n* Docstring indentation in `dataset_to_tf` and `multiprocess_dataset_to_tf`\r\n\r\n## What's missing in this PR?\r\n\r\nI can include some integration tests if needed, to validate that `batch_size` is optional, and that the tensors in the TF-Dataset can be looped over with no issues as before.",
+    "url": "https://github.com/huggingface/datasets/pull/5883"
+  },
+  "changed_files": [
+    "src/datasets/arrow_dataset.py",
+    "src/datasets/utils/tf_utils.py",
+    "tests/test_arrow_dataset.py"
+  ],
+  "diff_path": "text/holdout/huggingface__datasets__pr_005883/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "src/datasets/utils/tf_utils.py",
+      "line": 114,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "We still need to call collate_fn if not `batched`\r\n```suggestion\r\n    batch = collate_fn(batch, **collate_fn_args)\r\n```",
+      "evidence_requirement": "The added code at lines 110-115 wraps the `collate_fn` call inside `if is_batched:` but the reviewer's comment states 'We still need to call collate_fn if not `batched`'.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "When loading a single sample (non-batched), the collate function is still needed to transform the single-item list into the expected batch format; skipping it breaks expected output structure.",
+      "_reviewer_comment_full": "We still need to call collate_fn if not `batched`\r\n```suggestion\r\n    batch = collate_fn(batch, **collate_fn_args)\r\n```",
+      "_gold_comment_url": "https://github.com/huggingface/datasets/pull/5883#discussion_r1218449537"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 214
+}

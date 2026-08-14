@@ -1,0 +1,26 @@
+{
+  "example_id": "apify__crawlee-python__pr_002109",
+  "source": "github-codereview",
+  "repository": "apify/crawlee-python",
+  "commit_sha": "7ad03aa0b455912ba1c991b0243379f63a68d3a0",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "fix(curl-impersonate): treat a refused CONNECT tunnel as a proxy error",
+    "description": "`curl-cffi` 0.16.0 broke two things in `CurlImpersonateHttpClient`, which is why #2107 capped it. This fixes both and drops the cap.\n\n1. Bundled libcurl went 8.15.0 -> 8.21.0, so a refused CONNECT tunnel is now `CURLE_COULDNT_CONNECT` with `CONNECT tunnel failed` instead of `CURLE_RECV_ERROR`. `curl_cffi` maps only the latter to `CurlProxyError`, so `_is_proxy_error` stopped recognizing it and sessions were not rotated. The needle lives in `_curl_impersonate.py` rather than the shared `ROTATE_PROXY_ERRORS`, which mirrors the JS Crawlee list - impit and httpx never produce libcurl messages.\n\n2. The session cookie write path moved to `Cookies.update_cookies_from_curl_changes`, leaving the `_EmptyCookies` override inert. Isolation held (`get_cookies_for_curl` is still overridden, so nothing was ever sent), but every response cookie accumulated in the jar of the per-proxy session cached for the client's lifetime. Measured with the same 25-request repro: 25 cookies on 0.16.0, 0 on 0.15.0.\n\nThe existing `test_crawl_with_proxy_disabled[curl]` and `test_send_request_with_proxy_disabled[curl]` cover the first; `test_internal_session_cookie_jar_stays_empty` is new for the second.\n\nCloses: #2111\n\n*\u270d\ufe0f Drafted by Claude Code*\n",
+    "url": "https://github.com/apify/crawlee-python/pull/2109"
+  },
+  "changed_files": [
+    "pyproject.toml",
+    "src/crawlee/http_clients/_curl_impersonate.py",
+    "tests/unit/http_clients/test_curl_impersonate.py",
+    "uv.lock"
+  ],
+  "diff_path": "text/holdout/apify__crawlee-python__pr_002109/diff.patch",
+  "expected_outcome": "no_comment",
+  "gold_comments": [],
+  "context_files": [],
+  "no_comment_rationale": "Self-built verified negative (Phase 6A)",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 88
+}

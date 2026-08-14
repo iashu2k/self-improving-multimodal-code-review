@@ -1,0 +1,45 @@
+{
+  "example_id": "apache__airflow__pr_054103",
+  "source": "github-codereview",
+  "repository": "apache/airflow",
+  "commit_sha": "8549939dd817582f9408f3ca58f8728b1a51644c",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Include the max_active_tasks limit in the query fetching TIs to be queued",
+    "description": "Related discussion: https://lists.apache.org/thread/62nd3jkbk8znosx2yrcqzrw9ycj0ddwo\r\n\r\nThe goal of this PR is to increase scheduler throughput.\r\n\r\nDuring queueing tasks, the steps are\r\n1. the scheduler picks a number of SCHEDULED tasks to examine from the db (`max_tis_per_query`)\r\n2. it applies checks on the retrieved tasks, to see if it can queue them\r\n3. it checks if there are available pool slots\r\n4. it checks if the dag run concurrency limits have been reached or crossed (`max_active_tasks_per_dag`)\r\n\r\nIf the dag_runs on top of the line, have already reached the number of `max_active_tasks_per_dag`, the scheduler won't be able to queue any more tasks. In that case, it will have to execute another db query to retrieve tasks from the next dag_run.\r\n\r\nThis inefficiency might not make any noticeable difference when there isn't load on the system, but when you have many large dags, or even a few very large ones, the performance drop in the scheduler and workers throughput is significant.\r\n\r\nWe already know in advance the `max_active_tasks` limit. By including it in the initial query, we don't retrieve more tasks than we can actually queue for a dag run. That way the query will only pick tasks that can be queued and if we are on the limit for a dag_run, it will move to the next one (by priority order). This multiplies throughput by 5-6 times more than before.\r\n\r\nI've adjusted the changes so that the patch maintains the way that the scheduler has behaved up until now. All the existing scheduler tests are passing without modifications.\r\n\r\nTo make the changes more clear, let me provide an example with numbers\r\n* `max_tis_per_query` is 50\r\n* we have 6 dag runs with 100 tasks each\r\n* `max_active_tasks_per_dag` is 10\r\n* we have enough pool slots, e.g. 100\r\n\r\nThe initial approach\r\n* it would concentrate on the first 3 dag runs\r\n* the query will pick 50 tasks\r\n* task selection would be something like 25 from dag1, 15 from dag2, 10 from dag3\r\n* it can queue 10 tasks from each dag run\r\n* total tasks queued for the iteration are 30\r\n\r\nThe new approach\r\n* the query will pick 50 tasks\r\n* it can queue 10 tasks from each dag and so it will pick only 10 tasks from every dag until it reaches 50\r\n* task selection will be 10 from dag1, 10 from dag2, 10 from dag3, 10 from dag4, 10 from dag5\r\n* total tasks queued for the iteration are 50\r\n\r\n\r\n<!-- Please keep an empty line above the dashes. -->\r\n---\r\n**^ Add meaningful description above**\r\nRead the **[Pull Request Guidelines](https://github.com/apache/airflow/blob/main/contributing-docs/05_pull_requests.rst#pull-request-guidelines)** for more information.\r\nIn case of fundamental code changes, an Airflow Improvement Proposal ([AIP](https://cwiki.apache.org/confluence/display/AIRFLOW/Airflow+Improvement+Proposals)) is needed.\r\nIn case of a new dependency, check compliance with the [ASF 3rd Party License Policy](https://www.apache.org/legal/resolved.html#category-x).\r\nIn case of backwards incompatible changes please leave a note in a newsfragment file, named `{pr_number}.significant.rst` or `{issue_number}.significant.rst`, in [airflow-core/newsfragments](https://github.com/apache/airflow/tree/main/airflow-core/newsfragments).\r\n",
+    "url": "https://github.com/apache/airflow/pull/54103"
+  },
+  "changed_files": [
+    "airflow-core/src/airflow/config_templates/config.yml",
+    "airflow-core/src/airflow/jobs/scheduler_job_runner.py",
+    "airflow-core/tests/unit/jobs/test_scheduler_job.py"
+  ],
+  "diff_path": "text/holdout/apache__airflow__pr_054103/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "airflow-core/src/airflow/jobs/scheduler_job_runner.py",
+      "line": 441,
+      "category": "bug_risk",
+      "severity": "high",
+      "issue_summary": "Hmm, `run_id` is only unique per DAG, but this subquery groups by `run_id` alone and the join uses just `TI.run_id`. When one DAG reaches `max_active_tasks`, every other DAG that happens to share the same `run_id` string (common for scheduled runs) now fails the `< DM.max_active_tasks` check and never gets considered. \n\nBetter to group by `(dag_id, run_id)` and join on both columns instead?\n\nhttps://github.com/apache/airflow/blob/085b0edfe7c7151517cd727020c13a2834409210/airflow-core/src/airflow/",
+      "evidence_requirement": "The comment must cite the subquery grouping by `TI.run_id` alone (line 208) and the join condition using only `TI.run_id` (line 439), showing how this fails to distinguish DAGs.",
+      "must_not_claim": [
+        "causes data loss",
+        "breaks functionality",
+        "exposes secrets"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Grouping by `run_id` alone incorrectly aggregates task counts across different DAGs that happen to use identical run_id strings (e.g., scheduled runs), leading to premature blocking of unrelated DAGs.",
+      "_reviewer_comment_full": "Hmm, `run_id` is only unique per DAG, but this subquery groups by `run_id` alone and the join uses just `TI.run_id`. When one DAG reaches `max_active_tasks`, every other DAG that happens to share the same `run_id` string (common for scheduled runs) now fails the `< DM.max_active_tasks` check and never gets considered. \n\nBetter to group by `(dag_id, run_id)` and join on both columns instead?\n\nhttps://github.com/apache/airflow/blob/085b0edfe7c7151517cd727020c13a2834409210/airflow-core/src/airflow/models/dagrun.py#L233",
+      "_gold_comment_url": "https://github.com/apache/airflow/pull/54103#discussion_r2479689911"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 167
+}

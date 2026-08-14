@@ -1,0 +1,46 @@
+{
+  "example_id": "godotengine__godot__pr_046966",
+  "source": "github-codereview",
+  "repository": "godotengine/godot",
+  "commit_sha": "0b298d201e6010daff369821951c67fbb4e63a10",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Allow to not optimize release build",
+    "description": "Fixes https://github.com/godotengine/godot-proposals/issues/2457\r\n\r\nThis will allow to speedup compilation for people, that want to test Godot without `DEBUG_ENABLED` flag\r\n\r\nIf fix is good, then I will do the same for others platform\r\n",
+    "url": "https://github.com/godotengine/godot/pull/46966"
+  },
+  "changed_files": [
+    "SConstruct",
+    "platform/android/detect.py",
+    "platform/iphone/detect.py",
+    "platform/javascript/detect.py",
+    "platform/linuxbsd/detect.py",
+    "platform/osx/detect.py",
+    "platform/server/detect.py",
+    "platform/uwp/detect.py",
+    "platform/windows/detect.py"
+  ],
+  "diff_path": "text/validation/godotengine__godot__pr_046966/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "platform/linuxbsd/detect.py",
+      "line": 93,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "```suggestion\r\n        elif env[\"optimize\"] == \"size\":  # optimize for size\r\n```\r\nNo optimization flags are going to be applied with `none` as it won't be handled.",
+      "evidence_requirement": "The code must handle `env['optimize'] == 'none'` for release builds; currently no optimization flag is applied when 'none' is selected, which may cause unintended behavior.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A release build with `optimize='none'` would silently skip optimization flags, potentially leading to poor performance or unexpected behavior in production.",
+      "_reviewer_comment_full": "```suggestion\r\n        elif env[\"optimize\"] == \"size\":  # optimize for size\r\n```\r\nNo optimization flags are going to be applied with `none` as it won't be handled.",
+      "_gold_comment_url": "https://github.com/godotengine/godot/pull/46966#discussion_r593760078"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "validation",
+  "snapshot_id": 74
+}

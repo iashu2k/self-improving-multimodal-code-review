@@ -1,0 +1,41 @@
+{
+  "example_id": "apache__superset__pr_035333",
+  "source": "github-codereview",
+  "repository": "apache/superset",
+  "commit_sha": "75610b539526be974f328ecbaeab034660bae04f",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "fix: sqlglot dialect for Pinot",
+    "description": "<!---\r\nPlease write the PR title following the conventions at https://www.conventionalcommits.org/en/v1.0.0/\r\nExample:\r\nfix(dashboard): load charts correctly\r\n-->\r\n\r\n### SUMMARY\r\n<!--- Describe the change below, including rationale and design decisions -->\r\n\r\nPinot uses Calcite to parse SQL queries, specifically the `MYSQL_ANSI` dialect. Because of this, in Superset we are currently using the \"mysql\" dialect from `sqlglot`. The problem is that `MYSQL_ANSI` uses double quotes for identifiers, while the default MySQL dialect (in `sqlglot` and in the actual database) uses double quotes for string literals.\r\n\r\nThis PR introduces a small `sqlglot` dialect for Pinot, which is essentially the MySQL dialect but using double quotes for identifiers. That seems to be the only difference between Calcite's `MYSQL` and `MYSQL_ANSI`: https://calcite.apache.org/javadocAggregate/org/apache/calcite/config/Lex.html#MYSQL_ANSI\r\n\r\n### BEFORE/AFTER SCREENSHOTS OR ANIMATED GIF\r\n<!--- Skip this if not applicable -->\r\n\r\n### TESTING INSTRUCTIONS\r\n<!--- Required! What steps can be taken to manually verify the changes? -->\r\n\r\n### ADDITIONAL INFORMATION\r\n<!--- Check any relevant boxes with \"x\" -->\r\n<!--- HINT: Include \"Fixes #nnn\" if you are fixing an existing issue -->\r\n- [X] Has associated issue: Fixes #35270 \r\n- [ ] Required feature flags:\r\n- [ ] Changes UI\r\n- [ ] Includes DB Migration (follow approval process in [SIP-59](https://github.com/apache/superset/issues/13351))\r\n  - [ ] Migration is atomic, supports rollback & is backwards-compatible\r\n  - [ ] Confirm DB migration upgrade and downgrade tested\r\n  - [ ] Runtime estimates and downtime expectations provided\r\n- [ ] Introduces new feature or API\r\n- [ ] Removes existing feature or API\r\n",
+    "url": "https://github.com/apache/superset/pull/35333"
+  },
+  "changed_files": [
+    "superset/sql/dialects/__init__.py",
+    "superset/sql/dialects/pinot.py",
+    "superset/sql/parse.py",
+    "tests/unit_tests/sql/dialects/pinot_tests.py"
+  ],
+  "diff_path": "text/holdout/apache__superset__pr_035333/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "superset/sql/dialects/pinot.py",
+      "line": 43,
+      "category": "style",
+      "severity": "low",
+      "issue_summary": "nit: should these have type hints? \n```\nclass Tokenizer(MySQL.Tokenizer):\n      QUOTES: list[str] = [\"'\"]\n      IDENTIFIERS: list[str] = ['\"', \"`\"]\n      STRING_ESCAPES: list[str] = [\"'\", \"\\\\\"]\n```",
+      "evidence_requirement": "The added STRING_ESCAPES line lacks a type annotation (e.g., : list[str]) despite the reviewer explicitly suggesting type hints for all tokenizer attributes.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Type hints improve code clarity and maintainability, especially for class attributes that define behavior, and the reviewer explicitly requested them.",
+      "_reviewer_comment_full": "nit: should these have type hints? \n```\nclass Tokenizer(MySQL.Tokenizer):\n      QUOTES: list[str] = [\"'\"]\n      IDENTIFIERS: list[str] = ['\"', \"`\"]\n      STRING_ESCAPES: list[str] = [\"'\", \"\\\\\"]\n```",
+      "_gold_comment_url": "https://github.com/apache/superset/pull/35333#discussion_r2389247135"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 47
+}

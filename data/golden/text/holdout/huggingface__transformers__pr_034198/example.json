@@ -1,0 +1,40 @@
+{
+  "example_id": "huggingface__transformers__pr_034198",
+  "source": "github-codereview",
+  "repository": "huggingface/transformers",
+  "commit_sha": "2a6b0383d0141d4f950b00c17325071264b1d9ad",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": " Enable users to use their own loss functions + deal with prefetching for grad accum",
+    "description": "# What does this PR do?\r\n\r\nIn conjunction with https://github.com/huggingface/transformers/pull/34191, this PR solves the other half of what's needed:\r\n\r\n1. Letting users pass in their own loss functions directly to the Trainer via `compute_loss`\r\n2. Prefetching the first `gradient_accumulation_steps` worth of data each complete step and marking how many samples were seen (`num_items_in_batch`), which can be passed to a loss function if it takes in `num_items_seen` (name TBD)\r\n\r\nA bit of feedback needed we need to coordinate:\r\n\r\n* Should it be called `num_items_in_batch` and then passed through to the loss functions as such? Or is there a better name we can think of\r\n\r\nFixes https://github.com/huggingface/trl/issues/2175\r\n\r\n\r\n## Before submitting\r\n- [ ] This PR fixes a typo or improves the docs (you can dismiss the other checks if that's the case).\r\n- [x] Did you read the [contributor guideline](https://github.com/huggingface/transformers/blob/main/CONTRIBUTING.md#create-a-pull-request),\r\n      Pull Request section?\r\n- [ ] Was this discussed/approved via a Github issue or the [forum](https://discuss.huggingface.co/)? Please add a link\r\n      to it if that's the case.\r\n- [ ] Did you make sure to update the documentation with your changes? Here are the\r\n      [documentation guidelines](https://github.com/huggingface/transformers/tree/main/docs), and\r\n      [here are tips on formatting docstrings](https://github.com/huggingface/transformers/tree/main/docs#writing-source-documentation).\r\n- [x] Did you write any new necessary tests?\r\n\r\n\r\n## Who can review?\r\n\r\nAnyone in the community is free to review the PR once the tests have passed. Feel free to tag\r\nmembers/contributors who may be interested in your PR.\r\n\r\n@LysandreJik @ArthurZucker \r\n\r\n",
+    "url": "https://github.com/huggingface/transformers/pull/34198"
+  },
+  "changed_files": [
+    "src/transformers/trainer.py",
+    "tests/trainer/test_trainer.py"
+  ],
+  "diff_path": "text/holdout/huggingface__transformers__pr_034198/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "tests/trainer/test_trainer.py",
+      "line": 201,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "Although this is a test, it's probably better to not divide by `.numel()` or the number of items, but do the pure mean, since there might be padding tokens.\r\n\r\n```suggestion\r\n    if num_items_in_batch is None or disable_num_items_in_batch:\r\n        loss = nn.functional.cross_entropy(shift_logits, shift_labels, ignore_index=-100, reduction=\"mean\")\r\n    else:\r\n        loss = nn.functional.cross_entropy(shift_logits, shift_labels, ignore_index=-100, reduction=\"sum\")\r\n        loss = loss / num_items",
+      "evidence_requirement": "The comment must cite the manual division `loss = loss / num_items_in_batch` and note that with ignore_index=-100, reduction='mean' excludes padding tokens automatically, while manual division may not.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "When using `ignore_index=-100`, the loss should be computed with `reduction='mean'` to automatically exclude padded tokens from the average; manually dividing by `num_items_in_batch` (which may be derived from `.numel()`) includes padded tokens and biases the loss.",
+      "_reviewer_comment_full": "Although this is a test, it's probably better to not divide by `.numel()` or the number of items, but do the pure mean, since there might be padding tokens.\r\n\r\n```suggestion\r\n    if num_items_in_batch is None or disable_num_items_in_batch:\r\n        loss = nn.functional.cross_entropy(shift_logits, shift_labels, ignore_index=-100, reduction=\"mean\")\r\n    else:\r\n        loss = nn.functional.cross_entropy(shift_logits, shift_labels, ignore_index=-100, reduction=\"sum\")\r\n        loss = loss / num_items_in_batch\r\n```",
+      "_gold_comment_url": "https://github.com/huggingface/transformers/pull/34198#discussion_r1805385178"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 216
+}

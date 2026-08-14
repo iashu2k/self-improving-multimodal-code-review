@@ -59,6 +59,7 @@ def _log_retry(retry_state) -> None:
 def raise_for_status_with_body(response: httpx.Response) -> None:
   """Like raise_for_status, but the exception carries the response body.
 
+
   OpenRouter's 4xx bodies name the exact problem (unsupported parameter,
   missing modality, payment) — discarding them makes every failure a
   guessing game. Retry semantics unchanged: still an HTTPStatusError, so
@@ -78,12 +79,14 @@ def strictify_schema(schema: dict[str, Any]) -> dict[str, Any]:
   """Adapt a pydantic JSON schema for OpenAI-style strict structured outputs.
 
 
+
   OpenAI's strict mode rejects a schema unless every object node sets
   additionalProperties: false and lists every property in `required`.
   Pydantic emits neither by default: fields with defaults (e.g.
   observations/uncertainties = []) are omitted from `required`, and
   additionalProperties is left unset. First seen live: gpt-4o-mini 400,
   "'additionalProperties' is required to be supplied and to be false".
+
 
 
   Also strips JSON Schema keywords some providers reject outright in
@@ -93,9 +96,11 @@ def strictify_schema(schema: dict[str, Any]) -> dict[str, Any]:
   parsed response; the wire schema only needs to describe shape.
 
 
+
   Lenient providers (Gemini, Qwen, Gemma) accept the same additions —
   both are standard JSON Schema — so the shim applies unconditionally:
   one request code path, no per-provider branching.
+
 
 
   Returns a new dict; the caller's schema is never mutated (the gate
@@ -152,13 +157,26 @@ class OpenRouterClient:
   async def aclose(self) -> None:
     await self._client.aclose()
 
-  async def _record_cost(self, *, model: str, prompt_tokens: int, completion_tokens: int) -> None:
+  async def _record_cost(
+    self,
+    *,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cost_key: str = "chat",
+  ) -> None:
     """Best-effort spend recording.
+
 
     The HTTP call has already succeeded when this runs — the money is
     spent either way, so a Redis failure here must not fail the caller's
     request. It MUST be loud, though: an unrecorded call means the daily
     cap is undercounting. (The pre-call check stays fail-closed.)
+
+
+    cost_key tags the call type ("chat" | "embedding") in the
+    openrouter_cost event, so eval runs can separate indexing spend from
+    generation spend (Phase 7 cost logging).
     """
     if self._cost_guard is None:
       return
@@ -171,6 +189,7 @@ class OpenRouterClient:
       logger.info(
         "openrouter_cost",
         model=model,
+        cost_key=cost_key,
         cost_usd=round(cost, 6),
         spent_today_usd=round(await self._cost_guard.spent_today(), 4),
       )
@@ -279,7 +298,8 @@ class OpenRouterClient:
     reraise=True,
   )
   async def embed(self, *, model: str, texts: list[str]) -> list[list[float]]:
-    await self._cost_guard.check()
+    if self._cost_guard is not None:
+      await self._cost_guard.check()
 
     payload = {
       "model": model,
@@ -288,13 +308,18 @@ class OpenRouterClient:
     }
 
     response = await self._client.post("/embeddings", json=payload)
-    response.raise_for_status()
+    raise_for_status_with_body(response)
     data = response.json()
 
+    # Embeddings have no completions: prompt_tokens IS the whole usage
+    # (total_tokens is the fallback for providers that only report it).
+    # Passing total as completion_tokens is wrong under any pricing table
+    # with a nonzero output rate — e.g. the unknown-model fallback.
+    usage = data.get("usage", {})
     await self._record_cost(
       model=model,
-      prompt_tokens=data.get("usage", {}).get("prompt_tokens", 0),
-      completion_tokens=data.get("usage", {}).get("total_tokens", 0),
+      prompt_tokens=usage.get("prompt_tokens", 0) or usage.get("total_tokens", 0),
+      completion_tokens=0,
       cost_key="embedding",
     )
 

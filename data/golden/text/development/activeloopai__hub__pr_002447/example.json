@@ -1,0 +1,41 @@
+{
+  "example_id": "activeloopai__hub__pr_002447",
+  "source": "github-codereview",
+  "repository": "activeloopai/Hub",
+  "commit_sha": "7ea3c7dd4c72b8024730623d8548e6810e5eeb9c",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Added runtime argument to VectorStore ",
+    "description": "## \ud83d\ude80 \ud83d\ude80 Pull Request\r\n\r\n### Checklist:\r\n\r\n- [ ]  [My code follows the style guidelines of this project](https://www.notion.so/activeloop/Engineering-Guidelines-d6e502306d0e4133a8ca507516d1baab) and the [Contributing document](https://github.com/activeloopai/Hub/blob/release/2.0/CONTRIBUTING.md)\r\n- [ ]  I have commented my code, particularly in hard-to-understand areas\r\n- [ ]  I have kept the `coverage-rate` up\r\n- [ ]  I have performed a self-review of my own code and resolved any problems\r\n- [ ]  I have checked to ensure there aren't any other open [Pull Requests](https://github.com/activeloopai/Hub/pulls) for the same change\r\n- [ ]  I have described and made corresponding changes to the relevant documentation\r\n- [ ]  New and existing unit tests pass locally with my changes\r\n\r\n\r\n### Changes\r\n\r\n<!-- Describe your changes! Describe the scope of this PR's responsibilities. -->",
+    "url": "https://github.com/activeloopai/deeplake/pull/2447"
+  },
+  "changed_files": [
+    "deeplake/core/vectorstore/deeplake_vectorstore.py",
+    "deeplake/core/vectorstore/vector_search/dataset/dataset.py",
+    "deeplake/core/vectorstore/vector_search/dataset/test_dataset.py"
+  ],
+  "diff_path": "text/development/activeloopai__hub__pr_002447/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "deeplake/core/vectorstore/deeplake_vectorstore.py",
+      "line": 43,
+      "category": "bug_risk",
+      "severity": "medium",
+      "issue_summary": "shouldn't this be `None` by default. That's what we do everywhere else in the deeplake repo and it works well, so I think we should adhere to conventions we have elsewhere in order to de-risk edge cases not working. ",
+      "evidence_requirement": "The added line `runtime={\u2018tensor_db\u2019: False},` in the __init__ signature must be present at head.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Using a mutable default argument like a dict can cause unexpected shared state across instances, and the reviewer correctly noted that None is the conventional default elsewhere in the repo.",
+      "_reviewer_comment_full": "shouldn't this be `None` by default. That's what we do everywhere else in the deeplake repo and it works well, so I think we should adhere to conventions we have elsewhere in order to de-risk edge cases not working. ",
+      "_gold_comment_url": "https://github.com/activeloopai/deeplake/pull/2447#discussion_r1238662996"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "development",
+  "snapshot_id": 152
+}

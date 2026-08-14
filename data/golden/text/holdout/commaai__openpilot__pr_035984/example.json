@@ -1,0 +1,39 @@
+{
+  "example_id": "commaai__openpilot__pr_035984",
+  "source": "github-codereview",
+  "repository": "commaai/openpilot",
+  "commit_sha": "9d7b97a5e391587477d311a1ca7e70a455bac05b",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "clip: terminate processes in clip() instead of in main()",
+    "description": "clip() in clip/run.py used to not terminate the processes it started except in main()\r\n\r\nthis allows other programs to directly call clip",
+    "url": "https://github.com/commaai/openpilot/pull/35984"
+  },
+  "changed_files": [
+    "tools/clip/run.py"
+  ],
+  "diff_path": "text/holdout/commaai__openpilot__pr_035984/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "tools/clip/run.py",
+      "line": 284,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "let's make a little helper (and put it in `common/`) to do this in a context manager:\n```python\nwith Proc('./replay'), proc('./ui')...:\n\t<code>\n```",
+      "evidence_requirement": "The added code uses a try/finally block to terminate processes manually instead of using a context manager helper as suggested by the reviewer.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A context manager would encapsulate process lifecycle management, improving robustness and readability; the current implementation duplicates cleanup logic and is more error-prone.",
+      "_reviewer_comment_full": "let's make a little helper (and put it in `common/`) to do this in a context manager:\n```python\nwith Proc('./replay'), proc('./ui')...:\n\t<code>\n```",
+      "_gold_comment_url": "https://github.com/commaai/openpilot/pull/35984#discussion_r2272000597"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 194
+}

@@ -1,0 +1,261 @@
+diff --git a/crates/ty_python_semantic/resources/mdtest/annotations/self.md b/crates/ty_python_semantic/resources/mdtest/annotations/self.md
+index b3563e8935a516..767e2e1f173b26 100644
+--- a/crates/ty_python_semantic/resources/mdtest/annotations/self.md
++++ b/crates/ty_python_semantic/resources/mdtest/annotations/self.md
+@@ -193,8 +193,7 @@ class B:
+ reveal_type(B().name_does_not_matter())  # revealed: B
+ reveal_type(B().positional_only(1))  # revealed: B
+ reveal_type(B().keyword_only(x=1))  # revealed: B
+-# TODO: This should deally be `B`
+-reveal_type(B().decorated_method())  # revealed: Self@decorated_method
++reveal_type(B().decorated_method())  # revealed: B
+
+ reveal_type(B().a_property)  # revealed: B
+
+diff --git a/crates/ty_python_semantic/resources/mdtest/call/replace.md b/crates/ty_python_semantic/resources/mdtest/call/replace.md
+index 8d5a6b55bd5c3e..43e59bdf795c36 100644
+--- a/crates/ty_python_semantic/resources/mdtest/call/replace.md
++++ b/crates/ty_python_semantic/resources/mdtest/call/replace.md
+@@ -71,3 +71,38 @@ e = a.__replace__(x="wrong")  # error: [invalid-argument-type]
+ # TODO: this should ideally also be emit an error
+ e = replace(a, x="wrong")
+ ```
++
++### NamedTuples
++
++NamedTuples also support the `__replace__` protocol:
++
++```py
++from typing import NamedTuple
++from copy import replace
++
++class Point(NamedTuple):
++    x: int
++    y: int
++
++reveal_type(Point.__replace__)  # revealed: (self: Self, *, x: int = ..., y: int = ...) -> Self
++```
++
++The `__replace__` method can either be called directly or through the `replace` function:
++
++```py
++a = Point(1, 2)
++
++b = a.__replace__(x=3, y=4)
++reveal_type(b)  # revealed: Point
++
++b = replace(a, x=3, y=4)
++# TODO: this should be `Point`, once we support specialization of generic protocols
++reveal_type(b)  # revealed: Unknown
++```
++
++Invalid calls to `__replace__` will raise an error:
++
++```py
++# error: [unknown-argument] "Argument `z` does not match any known parameter"
++a.__replace__(z=42)
++```
+diff --git a/crates/ty_python_semantic/resources/mdtest/named_tuple.md b/crates/ty_python_semantic/resources/mdtest/named_tuple.md
+index 5fd71b988bdbff..c143e6df6370a8 100644
+--- a/crates/ty_python_semantic/resources/mdtest/named_tuple.md
++++ b/crates/ty_python_semantic/resources/mdtest/named_tuple.md
+@@ -266,10 +266,10 @@ class Person(NamedTuple):
+     age: int | None = None
+
+ reveal_type(Person._field_defaults)  # revealed: dict[str, Any]
+-reveal_type(Person._fields)  # revealed: tuple[str, ...]
++reveal_type(Person._fields)  # revealed: tuple[str, str]
+ reveal_type(Person._make)  # revealed: bound method <class 'Person'>._make(iterable: Iterable[Any]) -> Person
+ reveal_type(Person._asdict)  # revealed: def _asdict(self) -> dict[str, Any]
+-reveal_type(Person._replace)  # revealed: def _replace(self, **kwargs: Any) -> Self@_replace
++reveal_type(Person._replace)  # revealed: (self: Self, *, name: str = ..., age: int | None = ...) -> Self
+
+ reveal_type(Person._make(("Alice", 42)))  # revealed: Person
+
+@@ -277,6 +277,10 @@ person = Person("Alice", 42)
+
+ reveal_type(person._asdict())  # revealed: dict[str, Any]
+ reveal_type(person._replace(name="Bob"))  # revealed: Person
++
++# Invalid keyword arguments are detected:
++# error: [unknown-argument] "Argument `invalid` does not match any known parameter"
++person._replace(invalid=42)
+ ```
+
+ When accessing them on child classes of generic `NamedTuple`s, the return type is specialized
+@@ -343,7 +347,7 @@ satisfy:
+ def expects_named_tuple(x: typing.NamedTuple):
+     reveal_type(x)  # revealed: tuple[object, ...] & NamedTupleLike
+     reveal_type(x._make)  # revealed: bound method type[NamedTupleLike]._make(iterable: Iterable[Any]) -> NamedTupleLike
+-    reveal_type(x._replace)  # revealed: bound method NamedTupleLike._replace(**kwargs) -> NamedTupleLike
++    reveal_type(x._replace)  # revealed: bound method NamedTupleLike._replace(...) -> NamedTupleLike
+     # revealed: Overload[(value: tuple[object, ...], /) -> tuple[object, ...], (value: tuple[_T@__add__, ...], /) -> tuple[object, ...]]
+     reveal_type(x.__add__)
+     reveal_type(x.__iter__)  # revealed: bound method tuple[object, ...].__iter__() -> Iterator[object]
+@@ -355,8 +359,9 @@ def _(y: type[typing.NamedTuple]):
+ def _(z: typing.NamedTuple[int]): ...
+ ```
+
+-Any instance of a `NamedTuple` class can therefore be passed for a function parameter that is
+-annotated with `NamedTuple`:
++NamedTuples are assignable to `NamedTupleLike`. The `NamedTupleLike._replace` method is typed with
++`(*args, **kwargs)`, which type checkers treat as equivalent to `...` (per the typing spec), making
++all NamedTuple implementations automatically compatible:
+
+ ```py
+ from typing import NamedTuple, Protocol, Iterable, Any
+@@ -368,12 +373,15 @@ class Point(NamedTuple):
+
+ reveal_type(Point._make)  # revealed: bound method <class 'Point'>._make(iterable: Iterable[Any]) -> Point
+ reveal_type(Point._asdict)  # revealed: def _asdict(self) -> dict[str, Any]
+-reveal_type(Point._replace)  # revealed: def _replace(self, **kwargs: Any) -> Self@_replace
++reveal_type(Point._replace)  # revealed: (self: Self, *, x: int = ..., y: int = ...) -> Self
+
++# Point is assignable to NamedTuple.
+ static_assert(is_assignable_to(Point, NamedTuple))
+
+-expects_named_tuple(Point(x=42, y=56))  # fine
++# NamedTuple instances can be passed to functions expecting NamedTupleLike.
++expects_named_tuple(Point(x=42, y=56))
+
++# But plain tuples are not NamedTupleLike (they don't have _make, _asdict, _replace, etc.).
+ # error: [invalid-argument-type] "Argument to function `expects_named_tuple` is incorrect: Expected `tuple[object, ...] & NamedTupleLike`, found `tuple[Literal[1], Literal[2]]`"
+ expects_named_tuple((1, 2))
+ ```
+diff --git a/crates/ty_python_semantic/src/types.rs b/crates/ty_python_semantic/src/types.rs
+index da46f40709068a..78c0ebe0bfbb6e 100644
+--- a/crates/ty_python_semantic/src/types.rs
++++ b/crates/ty_python_semantic/src/types.rs
+@@ -4699,7 +4699,7 @@ impl<'db> Type<'db> {
+                     Some((self, AttributeKind::NormalOrNonDataDescriptor))
+                 } else {
+                     Some((
+-                        Type::Callable(callable.bind_self(db, None)),
++                        Type::Callable(callable.bind_self(db, Some(instance))),
+                         AttributeKind::NormalOrNonDataDescriptor,
+                     ))
+                 };
+diff --git a/crates/ty_python_semantic/src/types/class.rs b/crates/ty_python_semantic/src/types/class.rs
+index 9a941a913becaf..9e2063473cb97c 100644
+--- a/crates/ty_python_semantic/src/types/class.rs
++++ b/crates/ty_python_semantic/src/types/class.rs
+@@ -35,13 +35,13 @@ use crate::types::tuple::{TupleSpec, TupleType};
+ use crate::types::typed_dict::typed_dict_params_from_class_def;
+ use crate::types::visitor::{TypeCollector, TypeVisitor, walk_type_with_recursion_guard};
+ use crate::types::{
+-    ApplyTypeMappingVisitor, Binding, BoundSuperType, CallableType, CallableTypeKind,
+-    CallableTypes, DATACLASS_FLAGS, DataclassFlags, DataclassParams, DeprecatedInstance,
+-    FindLegacyTypeVarsVisitor, HasRelationToVisitor, IsDisjointVisitor, IsEquivalentVisitor,
+-    KnownInstanceType, ManualPEP695TypeAliasType, MaterializationKind, NormalizedVisitor,
+-    PropertyInstanceType, StringLiteralType, TypeAliasType, TypeContext, TypeMapping, TypeRelation,
+-    TypedDictParams, UnionBuilder, VarianceInferable, binding_type, declaration_type,
+-    determine_upper_bound,
++    ApplyTypeMappingVisitor, Binding, BindingContext, BoundSuperType, CallableType,
++    CallableTypeKind, CallableTypes, DATACLASS_FLAGS, DataclassFlags, DataclassParams,
++    DeprecatedInstance, FindLegacyTypeVarsVisitor, HasRelationToVisitor, IsDisjointVisitor,
++    IsEquivalentVisitor, KnownInstanceType, ManualPEP695TypeAliasType, MaterializationKind,
++    NormalizedVisitor, PropertyInstanceType, StringLiteralType, TypeAliasType, TypeContext,
++    TypeMapping, TypeRelation, TypedDictParams, UnionBuilder, VarianceInferable, binding_type,
++    declaration_type, determine_upper_bound,
+ };
+ use crate::{
+     Db, FxIndexMap, FxIndexSet, FxOrderSet, Program,
+@@ -2507,7 +2507,8 @@ impl<'db> ClassLiteral<'db> {
+                     }
+                 }
+
+-                let is_kw_only = name == "__replace__" || kw_only.unwrap_or(false);
++                let is_kw_only =
++                    matches!(name, "__replace__" | "_replace") || kw_only.unwrap_or(false);
+
+                 // Use the alias name if provided, otherwise use the field name
+                 let parameter_name =
+@@ -2520,7 +2521,7 @@ impl<'db> ClassLiteral<'db> {
+                 }
+                 .with_annotated_type(field_ty);
+
+-                if name == "__replace__" {
++                if matches!(name, "__replace__" | "_replace") {
+                     // When replacing, we know there is a default value for the field
+                     // (the value that is currently assigned to the field)
+                     // assume this to be the declared type of the field
+@@ -2563,6 +2564,34 @@ impl<'db> ClassLiteral<'db> {
+                     .with_annotated_type(KnownClass::Type.to_instance(db));
+                 signature_from_fields(vec![cls_parameter], Some(Type::none(db)))
+             }
++            (CodeGeneratorKind::NamedTuple, "_replace" | "__replace__") => {
++                if name == "__replace__"
++                    && Program::get(db).python_version(db) < PythonVersion::PY313
++                {
++                    return None;
++                }
++                // Use `Self` type variable as return type so that subclasses get the correct
++                // return type when calling `_replace`. For example, if `IntBox` inherits from
++                // `Box[int]` (a NamedTuple), then `IntBox(1)._replace(content=42)` should return
++                // `IntBox`, not `Box[int]`.
++                let self_ty = Type::TypeVar(BoundTypeVarInstance::synthetic_self(
++                    db,
++                    instance_ty,
++                    BindingContext::Synthetic,
++                ));
++                let self_parameter = Parameter::positional_or_keyword(Name::new_static("self"))
++                    .with_annotated_type(self_ty);
++                signature_from_fields(vec![self_parameter], Some(self_ty))
++            }
++            (CodeGeneratorKind::NamedTuple, "_fields") => {
++                // Synthesize a precise tuple type for _fields based on the actual number of fields.
++                // For example, a NamedTuple with two fields gets `tuple[str, str]` instead of
++                // `tuple[str, ...]`.
++                let fields = self.fields(db, specialization, field_policy);
++                let str_ty = KnownClass::Str.to_instance(db);
++                let field_types = fields.keys().map(|_| str_ty);
++                Some(Type::heterogeneous_tuple(db, field_types))
++            }
+             (CodeGeneratorKind::DataclassLike(_), "__lt__" | "__le__" | "__gt__" | "__ge__") => {
+                 if !has_dataclass_param(DataclassFlags::ORDER) {
+                     return None;
+diff --git a/crates/ty_vendored/ty_extensions/ty_extensions.pyi b/crates/ty_vendored/ty_extensions/ty_extensions.pyi
+index 347b6b4b3491d4..f17680dd771dcc 100644
+--- a/crates/ty_vendored/ty_extensions/ty_extensions.pyi
++++ b/crates/ty_vendored/ty_extensions/ty_extensions.pyi
+@@ -5,7 +5,6 @@ from collections.abc import Iterable
+ from enum import Enum
+ from typing import (
+     Any,
+-    ClassVar,
+     LiteralString,
+     Protocol,
+     _SpecialForm,
+@@ -184,12 +183,27 @@ def reveal_mro(cls: type | types.GenericAlias) -> None:
+ # A protocol describing an interface that should be satisfied by all named tuples
+ # created using `typing.NamedTuple` or `collections.namedtuple`.
+ class NamedTupleLike(Protocol):
+-    # from typing.NamedTuple stub
+-    _field_defaults: ClassVar[dict[str, Any]]
+-    _fields: ClassVar[tuple[str, ...]]
++    # _fields and _field_defaults are defined as properties rather than ClassVar
++    # attributes so that the protocol check is covariant. This allows concrete
++    # NamedTuple classes with precise types (e.g. tuple[str, str]) to satisfy
++    # the protocol's broader type (tuple[str, ...]).
++    @property
++    def _fields(self) -> tuple[str, ...]: ...
++    @property
++    def _field_defaults(self) -> dict[str, Any]: ...
+     @classmethod
+     def _make(cls: type[Self], iterable: Iterable[Any]) -> Self: ...
+     def _asdict(self, /) -> dict[str, Any]: ...
+-    def _replace(self, /, **kwargs) -> Self: ...
++
++    # Positional arguments aren't actually accepted by these methods at runtime,
++    # but adding the `*args` parameters means that all `NamedTuple` classes
++    # are understood as assignable to this protocol due to the special case
++    # outlined in https://typing.python.org/en/latest/spec/callables.html#meaning-of-in-callable:
++    #
++    # > If the input signature in a function definition includes both a
++    # > `*args` and `**kwargs` parameter and both are typed as `Any`
++    # > (explicitly or implicitly because it has no annotation), a type
++    # > checker should treat this as the equivalent of `...`.
++    def _replace(self, *args, **kwargs) -> Self: ...
+     if sys.version_info >= (3, 13):
+-        def __replace__(self, **kwargs) -> Self: ...
++        def __replace__(self, *args, **kwargs) -> Self: ...

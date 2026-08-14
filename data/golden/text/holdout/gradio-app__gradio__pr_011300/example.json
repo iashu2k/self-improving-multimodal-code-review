@@ -1,0 +1,41 @@
+{
+  "example_id": "gradio-app__gradio__pr_011300",
+  "source": "github-codereview",
+  "repository": "gradio-app/gradio",
+  "commit_sha": "16582cb8e36dbb0c62d3f42f815890e17f6caef1",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Streamable HTTP Transport for MCP server",
+    "description": "## Description\r\n\r\nCloses #11200 \r\n\r\nAdds a streamable http transport at `/gradio_api/mcp/http`. Let's add to the docs later when more clients switch to the http protocol\r\n\r\nIn the meantime, you can test with mcp inspector:\r\n\r\n### calculator\r\n![mcp_calculator_example](https://github.com/user-attachments/assets/3a7175b8-06cd-496a-9cea-eef0a09faa29)\r\n\r\n### Image input/output\r\n![mcp_image_mod_example](https://github.com/user-attachments/assets/624484d1-5d5a-46dd-9156-7a93d2a5371b)\r\n\r\n\r\n## \ud83c\udfaf PRs Should Target Issues\r\n\r\nBefore your create a PR, please check to see if there is [an existing issue](https://github.com/gradio-app/gradio/issues) for this change. If not, please create an issue before you create this PR, unless the fix is very small. \r\n\r\nNot adhering to this guideline will result in the PR being closed. \r\n\r\n## Testing and Formatting Your Code\r\n\r\n1. PRs will only be merged if tests pass on CI. We recommend at least running the backend tests locally, please set up [your Gradio environment locally](https://github.com/gradio-app/gradio/blob/main/CONTRIBUTING.md) and run the backed tests: `bash scripts/run_backend_tests.sh`\r\n\r\n2. Please run these bash scripts to automatically format your code: `bash scripts/format_backend.sh`, and (if you made any changes to non-Python files) `bash scripts/format_frontend.sh`\r\n  \r\n",
+    "url": "https://github.com/gradio-app/gradio/pull/11300"
+  },
+  "changed_files": [
+    "gradio/blocks.py",
+    "gradio/mcp.py",
+    "test/test_mcp.py"
+  ],
+  "diff_path": "text/holdout/gradio-app__gradio__pr_011300/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "gradio/blocks.py",
+      "line": 2687,
+      "category": "bug_risk",
+      "severity": "high",
+      "issue_summary": "The StreamableHTTPSessionManager's run method must be called when the app [starts](https://github.com/modelcontextprotocol/python-sdk/blob/05b7156ea8a34d8476a7cfbef5f754e22ab6c697/examples/servers/simple-streamablehttp/mcp_simple_streamablehttp/server.py#L149)\r\n\r\nFastAPI will not run the lifespan of mounted subapplications so we need to pass the mcp lifespan all the way back up to `App.create_app`. \r\n\r\nThis refactor switches the order of creating the app and the mcp server so that the mcp server",
+      "evidence_requirement": "The diff adds a `_lifespan` context manager that enters `self.mcp_server_obj.lifespan(app)` but does not show where `self.mcp_server_obj.run()` is called to start the MCP server's background tasks.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "The MCP server's run method must be invoked during app startup to handle incoming Streamable HTTP requests; without it, the lifespan context is entered but the server remains idle.",
+      "_reviewer_comment_full": "The StreamableHTTPSessionManager's run method must be called when the app [starts](https://github.com/modelcontextprotocol/python-sdk/blob/05b7156ea8a34d8476a7cfbef5f754e22ab6c697/examples/servers/simple-streamablehttp/mcp_simple_streamablehttp/server.py#L149)\r\n\r\nFastAPI will not run the lifespan of mounted subapplications so we need to pass the mcp lifespan all the way back up to `App.create_app`. \r\n\r\nThis refactor switches the order of creating the app and the mcp server so that the mcp server and lifespan are defined before the gradio server.\r\n\r\nThere is also some logic here to ensure the mcp server lifespan works well with a user defined lifespan.",
+      "_gold_comment_url": "https://github.com/gradio-app/gradio/pull/11300#discussion_r2114788451"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 204
+}

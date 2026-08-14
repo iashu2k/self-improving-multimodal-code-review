@@ -1,0 +1,29 @@
+diff --git a/enterprise/integrations/github/github_manager.py b/enterprise/integrations/github/github_manager.py
+index 32ea147deca0..b183de65fc4d 100644
+--- a/enterprise/integrations/github/github_manager.py
++++ b/enterprise/integrations/github/github_manager.py
+@@ -145,11 +145,7 @@ async def is_job_requested(self, message: Message) -> bool:
+         ).get('body', ''):
+             return False
+
+-        if GithubFactory.is_eligible_for_conversation_starter(
+-            message
+-        ) and self._user_has_write_access_to_repo(installation_id, repo_name, username):
+-            await GithubFactory.trigger_conversation_starter(message)
+-
++        # Check event types before making expensive API calls (e.g., _user_has_write_access_to_repo)
+         if not (
+             GithubFactory.is_labeled_issue(message)
+             or GithubFactory.is_issue_comment(message)
+@@ -158,6 +154,11 @@ async def is_job_requested(self, message: Message) -> bool:
+         ):
+             return False
+
++        if GithubFactory.is_eligible_for_conversation_starter(
++            message
++        ) and self._user_has_write_access_to_repo(installation_id, repo_name, username):
++            await GithubFactory.trigger_conversation_starter(message)
++
+         logger.info(f'[GitHub] Checking permissions for {username} in {repo_name}')
+
+         return self._user_has_write_access_to_repo(installation_id, repo_name, username)

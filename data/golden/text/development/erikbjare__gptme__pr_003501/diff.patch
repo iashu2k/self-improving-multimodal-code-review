@@ -1,0 +1,100 @@
+diff --git a/tests/test_util_gh.py b/tests/test_util_gh.py
+index 457b7df9ab..62cc17d145 100644
+--- a/tests/test_util_gh.py
++++ b/tests/test_util_gh.py
+@@ -340,11 +340,14 @@ def test_gh_tool_read_pr():
+
+
+ @pytest.mark.slow
+-def test_get_github_pr_content_with_unresolved():
+-    """Test that unresolved review comments are included.
+-
+-    Uses PR #271 from gptme/gptme which has 4 unresolved review threads
+-    from ErikBjare (open since Nov 2024, stable test target).
++def test_get_github_pr_content_with_review_comments():
++    """Test that review comment metadata is included for a merged PR.
++
++    Uses PR #271 from gptme/gptme (merged).  The unresolved-thread assertion
++    was removed — PR threads can be resolved at any time, making that check
++    fragile for a live test.  Mocked coverage for the ``Review Comments
++    (Unresolved)`` section lives in ``test_util_gh_mocked.py`` where it is
++    stable regardless of GitHub state.
+     """
+     content = get_github_pr_content("https://github.com/gptme/gptme/pull/271")
+
+@@ -352,12 +355,10 @@ def test_get_github_pr_content_with_unresolved():
+         pytest.skip("gh CLI not available or request failed")
+     assert content is not None  # help mypy narrow type after skip
+
+-    # Should have basic PR info
++    # Should have basic PR info — title contains "prompts"
+     assert "gptme-util" in content or "prompts" in content
+
+-    # PR #271 has unresolved review threads — verify they show up
+-    assert "Review Comments (Unresolved)" in content
+-    # Should contain ErikBjare's review comments with file references
++    # PR was authored by ErikBjare
+     assert "ErikBjare" in content
+
+
+diff --git a/tests/test_util_gh_mocked.py b/tests/test_util_gh_mocked.py
+index bf4d9a15e7..49eea3e699 100644
+--- a/tests/test_util_gh_mocked.py
++++ b/tests/test_util_gh_mocked.py
+@@ -367,11 +367,56 @@ def test_no_context_or_suggestion(mock_pr_basic_response):
+     assert "**@reviewer** on test.py:5 (ID: 1005):" in content
+     assert "Looks good!" in content
+
++    # Should have "Review Comments (Unresolved)" section header since thread is open
++    assert "Review Comments (Unresolved)" in content
++
+     # Should NOT have context or suggestion sections
+     assert "Referenced code" not in content
+     assert "Suggested change:" not in content
+
+
++def test_review_thread_resolution_controls_unresolved_section(mock_pr_basic_response):
++    """Only comments from unresolved review threads are rendered."""
++    mock_pr_basic_response["review_comments"] = [
++        {
++            "id": 2001,
++            "user": {"login": "reviewer"},
++            "body": "This needs documentation.",
++            "path": "gptme/util/review.py",
++            "line": 42,
++            "diff_hunk": "",
++        }
++    ]
++
++    for is_resolved, section_present in ((False, True), (True, False)):
++        mock_pr_basic_response["graphql_threads"] = {
++            "data": {
++                "repository": {
++                    "pullRequest": {
++                        "reviewThreads": {
++                            "nodes": [
++                                {
++                                    "isResolved": is_resolved,
++                                    "comments": {"nodes": [{"databaseId": 2001}]},
++                                }
++                            ]
++                        }
++                    }
++                }
++            }
++        }
++
++        with patch(
++            "subprocess.run",
++            side_effect=mock_subprocess_run(mock_pr_basic_response),
++        ):
++            content = get_github_pr_content("https://github.com/owner/repo/pull/200")
++
++        assert content is not None
++        assert ("Review Comments (Unresolved)" in content) is section_present
++        assert ("This needs documentation." in content) is section_present
++
++
+ def test_empty_diff_hunk():
+     """Test review comment with empty diff_hunk string."""
+     mock_response = {

@@ -1,0 +1,38 @@
+{
+  "example_id": "commaai__openpilot__pr_036035",
+  "source": "github-codereview",
+  "repository": "commaai/openpilot",
+  "commit_sha": "25c03741645ee425c5fb980bdf932e71abece2f5",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "raylib: cleanup experimental mode gradient color calculations",
+    "description": "",
+    "url": "https://github.com/commaai/openpilot/pull/36035"
+  },
+  "changed_files": [
+    "selfdrive/ui/onroad/model_renderer.py"
+  ],
+  "diff_path": "text/holdout/commaai__openpilot__pr_036035/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "selfdrive/ui/onroad/model_renderer.py",
+      "line": 214,
+      "category": "bug_risk",
+      "severity": "low",
+      "issue_summary": "The removal of the rounding operation `int(path_hue * 100 + 0.5) / 100` may change the precision of the hue calculation. Consider whether this precision loss was intentional for performance or visual consistency reasons.\n```suggestion\n      path_hue = int(np.clip(60 + self._acceleration_x[i] * 35, 0, 120) * 100 + 0.5) / 100\n```",
+      "evidence_requirement": "The added line `path_hue = np.clip(60 + self._acceleration_x[i] * 35, 0, 120)` must be cited to show removal of prior rounding.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Removing the rounding may cause subtle visual inconsistencies in gradient color transitions due to increased floating-point precision in hue values.",
+      "_reviewer_comment_full": "The removal of the rounding operation `int(path_hue * 100 + 0.5) / 100` may change the precision of the hue calculation. Consider whether this precision loss was intentional for performance or visual consistency reasons.\n```suggestion\n      path_hue = int(np.clip(60 + self._acceleration_x[i] * 35, 0, 120) * 100 + 0.5) / 100\n```",
+      "_gold_comment_url": "https://github.com/commaai/openpilot/pull/36035#discussion_r2287025014"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 145
+}

@@ -77,6 +77,8 @@ async def index_snapshot(
 
   file_count = 0
   vendored_skipped = 0
+  empty_skipped = 0
+
   chunks_to_add: list[CodeChunk] = []
 
   with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
@@ -103,6 +105,11 @@ async def index_snapshot(
 
       file_count += 1
       for chunk in chunk_file(rel_path, source):
+        if not chunk.content.strip():
+          # Empty chunks 400 the embeddings API ("expected string to have
+          # >=1 characters") and are retrieval-useless anyway — drop loudly.
+          empty_skipped += 1
+          continue
         chunks_to_add.append(
           CodeChunk(
             snapshot_id=snapshot.id,
@@ -138,4 +145,5 @@ async def index_snapshot(
     files=file_count,
     chunks=len(chunks_to_add),
     vendored_skipped=vendored_skipped,
+    empty_skipped=empty_skipped,
   )

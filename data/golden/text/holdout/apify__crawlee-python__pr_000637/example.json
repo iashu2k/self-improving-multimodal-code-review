@@ -1,0 +1,46 @@
+{
+  "example_id": "apify__crawlee-python__pr_000637",
+  "source": "github-codereview",
+  "repository": "apify/crawlee-python",
+  "commit_sha": "e44360d503ed878b3040b277955c9be2fd00ad08",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "feat: Add `max_crawl_depth` property",
+    "description": "### Description\r\n\r\n<!-- The purpose of the PR, list of the changes, ... -->\r\n\r\n- Implements \"max crawl depth\"\r\n\r\n### Issues\r\n\r\n<!-- If applicable, reference any related GitHub issues -->\r\n\r\n- Closes: #460 \r\n\r\n### Testing\r\n\r\n<!-- Describe the testing process for these changes -->\r\n\r\n- Added tests\r\n\r\n### Checklist\r\n\r\n- [x] CI passed\r\n",
+    "url": "https://github.com/apify/crawlee-python/pull/637"
+  },
+  "changed_files": [
+    "src/crawlee/_request.py",
+    "src/crawlee/basic_crawler/_basic_crawler.py",
+    "src/crawlee/beautifulsoup_crawler/_beautifulsoup_crawler.py",
+    "src/crawlee/parsel_crawler/_parsel_crawler.py",
+    "src/crawlee/playwright_crawler/_playwright_crawler.py",
+    "tests/unit/beautifulsoup_crawler/test_beautifulsoup_crawler.py",
+    "tests/unit/parsel_crawler/test_parsel_crawler.py",
+    "tests/unit/playwright_crawler/test_playwright_crawler.py"
+  ],
+  "diff_path": "text/holdout/apify__crawlee-python__pr_000637/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "src/crawlee/basic_crawler/_basic_crawler.py",
+      "line": 124,
+      "category": "maintainability",
+      "severity": "low",
+      "issue_summary": "We should probably elaborate on the edge cases - for example, with `max_crawl_depth = 3`, do we process three or four \"levels\" of links? I'd assume that the start requests have `crawl_depth = 0`, and then we go all the way up to 3 and don't enqueue any further links, but it would be much better to have that stated explicitly in the docs.",
+      "evidence_requirement": "The added docstring for max_crawl_depth at line 123 must be quoted to show it lacks explicit edge-case clarification.",
+      "must_not_claim": [],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "Without explicit documentation of how crawl depth is counted (e.g., whether start requests are depth 0 and max_crawl_depth=3 allows depths 0\u20133), users may misconfigure or misunderstand the crawler's behavior.",
+      "_reviewer_comment_full": "We should probably elaborate on the edge cases - for example, with `max_crawl_depth = 3`, do we process three or four \"levels\" of links? I'd assume that the start requests have `crawl_depth = 0`, and then we go all the way up to 3 and don't enqueue any further links, but it would be much better to have that stated explicitly in the docs.",
+      "_gold_comment_url": "https://github.com/apify/crawlee-python/pull/637#discussion_r1824190908"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "LLM-drafted (qwen3-coder-next / claude-haiku-4.5), assistant-reviewed, human-audited on a sample; see DATASET_CARD.md",
+  "split": "holdout",
+  "snapshot_id": 180
+}

@@ -1,0 +1,52 @@
+{
+  "example_id": "huggingface__diffusers__pr_011527",
+  "source": "github-codereview",
+  "repository": "huggingface/diffusers",
+  "commit_sha": "08ba26661aef78625aa2e8503d576aa24697fd95",
+  "diff_revision": "review_comment_time",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "enable pipeline test cases on xpu",
+    "description": "incl.\r\nstable_diffusion_k_diffusion\r\nstable_diffusion_sag\r\nstable_diffusion_ldm3d\r\ntext_to_video_synthesis\r\nunclip\r\nstable_unclip\r\n\r\n@a-r-r-o-w @DN6 , pls help review, thx very much.",
+    "url": "https://github.com/huggingface/diffusers/pull/11527"
+  },
+  "changed_files": [
+    "src/diffusers/utils/testing_utils.py",
+    "tests/pipelines/stable_diffusion_k_diffusion/test_stable_diffusion_k_diffusion.py",
+    "tests/pipelines/stable_diffusion_ldm3d/test_stable_diffusion_ldm3d.py",
+    "tests/pipelines/stable_diffusion_sag/test_stable_diffusion_sag.py",
+    "tests/pipelines/stable_unclip/test_stable_unclip.py",
+    "tests/pipelines/stable_unclip/test_stable_unclip_img2img.py",
+    "tests/pipelines/text_to_video_synthesis/test_text_to_video_zero.py",
+    "tests/pipelines/text_to_video_synthesis/test_text_to_video_zero_sdxl.py",
+    "tests/pipelines/unclip/test_unclip.py",
+    "tests/pipelines/unclip/test_unclip_image_variation.py"
+  ],
+  "diff_path": "text/holdout/huggingface__diffusers__pr_011527/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "src/diffusers/utils/testing_utils.py",
+      "line": 633,
+      "category": "performance",
+      "severity": "high",
+      "issue_summary": "1. `weights_only` default value changed from `False` to `True` from PyTorch 2.6, so set explicitly to `False` here, otherwise `tests/pipelines/text_to_video_synthesis/test_text_to_video_zero.py::TextToVideoZeroPipelineSlowTests::test_full_model\r\n` will raise error\r\n2. set `map_location` default as None which aligns w. `torch.load`, otherwise  `tests/pipelines/text_to_video_synthesis/test_text_to_video_zero.py::TextToVideoZeroPipelineSlowTests::test_full_model\r\n` will raise error",
+      "evidence_requirement": "The diff adds `weights_only=False` to the torch.load call and changes `map_location` parameter to `Optional[str] = None`, directly matching the reviewer's two suggestions to prevent PyTorch 2.6+ compatibility errors.",
+      "must_not_claim": [
+        "causes authentication bypass",
+        "exposes secrets",
+        "allows arbitrary code execution"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "PyTorch 2.6 changed `weights_only` default from False to True, breaking existing code that relies on the old default; explicit False preserves backward compatibility and prevents test failures.",
+      "_reviewer_comment_full": "1. `weights_only` default value changed from `False` to `True` from PyTorch 2.6, so set explicitly to `False` here, otherwise `tests/pipelines/text_to_video_synthesis/test_text_to_video_zero.py::TextToVideoZeroPipelineSlowTests::test_full_model\r\n` will raise error\r\n2. set `map_location` default as None which aligns w. `torch.load`, otherwise  `tests/pipelines/text_to_video_synthesis/test_text_to_video_zero.py::TextToVideoZeroPipelineSlowTests::test_full_model\r\n` will raise error",
+      "_gold_comment_url": "https://github.com/huggingface/diffusers/pull/11527#discussion_r2080829812"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 215
+}

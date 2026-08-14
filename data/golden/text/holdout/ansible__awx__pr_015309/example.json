@@ -1,0 +1,43 @@
+{
+  "example_id": "ansible__awx__pr_015309",
+  "source": "github-codereview",
+  "repository": "ansible/awx",
+  "commit_sha": "ca5d1452ce6e6138ade6ec59ee654469fa3e3477",
+  "language": "Python",
+  "pr_metadata": {
+    "title": "Add better error message for wfjt create 403",
+    "description": "##### SUMMARY\r\nMore detail around when non super admin user trying to create WFJT without an org\r\n\r\nJIRA: https://issues.redhat.com/browse/AAP-25635\r\n\r\n##### ISSUE TYPE\r\n<!--- Pick one below and delete the rest: -->\r\n - Bug, Docs Fix or other nominal change\r\n\r\n##### COMPONENT NAME\r\n<!--- Name of the module/plugin/module/task -->\r\n - API\r\n\r\n##### AWX VERSION\r\n<!--- Paste verbatim output from `make VERSION` between quotes below -->\r\n```\r\n\r\n```\r\n\r\n\r\n##### ADDITIONAL INFORMATION\r\n<!---\r\nInclude additional information to help people understand the change here.\r\nFor bugs that don't have a linked bug report, a step-by-step reproduction\r\nof the problem is helpful.\r\n  -->\r\n\r\n<!--- Paste verbatim command output below, e.g. before and after your change -->\r\n```\r\n\r\n```\r\n",
+    "url": "https://github.com/ansible/awx/pull/15309"
+  },
+  "changed_files": [
+    "awx/api/views/__init__.py",
+    "awx/main/access.py",
+    "awx/main/tests/functional/test_rbac_workflow.py"
+  ],
+  "diff_path": "text/holdout/ansible__awx__pr_015309/diff.patch",
+  "expected_outcome": "comment_expected",
+  "gold_comments": [
+    {
+      "file_path": "awx/main/access.py",
+      "line": 2100,
+      "category": "security",
+      "severity": "high",
+      "issue_summary": "This isn't true any more. `workflow_admin_role` is a role. The core idea of the new system (DAB RBAC) is that it enumerates permissions of a role. So access control only considers permissions, never roles. You get permissions from roles, but policy evaluators should never know what role gave you the permission.\r\n\r\nI also don't think that we need this, and I would say it would be more _consistent_ right now to give an unqualified 403 \"you do not have permission to perform this action\" error messa",
+      "evidence_requirement": "The added code still uses role_field='workflow_admin_role', 'use_role', and 'read_role' in check_related calls, and produces role-specific error messages, contradicting the reviewer's instruction to use a generic 403 and DAB RBAC principles.",
+      "must_not_claim": [
+        "exposes secrets",
+        "causes crash"
+      ],
+      "requires_repo_context": false,
+      "requires_screenshot": false,
+      "rationale": "A human reviewer would flag this because the code continues to reference roles instead of checking permissions directly, violating the new DAB RBAC design where policy evaluators should only consider permissions, not roles.",
+      "_reviewer_comment_full": "This isn't true any more. `workflow_admin_role` is a role. The core idea of the new system (DAB RBAC) is that it enumerates permissions of a role. So access control only considers permissions, never roles. You get permissions from roles, but policy evaluators should never know what role gave you the permission.\r\n\r\nI also don't think that we need this, and I would say it would be more _consistent_ right now to give an unqualified 403 \"you do not have permission to perform this action\" error message, considering that it was the \"add\" permission lacked for the \"add\" action.",
+      "_gold_comment_url": "https://github.com/ansible/awx/pull/15309#discussion_r1657727823"
+    }
+  ],
+  "context_files": [],
+  "no_comment_rationale": "",
+  "human_label_notes": "",
+  "split": "holdout",
+  "snapshot_id": 141
+}
