@@ -2,7 +2,7 @@
 
 Layered matcher (spec):
   1. file path must match exactly
-  2. generated line within tolerance window (±3)
+  2. generated line within tolerance window
   3. category must match or map to an approved equivalent
   4. LLM judge evaluates semantic equivalence to the gold issue
 

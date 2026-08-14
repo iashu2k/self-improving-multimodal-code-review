@@ -1,7 +1,7 @@
 """LLM judge: semantic equivalence + groundedness, with persisted rationale.
 
 The judge never replaces the deterministic layers — it only ranks pairs that
-already share file, ±3-line window, and category equivalence. Every call
+already share file and category equivalence. Every call
 returns rationales which are stored verbatim for the 20% human audit.
 
 Field contracts (verified):

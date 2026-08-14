@@ -1,4 +1,10 @@
-from app.ingestion.chunker import chunk_file, chunk_python_file, classify_file
+from app.ingestion.chunker import (
+  MAX_CHUNK_LINES,
+  OVERLAP_LINES,
+  chunk_file,
+  chunk_python_file,
+  classify_file,
+)
 
 SAMPLE_SOURCE = """import os
 from pathlib import Path
@@ -49,3 +55,30 @@ def test_chunk_file_routes_by_extension() -> None:
   assert chunk_file("a.py", SAMPLE_SOURCE)[0].symbol is not None or True
   md_chunks = chunk_file("README.md", "# Title\nsome text")
   assert md_chunks[0].chunk_type == "doc"
+
+
+def test_large_non_python_file_windowed_not_skipped() -> None:
+  # Regression: >MAX_CHUNK_LINES non-.py files used to return [] — invisible
+  # to retrieval (found live on CHANGELOG.md / ruff mdtest files, Phase 7.2).
+  lines = [f"line {i}" for i in range(1, 301)]
+  chunks = chunk_file("CHANGELOG.md", "\n".join(lines))
+  assert chunks, "large non-Python files must be windowed, not skipped"
+  assert chunks[0].start_line == 1
+  assert chunks[-1].end_line == 300
+  assert all(c.end_line - c.start_line + 1 <= MAX_CHUNK_LINES for c in chunks)
+  assert all(c.chunk_type == "doc" for c in chunks)
+
+
+def test_windowed_chunks_leave_no_gaps() -> None:
+  lines = [f"line {i}" for i in range(1, 301)]
+  chunks = chunk_file("CHANGELOG.md", "\n".join(lines))
+  for prev, nxt in zip(chunks, chunks[1:], strict=False):
+    assert nxt.start_line <= prev.end_line + 1
+    assert nxt.start_line == prev.start_line + MAX_CHUNK_LINES - OVERLAP_LINES
+
+
+def test_non_python_boundary_sizes() -> None:
+  exact = "\n".join(f"line {i}" for i in range(MAX_CHUNK_LINES))
+  assert len(chunk_file("notes.txt", exact)) == 1
+  over = "\n".join(f"line {i}" for i in range(MAX_CHUNK_LINES + 1))
+  assert len(chunk_file("notes.txt", over)) == 2

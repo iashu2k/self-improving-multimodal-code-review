@@ -22,13 +22,13 @@
       "line": 166,
       "category": "security",
       "severity": "high",
-      "issue_summary": "**question:** If we make this endpoint public, could it introduce any potential security risks? As we prepare to release the shared conversation feature, I would appreciate your guidance on whether someone who receives a shared conversation might have any way of accessing sensitive information or secrets. Thank you! \ud83d\ude4f ",
+      "issue_summary": "**question:** If we make this endpoint public, could it introduce any potential security risks? As we prepare to release the shared conversation feature, I would appreciate your guidance on whether someone who receives a shared conversation might have any way of accessing sensitive information or secrets. Thank you! 🙏 ",
       "evidence_requirement": "The added line '/api/v1/webhooks/secrets' in the ignore_paths list shows the endpoint no longer requires keycloak_auth cookie authentication.",
       "must_not_claim": [],
       "requires_repo_context": false,
       "requires_screenshot": false,
       "rationale": "Removing authentication for a secrets endpoint exposes it to unauthorized access, potentially allowing anyone to retrieve sensitive webhook secrets.",
-      "_reviewer_comment_full": "**question:** If we make this endpoint public, could it introduce any potential security risks? As we prepare to release the shared conversation feature, I would appreciate your guidance on whether someone who receives a shared conversation might have any way of accessing sensitive information or secrets. Thank you! \ud83d\ude4f ",
+      "_reviewer_comment_full": "**question:** If we make this endpoint public, could it introduce any potential security risks? As we prepare to release the shared conversation feature, I would appreciate your guidance on whether someone who receives a shared conversation might have any way of accessing sensitive information or secrets. Thank you! 🙏 ",
       "_gold_comment_url": "https://github.com/OpenHands/OpenHands/pull/12525#discussion_r2713266088"
     }
   ],

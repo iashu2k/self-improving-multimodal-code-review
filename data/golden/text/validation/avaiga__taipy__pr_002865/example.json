@@ -6,7 +6,7 @@
   "language": "Python",
   "pr_metadata": {
     "title": "Documentation error in decimator usage.",
-    "description": "## What type of PR is this? (Check all that apply)\r\n\r\n- [ ] \ud83d\udee0 Refactor\r\n- [ ] \u2728 Feature\r\n- [ ] \ud83d\udc1b Bug Fix\r\n- [ ] \u26a1 Optimization\r\n- [x] \ud83d\udcdd Documentation Update\r\n\r\n## Description\r\n\r\nChart's decimator property is not properly documented.\r\n\r\n\r\n## How to reproduce the issue\r\n\r\n<!-- Provide step-by-step instructions to reproduce the issue or test the feature. -->\r\n\r\n## Backporting\r\n\r\nThis change should be backported to Taipy 4.1.\r\n\r\n## Checklist\r\n_We encourage keeping the code coverage percentage at **80% or above**._\r\n\r\n- [x] \u2705 This solution meets the acceptance criteria of the related issue.\r\n- [x] \ud83d\udcda The **documentation** has been updated, or a dedicated issue has been created.\r\n",
+    "description": "## What type of PR is this? (Check all that apply)\r\n\r\n- [ ] 🛠 Refactor\r\n- [ ] ✨ Feature\r\n- [ ] 🐛 Bug Fix\r\n- [ ] ⚡ Optimization\r\n- [x] 📝 Documentation Update\r\n\r\n## Description\r\n\r\nChart's decimator property is not properly documented.\r\n\r\n\r\n## How to reproduce the issue\r\n\r\n<!-- Provide step-by-step instructions to reproduce the issue or test the feature. -->\r\n\r\n## Backporting\r\n\r\nThis change should be backported to Taipy 4.1.\r\n\r\n## Checklist\r\n_We encourage keeping the code coverage percentage at **80% or above**._\r\n\r\n- [x] ✅ This solution meets the acceptance criteria of the related issue.\r\n- [x] 📚 The **documentation** has been updated, or a dedicated issue has been created.\r\n",
     "url": "https://github.com/Avaiga/taipy/pull/2865"
   },
   "changed_files": [

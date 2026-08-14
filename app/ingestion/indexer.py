@@ -69,6 +69,7 @@ async def index_snapshot(
   snapshot: RepoSnapshot,
   github: GitHubClient,
   llm: OpenRouterClient,
+  priority_files: set[str] | None = None,
 ) -> None:
   if snapshot.status == "indexed":
     return
@@ -82,7 +83,16 @@ async def index_snapshot(
   chunks_to_add: list[CodeChunk] = []
 
   with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
-    for member in tar.getmembers():
+    members = [m for m in tar.getmembers() if m.isfile()]
+    if priority_files:
+
+      def _rank(m: tarfile.TarInfo) -> int:
+        rel = "/".join(m.name.split("/")[1:])
+        return 0 if rel in priority_files else 1
+
+      members.sort(key=_rank)  # stable: non-priority keep tar order
+
+    for member in members:
       if file_count >= MAX_FILES:
         break
       if not member.isfile() or not member.name.endswith(INDEXABLE_SUFFIXES):

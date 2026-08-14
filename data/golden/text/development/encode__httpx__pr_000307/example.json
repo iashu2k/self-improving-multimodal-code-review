@@ -26,7 +26,7 @@
       "category": "maintainability",
       "severity": "medium",
       "issue_summary": "Can we move this section into the `load_ssl_context_verify()`? Since we're only doing the loading if we've got verify active anyways.\r\n\r\nAlso is there any harm in having `SSLConfig.verify` default to `True` in the constructor? It defaults to `True` on the client anyways.",
-      "evidence_requirement": "The added block at lines 94\u201399 in httpx/config.py performs env-based cert loading outside `load_ssl_context_verify()`, contrary to the reviewer's suggestion to move it inside.",
+      "evidence_requirement": "The added block at lines 94–99 in httpx/config.py performs env-based cert loading outside `load_ssl_context_verify()`, contrary to the reviewer's suggestion to move it inside.",
       "must_not_claim": [],
       "requires_repo_context": false,
       "requires_screenshot": false,

@@ -23,13 +23,13 @@
       "line": 537,
       "category": "performance",
       "severity": "medium",
-      "issue_summary": "I wonder if it\u2019s possible to broadcast after calling LMCache\u2019s kernel to transfer `memory_obj` from CPU to GPU, instead of using `tensor.to`, since it\u2019s faster.",
-      "evidence_requirement": "The comment must cite the added `save_only_first_rank` logic (lines 100\u2013105) and the unchanged use of `tensor.to` in the broadcast path (line 537) as evidence that the performance concern about broadcast timing was not addressed.",
+      "issue_summary": "I wonder if it’s possible to broadcast after calling LMCache’s kernel to transfer `memory_obj` from CPU to GPU, instead of using `tensor.to`, since it’s faster.",
+      "evidence_requirement": "The comment must cite the added `save_only_first_rank` logic (lines 100–105) and the unchanged use of `tensor.to` in the broadcast path (line 537) as evidence that the performance concern about broadcast timing was not addressed.",
       "must_not_claim": [],
       "requires_repo_context": false,
       "requires_screenshot": false,
       "rationale": "A human reviewer would raise this because the diff introduces rank-0-only saving but retains the potentially suboptimal `tensor.to` call before broadcasting, missing an opportunity to leverage faster LMCache kernel transfers first.",
-      "_reviewer_comment_full": "I wonder if it\u2019s possible to broadcast after calling LMCache\u2019s kernel to transfer `memory_obj` from CPU to GPU, instead of using `tensor.to`, since it\u2019s faster.",
+      "_reviewer_comment_full": "I wonder if it’s possible to broadcast after calling LMCache’s kernel to transfer `memory_obj` from CPU to GPU, instead of using `tensor.to`, since it’s faster.",
       "_gold_comment_url": "https://github.com/LMCache/LMCache/pull/1128#discussion_r2226700916"
     }
   ],

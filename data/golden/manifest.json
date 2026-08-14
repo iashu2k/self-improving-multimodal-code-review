@@ -1,5 +1,5 @@
 {
-  "dataset_version": "0.1.0",
+  "dataset_version": "0.2.0",
   "created": "2026-08-14",
   "generators": {
     "vision_model": "anthropic/claude-sonnet-4.5",
@@ -112,7 +112,7 @@
         "diff": "text/development/activeloopai__hub__pr_002216/diff.patch"
       },
       "sha256": {
-        "annotation": "9a787fce20ea711f6664b665fcf92507eb67af678f2d12c0eec4c41db0f43b0d",
+        "annotation": "cd599ef9048d4bfc47ed85d255705c032b5d74cfc180ebd05aa253af9f9f23e2",
         "diff": "c4a213b57d9a721b426505dfd4b5243e83da1cf64772823b4ff861e18c7f64d7"
       }
     },
@@ -125,7 +125,7 @@
         "diff": "text/development/activeloopai__hub__pr_002447/diff.patch"
       },
       "sha256": {
-        "annotation": "32cc2571d76c6fcf970da1ce2380fb92f3ae0df243d1b9673decfd2cd2fe8382",
+        "annotation": "0d06227db35592801a8085919de922394084d2c1f5add050c991687f42eec9f2",
         "diff": "13d02f85cfffdd0066c501b5628024f6ad0ce4526adeffd43497d1a4eec91ea8"
       }
     },
@@ -138,7 +138,7 @@
         "diff": "text/development/activeloopai__hub__pr_002711/diff.patch"
       },
       "sha256": {
-        "annotation": "e35230cf02f86ca63dd67beb25cc23acaba6f146b81af49231a9ebd813f4f0f2",
+        "annotation": "3ec895d52618310ffaf4a182604f6dd764caf0d0f2af16d491a13b26e74ae6ef",
         "diff": "e620b4d4ad5af5bf5ac8213aacc73a1644ecce95a5f06a559e5a28e8a718f206"
       }
     },
@@ -177,7 +177,7 @@
         "diff": "text/development/astral-sh__ruff__pr_022746/diff.patch"
       },
       "sha256": {
-        "annotation": "81ba32aaa290b75902f99867a22c982b0c856beb659f9f0e164919a6acfcc471",
+        "annotation": "f021ccace42920a6c363f18c95e3628c72c65d6633d272e59f2923799ca3f859",
         "diff": "b2c0c43ceba0db0cf34f6b5f9b09374cafa97d3b42542a13650f4a89b35bb6f1"
       }
     },
@@ -190,7 +190,7 @@
         "diff": "text/development/astral-sh__ruff__pr_027553/diff.patch"
       },
       "sha256": {
-        "annotation": "ac3607b47cba5594e266f42d76476d807c010e4330668b841c6b0e9fff309c86",
+        "annotation": "a13b73ea3d16370d723ec59581dac4ca3a3ad6d3b7502ae33e9d738af9519f2e",
         "diff": "44e8997dcc115591b28fff7cb115b1f0d4d3b7dde14467e6638c155de16bbd1a"
       }
     },
@@ -242,7 +242,7 @@
         "diff": "text/development/encode__httpx__pr_000307/diff.patch"
       },
       "sha256": {
-        "annotation": "dbc9afb71abbfb9eb9104b7e756f3fee12ebd8a41cb305e8fd63854e0779ada1",
+        "annotation": "9749a70d0c6a8c776ed2cb1952b6dea8c6a6192048faa581d79ee904293b17ac",
         "diff": "fbf3ed9a1031d8f2802122b23eae7e344dab04e1e8d365d7ead2899b56e7873d"
       }
     },
@@ -255,7 +255,7 @@
         "diff": "text/development/encode__httpx__pr_003699/diff.patch"
       },
       "sha256": {
-        "annotation": "982ab1d107e718fcbbde41d90f57e34f2a9005223dd68a7c5b8a13d2f3f53996",
+        "annotation": "1b4f1628f38b7bde115afa2197c7bbfaafd3dc3d671c923ce324e6dfa01ab943",
         "diff": "16b8c86af59ba72e1ce8d58c2a4a5a8dd95f45b4cbec53fabf7685c8c6570044"
       }
     },
@@ -268,7 +268,7 @@
         "diff": "text/development/encode__httpx__pr_003773/diff.patch"
       },
       "sha256": {
-        "annotation": "9de1ead64acca9711cbdb5d93ebc66d7e0ca9d1e2d7147fefaf7fa143c3a1928",
+        "annotation": "ce9655be0967c9f854a0e1f2edfb4f67342086645c581bf5182dcf7a54b491a0",
         "diff": "04882ef7889b419c32cfa81d8b77d6d182aa08e6a3218394005f574dfba96de8"
       }
     },
@@ -294,7 +294,7 @@
         "diff": "text/development/erikbjare__gptme__pr_003499/diff.patch"
       },
       "sha256": {
-        "annotation": "c7c4993b5309158457992b589fe86619f87f91776eea348fb55a49e9ce5c20e5",
+        "annotation": "9823cd4227c1697f11196134dd1abd796d8c7d8003383a965f71bc12ace6a0b0",
         "diff": "af4c27bb058a8d8676c59c8498b25a0aa747f7dc583b4ff20e6ce9865b21ce4f"
       }
     },
@@ -307,7 +307,7 @@
         "diff": "text/development/erikbjare__gptme__pr_003501/diff.patch"
       },
       "sha256": {
-        "annotation": "0c186199c464c09333afc8505557f14d742ef1d57ac8bc7e2f653e352715866c",
+        "annotation": "7f2a2f92a0cd6696b11f2b65a777bcd39416b4e0eef73b0eaec8a48b7e0369fa",
         "diff": "763367df6e138c766fe88949e4f4c76876df532f013fe73c3b251b1d6931c2e3"
       }
     },
@@ -372,7 +372,7 @@
         "diff": "text/validation/all-hands-ai__openhands__pr_011715/diff.patch"
       },
       "sha256": {
-        "annotation": "c33799a41430d67e0d1787a3d4030ba42aa0afb517931ae7c1fd2f6bb99fddbe",
+        "annotation": "666bf32f281f918e6e825bfb2ae912fb6e492a20b177a9849991898b1a6e234c",
         "diff": "a05fadb48f6d6b53484258fd95e266f0e3243a8dcc3bcd341b80912acc50e315"
       }
     },
@@ -385,7 +385,7 @@
         "diff": "text/validation/all-hands-ai__openhands__pr_012525/diff.patch"
       },
       "sha256": {
-        "annotation": "17457ba8dee3d0cd7d1f01873b35055ed177d3a346fb53f258e9396d83a5b9de",
+        "annotation": "fcdefa053d9aa98892deefdc00e8ef6123e6f96b05065dd57555617a5c204842",
         "diff": "ab21240c5e2b13d48f34368c8c87dfbece4e48e9405e11ede233e06b41358bec"
       }
     },
@@ -398,7 +398,7 @@
         "diff": "text/validation/all-hands-ai__openhands__pr_012817/diff.patch"
       },
       "sha256": {
-        "annotation": "c7d41db66632ed80d4e211537b006b7a13b30a98ef251f9daf7ee347f8e7bec6",
+        "annotation": "54042ff514056c5b1455959b90d626300431fd2a64aed591a5e6d6e2af46e2bb",
         "diff": "dec1426c7d622fb7f1254d860c0cf435c427fba9fec8a1777cae224efc9a0089"
       }
     },
@@ -463,7 +463,7 @@
         "diff": "text/validation/apache__kafka__pr_020699/diff.patch"
       },
       "sha256": {
-        "annotation": "2207f15650cf27e0ecc96a409181713bfaef785c35848ac75fa59b0ea8d9d5df",
+        "annotation": "5a4ca7cd728b724b04e6c9a7e0059db22211f2aa7e1e9c69cde52c955161b73b",
         "diff": "7c40e9de7b0205792cf0046e4b8e5788a0c095d70c55e734a760b787ca93f50b"
       }
     },
@@ -541,7 +541,7 @@
         "diff": "text/validation/avaiga__taipy__pr_002865/diff.patch"
       },
       "sha256": {
-        "annotation": "3e152a9621882e6be17f93e4237b9d9803c990407f74a218909ee2c6ef1aa3c0",
+        "annotation": "4af84e7f41553caf42e8c709b7835b21f8cc055c20f912edc0f8f3814c9088ef",
         "diff": "ea339a4f3102010d6baac7512a17ae3c653f6685cb8898efe15694c3414dfd8f"
       }
     },
@@ -554,7 +554,7 @@
         "diff": "text/validation/avaiga__taipy__pr_002867/diff.patch"
       },
       "sha256": {
-        "annotation": "22631bcbccf987018ad71c81c4c4dedae1576825ddcd0bacce90b00692269601",
+        "annotation": "7aee9ee8b4088f46ace6ab697a6f0e91ae7dbd240cc53ccafe2d6a4aa6b96d71",
         "diff": "99fade0efa8c05c5bf78b583c9bdeb9fe06740a90cd1f66a41008f0f2347ac6e"
       }
     },
@@ -710,7 +710,7 @@
         "diff": "text/validation/hiyouga__llama-factory__pr_009617/diff.patch"
       },
       "sha256": {
-        "annotation": "c3f20cfa31d2cf4c8d8303a46591552d01a4a1507ee2425618e4c97b308fbe51",
+        "annotation": "2c763801507129ba18a24c720f88a4a6b6da5bed6187ae676cf1de5b34256064",
         "diff": "066e04d481205363eaa34c6b16afa9dd5b365a9d3cac733574085853b22e4ab6"
       }
     },
@@ -723,7 +723,7 @@
         "diff": "text/validation/hpcaitech__colossalai__pr_003928/diff.patch"
       },
       "sha256": {
-        "annotation": "7919eca486b114da9eed7b457546db312c2b3c13f1a0b84d3ab685806350eeb5",
+        "annotation": "0a1f56f338563c22a30b3483646a4e23d09847d20102350d1e394a73a16b824b",
         "diff": "31fc5790c620b26712d6234834739bf66374c36ba219b653f36c8c5eb573d7ec"
       }
     },
@@ -736,7 +736,7 @@
         "diff": "text/validation/hpcaitech__colossalai__pr_004185/diff.patch"
       },
       "sha256": {
-        "annotation": "63d9b79a725d31742fb4afb4a199d2aef75c7d03709df1fde9ddaf683ca310df",
+        "annotation": "1f0159b3771d1ab557f4d67786e3de17a2ceaf704d430145d2846dfd8d028975",
         "diff": "4a358e6963aeff94a2cca202c15c4e3352fac28b52efb4c4a146e7a520e7b198"
       }
     },
@@ -749,7 +749,7 @@
         "diff": "text/validation/hpcaitech__colossalai__pr_005043/diff.patch"
       },
       "sha256": {
-        "annotation": "f1cb69217675e8517e7a1908cee91671d3d00fc71b6a8ed168b35fff078f8288",
+        "annotation": "7e234b4440057d8f998012fc3f4dbb41483a688779bc1009a78207fdea45d6a3",
         "diff": "d836be1869585a831ba54e389bdbbc8e9c9ad4ef925c938dbfe2b9fd11478b6c"
       }
     },
@@ -762,7 +762,7 @@
         "diff": "text/validation/lmcache__lmcache__pr_001128/diff.patch"
       },
       "sha256": {
-        "annotation": "d8f564cb33f1ca2ff78111d9e6af737ed944c0b39ac73207a09645d0bd26a9bc",
+        "annotation": "e2ad3a018d1cda4211462643a9c29a64c78e420e2e6e4d7853ad1eb86559ea57",
         "diff": "d65be8e53698d2f62554a0e0a5159b66f75ec75f850bc104663a5ba2225f756f"
       }
     },

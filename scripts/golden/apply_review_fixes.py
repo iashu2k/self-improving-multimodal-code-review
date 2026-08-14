@@ -116,7 +116,7 @@ def apply_fixes() -> None:
     example = json.loads(path.read_text())
     example["gold_comments"][0].update(fields)
     example["human_label_notes"] = PROVENANCE
-    path.write_text(json.dumps(example, indent=2) + "\n")
+    path.write_text(json.dumps(example, indent=2, ensure_ascii=False) + "\n")
     applied += 1
   print(f"applied fixes to {applied}/{len(FIXES)} examples")
   if missing:
@@ -138,7 +138,7 @@ def accept_rest() -> None:
         continue
       example = json.loads(text)
       example["human_label_notes"] = PROVENANCE
-      path.write_text(json.dumps(example, indent=2) + "\n")
+      path.write_text(json.dumps(example, indent=2, ensure_ascii=False) + "\n")
       accepted += 1
   print(f"accepted {accepted} remaining stamped examples")
 

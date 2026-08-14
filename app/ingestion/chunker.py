@@ -104,8 +104,18 @@ def chunk_file(path: str, source: str) -> list[Chunk]:
   chunk_type = classify_file(path)
   if path.endswith(".py"):
     return chunk_python_file(path, source)
-  # Non-Python files: whole-file chunk if small, else skip
   lines = source.splitlines()
   if len(lines) <= MAX_CHUNK_LINES:
     return [Chunk(path, chunk_type, None, 1, len(lines), source)]
-  return []
+  # Large non-Python files: window with overlap instead of skipping —
+  # a skipped file is invisible to retrieval (CHANGELOG.md, mdtest docs).
+  chunks = []
+  step = MAX_CHUNK_LINES - OVERLAP_LINES
+  for i, start in enumerate(range(0, len(lines), step)):
+    end = min(start + MAX_CHUNK_LINES, len(lines))
+    chunks.append(
+      Chunk(path, chunk_type, f"part{i + 1}", start + 1, end, "\n".join(lines[start:end]))
+    )
+    if end >= len(lines):
+      break
+  return chunks
