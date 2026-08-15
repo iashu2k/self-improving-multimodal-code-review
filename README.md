@@ -341,7 +341,6 @@ self-improving-multimodal-code-review/
 ```bash
 git clone https://github.com/iashu2k/self-improving-multimodal-code-review.git
 cd self-improving-multimodal-code-review
-
 uv sync
 docker compose up -d          # redis + postgres (pgvector)
 
@@ -425,7 +424,7 @@ uv run python -m app.evals.run --dataset validation --config v3-sonnet45 \
   --systems baseline_a --max-repairs 1 --export data/processed/eval_v3_sonnet45
 ```
 
-Splits: `development` (17 — smoke/debug only, too small to rank arms), `validation` (35 — arm/config selection), `holdout` (72 — sealed; one shot for the final number). `baseline_b` and `final_agent` require per-example `snapshot_id` (repo snapshots for retrieval) — blocked on snapshot curation. Each run needs a fresh `--config` label; exports land `per_example.csv`, `failure_examples.json`, `baseline_vs_final.md`, `aggregates.json`.
+Splits: `development` (17 — smoke/debug only, too small to rank arms), `validation` (35 — arm/config selection), `holdout` (72 — sealed; one shot for the final number). `baseline_b` and `final_agent` require per-example `snapshot_id` (repo snapshots for retrieval) — blocked on snapshot curation. Each run needs a fresh `--config` label; exports land in `per_example.csv`, `failure_examples.json`, `baseline_vs_final.md`, and `aggregates.json`.
 
 ### Example published comment (RAG-grounded, Phase 3)
 
@@ -483,7 +482,7 @@ The actual engineering journey — failures included, because that's where the d
 
 **The model-reliability journey:**
 
-1. *Intermittent `JSONDecodeError` on `qwen/qwen3.6-35b-a3b`* — thinking-mode output consuming the token budget before final JSON. Hardened the client: retry malformed JSON/empty content (not just HTTP errors), preview raw content in errors.
+1. *Intermittent `JSONDecodeError` on `qwen/qwen3.6-35b-a3b`* — thinking-mode output consumed the token budget before final JSON. Hardened the client: retry malformed JSON/empty content (not just HTTP errors), preview raw content in errors.
 2. *Repeated empty `message.content` on the same model* — two full retry-cycle failures. Decision: treat the route as unreliable for this workload; switch models rather than fight it. Added diagnostic logging (`finish_reason`, `has_reasoning`, `usage`).
 3. *404 on `qwen/qwen3-coder`* — model ID didn't resolve. Taught the retry policy to **fail fast on permanent errors** (404) while still retrying 429/5xx/malformed output.
 4. *Final: `qwen/qwen3-coder-next`* — **5/5** consecutive valid structured runs on the seeded auth-bypass fixture; correct line anchor, concise evidence, ~$0.12/M input tokens.
@@ -598,7 +597,7 @@ The actual engineering journey — failures included, because that's where the d
 
 ### Phase 5 — Multimodal Frontend Review
 
-**Goal:** multmodal review of frontend PRs — Playwright screenshots of rendered UI, a vision model producing structured observations, and UI findings grounded back to changed code lines before they become comments.
+**Goal:** multimodal review of frontend PRs — Playwright screenshots of rendered UI, a vision model producing structured observations, and UI findings grounded back to changed code lines before they become comments.
 
 **Built:**
 
@@ -824,3 +823,46 @@ Honest list — each has a phase assigned:
 ## Roadmap
 
 **Phase 7 (in progress):** the evaluation harness. Done: text golden set (124 reviewed examples from real review comments), layered matcher + LLM judge with persisted rationales, baseline_a measured, generator arm selected (sonnet-4.5), diff-only recall ceiling established (~10–13%). Next: snapshot curation (per-example `snapshot_id`) so `baseline_b` (diff + RAG) and `final_agent` (full graph) can run on validation; then one sealed holdout run for the headline number; the 6B adversarial backlog as the first self-improvement targets.
+
+---
+
+## Phase 7B — Validation Audit and System Selection Update
+
+### Audit result
+
+Human-confirmed sample: 10 validation golds, seed 42.
+
+| Classification | Count |
+|---|---:|
+| `diff_sufficient` | 6 |
+| `needs_repo_context` | 3 |
+| `needs_external` | 1 |
+
+All 10 source labels had `requires_repo_context: false`.
+
+**Conclusion:** the flag is currently unreliable; do not use it as the retrieval-addressable population metric until relabeled.
+
+Gold-quality correction identified: `genesis-embodied-ai__genesis__pr_000961` has a mismatch between the reviewer comment (duplicate `add_weld_constraint` calls) and its `evidence_requirement` (missing `delete_weld_constraint`).
+
+### Validation system selection
+
+Selected baseline: `baseline_a` with `anthropic/claude-sonnet-4.5`.
+
+| System | Runs | F1 | Recall | Abstain | Groundedness | Decision |
+|---|---|---|---|---|---|---|
+| `baseline_a` | v3 r1/r2 | 0.082 / 0.064 | 0.129 / 0.097 | 0.500 / 0.500 | see v3 exports | selected |
+| `baseline_b` | v4 r1/r2 | 0.046 / — | 0.065 / 0.000 | 1.000 / 1.000 | 0.750 / 0.750 | rejected as generator |
+| `baseline_a_relaxed` | v5 r1/r2 | 0.069 / 0.067 | 0.129 / 0.129 | 0.250 / 0.250 | 0.800 / 0.830 | rejected |
+
+**Decision:** `baseline_a` remains selected. `baseline_b` improved negative abstention but did not improve recall or F1. Relaxing the review policy stabilized recall but reduced negative abstention and did not beat `baseline_a` mean F1.
+
+Holdout remains sealed and has not been used for model selection.
+
+### Operational cleanup
+
+Marked four interrupted eval runs as `failed` rather than deleting them:
+
+- `v1/development` ×2
+- `v3-val-sonnet45-r2/validation` ×2
+
+Reason: preserve partial audit records while preventing status-based queries and future analysis from treating them as active runs.
