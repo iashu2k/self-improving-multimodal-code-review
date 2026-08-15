@@ -1,5 +1,6 @@
 import json
 import re
+from uuid import uuid4
 
 from app.agents.schemas import ReviewCategory, ReviewComment, ReviewResult, Severity
 from app.github.formatting import (
@@ -94,3 +95,13 @@ def test_marker_payload_is_html_comment() -> None:
     "run_id": 1,
     "kind": "summary",
   }
+
+
+def test_marker_payload_serializes_uuid() -> None:
+  run_id = uuid4()
+
+  marker = marker_payload({"run_id": run_id, "file": "src/example.py", "line": 12})
+
+  assert str(run_id) in marker
+  assert '"file":"src/example.py"' in marker
+  assert '"line":12' in marker

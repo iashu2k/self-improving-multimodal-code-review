@@ -40,11 +40,18 @@ class OpenRouterJudgeClient:
     self.model = model
     self._client = None
 
-  async def judge(self, system: str, user: str, schema_name: str, json_schema: dict) -> str:
+  async def judge(
+    self,
+    system: str,
+    user: str,
+    schema_name: str,
+    json_schema: dict,
+  ) -> str:
     if self._client is None:
       from app.llm.openrouter_client import OpenRouterClient
 
       self._client = OpenRouterClient()
+
     response = await self._client.chat_structured(
       model=self.model,
       schema_name=schema_name,
@@ -62,22 +69,33 @@ class OpenRouterJudgeClient:
 def load_golden_split(split: str) -> list[dict]:
   manifest = json.loads((GOLDEN_ROOT / "manifest.json").read_text())
   examples = []
+
   for entry in manifest.get("cases", []):
     if entry.get("kind") != "text" or entry.get("split") != split:
       continue
+
     example = json.loads((GOLDEN_ROOT / entry["paths"]["annotation"]).read_text())
     example["gold_comments"] = [
-      GoldComment.model_validate(c) for c in example.get("gold_comments", [])
+      GoldComment.model_validate(comment) for comment in example.get("gold_comments", [])
     ]
+
     diff_path = GOLDEN_ROOT / example["diff_path"]
     example["_diff_text"] = diff_path.read_text()
     example["_changed_files"] = parse_unified_diff(example["_diff_text"])
     examples.append(example)
+
   return examples
 
 
-async def retrieve_contexts(changed_files, session, snapshot_id, llm, embedding_model):
+async def retrieve_contexts(
+  changed_files,
+  session,
+  snapshot_id,
+  llm,
+  embedding_model,
+):
   contexts = []
+
   for changed_file in changed_files[:MAX_CONTEXT_QUERY_FILES]:
     contexts.extend(
       await hybrid_retrieve(
@@ -88,28 +106,42 @@ async def retrieve_contexts(changed_files, session, snapshot_id, llm, embedding_
         embedding_model=embedding_model,
       )
     )
+
   return contexts[:MAX_CONTEXTS_FOR_PROMPT]
 
 
-async def baseline_a_review(example, *, max_repairs: int = 0):
+async def baseline_a_review(
+  example,
+  *,
+  max_repairs: int = 0,
+) -> SystemOutput:
   from app.llm.openrouter_client import OpenRouterClient
 
   client = OpenRouterClient()
-  result, comments = await generate_comments(
+  _, comments = await generate_comments(
     files=example["_changed_files"],
     pr_title=example["pr_metadata"]["title"],
     pr_body=example["pr_metadata"].get("description", ""),
     client=client,
     model=settings.openrouter_review_model,
   )
-  return SystemOutput(system=SystemName.BASELINE_A, comments=comments, attempts=1)
+
+  return SystemOutput(
+    system=SystemName.BASELINE_A,
+    comments=comments,
+    attempts=1,
+  )
 
 
-async def baseline_a_relaxed_review(example, *, max_repairs: int = 0):
+async def baseline_a_relaxed_review(
+  example,
+  *,
+  max_repairs: int = 0,
+) -> SystemOutput:
   from app.llm.openrouter_client import OpenRouterClient
 
   client = OpenRouterClient()
-  result, comments = await generate_comments(
+  _, comments = await generate_comments(
     files=example["_changed_files"],
     pr_title=example["pr_metadata"]["title"],
     pr_body=example["pr_metadata"].get("description", ""),
@@ -118,6 +150,7 @@ async def baseline_a_relaxed_review(example, *, max_repairs: int = 0):
     system_prompt=EVAL_RELAXED_SYSTEM_PROMPT,
     generator_policy=EVAL_RELAXED_GENERATOR_POLICY,
   )
+
   return SystemOutput(
     system=SystemName.BASELINE_A_RELAXED,
     comments=comments,
@@ -125,18 +158,30 @@ async def baseline_a_relaxed_review(example, *, max_repairs: int = 0):
   )
 
 
-async def baseline_b_review(example, *, session, max_repairs: int = 0):
+async def baseline_b_review(
+  example,
+  *,
+  session,
+  max_repairs: int = 0,
+) -> SystemOutput:
   from app.llm.openrouter_client import OpenRouterClient
 
   client = OpenRouterClient()
   snapshot_id = example.get("snapshot_id")
+
   if snapshot_id is None:
     raise ValueError(f"Example {example['example_id']} missing snapshot_id — run curation first")
+
   contexts = await retrieve_contexts(
-    example["_changed_files"], session, snapshot_id, client, settings.openrouter_embedding_model
+    example["_changed_files"],
+    session,
+    snapshot_id,
+    client,
+    settings.openrouter_embedding_model,
   )
-  context_text = "\n\n".join(c.content for c in contexts)
-  result, comments = await generate_comments(
+  context_text = "\n\n".join(context.content for context in contexts)
+
+  _, comments = await generate_comments(
     files=example["_changed_files"],
     pr_title=example["pr_metadata"]["title"],
     pr_body=example["pr_metadata"].get("description", ""),
@@ -144,6 +189,7 @@ async def baseline_b_review(example, *, session, max_repairs: int = 0):
     model=settings.openrouter_review_model,
     contexts=contexts,
   )
+
   return SystemOutput(
     system=SystemName.BASELINE_B,
     comments=comments,
@@ -152,13 +198,21 @@ async def baseline_b_review(example, *, session, max_repairs: int = 0):
   )
 
 
-async def final_agent_review(example, *, session, run_id, max_repairs: int = 2):
+async def final_agent_review(
+  example,
+  *,
+  session,
+  run_id,
+  max_repairs: int = 2,
+) -> SystemOutput:
   from app.llm.openrouter_client import OpenRouterClient
 
   client = OpenRouterClient()
   snapshot_id = example.get("snapshot_id")
+
   if snapshot_id is None:
     raise ValueError(f"Example {example['example_id']} missing snapshot_id — run curation first")
+
   output = await run_review_graph(
     session=session,
     llm=client,
@@ -176,12 +230,18 @@ async def final_agent_review(example, *, session, run_id, max_repairs: int = 2):
     critic_model=settings.openrouter_critic_model or settings.openrouter_review_model,
     embedding_model=settings.openrouter_embedding_model,
   )
+
+  events = [
+    event.model_dump(mode="json") if hasattr(event, "model_dump") else event
+    for event in output.events
+  ]
+
   return SystemOutput(
     system=SystemName.FINAL_AGENT,
     comments=output.accepted,
     retrieved_context="",
     attempts=output.retry_count + 1,
-    raw={"events": [e.model_dump(mode="json") for e in output.events]},
+    raw={"events": events},
   )
 
 
@@ -211,20 +271,39 @@ async def evaluate_system(
       elif system_name == SystemName.BASELINE_B:
         output = await baseline_b_review(example, session=session)
       else:
-        output = await final_agent_review(example, session=session, run_id=run_id)
+        output = await final_agent_review(
+          example,
+          session=session,
+          run_id=run_id,
+          max_repairs=max_repairs,
+        )
+
       generated = output.comments
 
       pairs = matcher.deterministic_candidates(gold_comments, generated)
       decisions = await judge.judge_equivalence(
-        judge_client, example_id, pairs, gold_comments, generated, diff_text
+        judge_client,
+        example_id,
+        pairs,
+        gold_comments,
+        generated,
+        diff_text,
       )
       matches = matcher.resolve_matches(
-        example_id, len(gold_comments), len(generated), pairs, decisions
+        example_id,
+        len(gold_comments),
+        len(generated),
+        pairs,
+        decisions,
       )
+
       grounded = await judge.judge_groundedness(
-        judge_client, generated, diff_text, output.retrieved_context
+        judge_client,
+        generated,
+        diff_text,
+        output.retrieved_context,
       )
-      grounded_flags = [v.grounded for v in grounded]
+      grounded_flags = [result.grounded for result in grounded]
       line_valid_flags = [True] * len(generated)
 
       scored = metrics.score_example(
@@ -237,6 +316,7 @@ async def evaluate_system(
         line_valid_flags,
         attempt=attempt,
       )
+
       row = await store.record_example_result(
         session,
         run_id=run_id,
@@ -244,10 +324,17 @@ async def evaluate_system(
         generated_comments=[comment.model_dump(mode="json") for comment in generated],
         cost_usd=0.0,
       )
-      await store.record_matches(session, run_id=run_id, example_result_id=row.id, matches=matches)
+      await store.record_matches(
+        session,
+        run_id=run_id,
+        example_result_id=row.id,
+        matches=matches,
+      )
       await session.commit()
+
       acceptable = scored.fn == 0 and scored.fp == 0
       attempt_passes.append(acceptable)
+
       if attempt == 1:
         per_example.append(scored)
 
@@ -263,11 +350,16 @@ def export_reports(
   confusion: dict[str, RoutingConfusion],
 ) -> None:
   out_dir.mkdir(parents=True, exist_ok=True)
+
   (out_dir / "aggregates.json").write_text(
-    json.dumps([a.model_dump(mode="json") for a in aggregates], indent=2)
+    json.dumps(
+      [aggregate.model_dump(mode="json") for aggregate in aggregates],
+      indent=2,
+    )
   )
-  with (out_dir / "per_example.csv").open("w", newline="") as f:
-    writer = csv.writer(f)
+
+  with (out_dir / "per_example.csv").open("w", newline="") as file:
+    writer = csv.writer(file)
     writer.writerow(
       [
         "system",
@@ -282,49 +374,75 @@ def export_reports(
         "predicted_empty",
       ]
     )
+
     for system, rows in per_system_examples.items():
-      for m in rows:
+      for item in rows:
         writer.writerow(
           [
             system,
-            m.example_id,
-            m.tp,
-            m.fp,
-            m.fn,
-            m.precision,
-            m.recall,
-            m.f1,
-            m.expected_empty,
-            m.predicted_empty,
+            item.example_id,
+            item.tp,
+            item.fp,
+            item.fn,
+            item.precision,
+            item.recall,
+            item.f1,
+            item.expected_empty,
+            item.predicted_empty,
           ]
         )
-  with (out_dir / "routing_confusion.csv").open("w", newline="") as f:
-    writer = csv.writer(f)
-    writer.writerow(["system", "true_comment", "false_comment", "true_abstain", "false_abstain"])
-    for system, c in confusion.items():
-      writer.writerow([system, c.true_comment, c.false_comment, c.true_abstain, c.false_abstain])
+
+  with (out_dir / "routing_confusion.csv").open("w", newline="") as file:
+    writer = csv.writer(file)
+    writer.writerow(
+      [
+        "system",
+        "true_comment",
+        "false_comment",
+        "true_abstain",
+        "false_abstain",
+      ]
+    )
+
+    for system, item in confusion.items():
+      writer.writerow(
+        [
+          system,
+          item.true_comment,
+          item.false_comment,
+          item.true_abstain,
+          item.false_abstain,
+        ]
+      )
+
   failures = {
     system: [
-      m.model_dump(mode="json")
-      for m in rows
-      if m.fp > 0 or m.fn > 0 or (m.expected_empty and not m.predicted_empty)
+      item.model_dump(mode="json")
+      for item in rows
+      if item.fp > 0 or item.fn > 0 or (item.expected_empty and not item.predicted_empty)
     ]
     for system, rows in per_system_examples.items()
   }
   (out_dir / "failure_examples.json").write_text(json.dumps(failures, indent=2))
+
   lines = [
     "# Baseline vs Final",
     "",
     "| System | P | R | F1 | Grounded | Line-valid | Severity | Abstain acc | pass@1 | pass@2 |",
     "|---|---|---|---|---|---|---|---|---|---|",
   ]
-  for a in aggregates:
+
+  for aggregate in aggregates:
     lines.append(
-      f"| {a.system.value} | {_fmt(a.precision)} | {_fmt(a.recall)} | {_fmt(a.f1)} "
-      f"| {_fmt(a.groundedness_rate)} | {_fmt(a.line_validity_rate)} "
-      f"| {_fmt(a.severity_agreement_rate)} | {_fmt(a.no_comment_accuracy)} "
-      f"| {_fmt(a.pass_at_1)} | {_fmt(a.pass_at_2)} |"
+      f"| {aggregate.system.value} | {_fmt(aggregate.precision)} "
+      f"| {_fmt(aggregate.recall)} | {_fmt(aggregate.f1)} "
+      f"| {_fmt(aggregate.groundedness_rate)} "
+      f"| {_fmt(aggregate.line_validity_rate)} "
+      f"| {_fmt(aggregate.severity_agreement_rate)} "
+      f"| {_fmt(aggregate.no_comment_accuracy)} "
+      f"| {_fmt(aggregate.pass_at_1)} | {_fmt(aggregate.pass_at_2)} |"
     )
+
   (out_dir / "baseline_vs_final.md").write_text("\n".join(lines) + "\n")
 
 
@@ -334,24 +452,50 @@ def _fmt(value: float | None) -> str:
 
 async def main() -> None:
   parser = argparse.ArgumentParser(description="Phase 7 offline evaluation harness")
-  parser.add_argument("--dataset", default="holdout", help="golden split to evaluate")
-  parser.add_argument("--config", required=True, help="config version label, e.g. v1")
-  parser.add_argument("--systems", default=None, help="comma-separated subset")
-  parser.add_argument("--export", default=None, help="directory for CSV/JSON export")
   parser.add_argument(
-    "--judge-model", default=settings.openrouter_judge_model or "openai/gpt-4o-mini"
+    "--dataset",
+    default="holdout",
+    help="golden split to evaluate",
   )
-  parser.add_argument("--max-repairs", type=int, default=2)
+  parser.add_argument(
+    "--config",
+    required=True,
+    help="config version label, e.g. v1",
+  )
+  parser.add_argument(
+    "--systems",
+    default=None,
+    help="comma-separated subset",
+  )
+  parser.add_argument(
+    "--export",
+    default=None,
+    help="directory for CSV/JSON export",
+  )
+  parser.add_argument(
+    "--judge-model",
+    default=settings.openrouter_judge_model or "openai/gpt-4o-mini",
+  )
+  parser.add_argument(
+    "--max-repairs",
+    type=int,
+    default=2,
+  )
   args = parser.parse_args()
 
   examples = load_golden_split(args.dataset)
+
   if not examples:
     raise SystemExit(f"No golden examples found for split '{args.dataset}'")
 
   selected = (
-    [SystemName(s) for s in args.systems.split(",")]
+    [SystemName(system) for system in args.systems.split(",")]
     if args.systems
-    else [SystemName.BASELINE_A, SystemName.BASELINE_B, SystemName.FINAL_AGENT]
+    else [
+      SystemName.BASELINE_A,
+      SystemName.BASELINE_B,
+      SystemName.FINAL_AGENT,
+    ]
   )
 
   judge_client = OpenRouterJudgeClient(args.judge_model)
@@ -368,29 +512,51 @@ async def main() -> None:
     per_system_examples: dict[str, list[ExampleMetrics]] = {}
     confusion: dict[str, RoutingConfusion] = {}
 
-    for name in selected:
+    for system_name in selected:
       per_example, pass_attempts, cost = await evaluate_system(
-        name,
+        system_name,
         examples,
         judge_client,
         session,
         run.id,
         max_repairs=args.max_repairs,
       )
-      aggregates.append(metrics.aggregate(name, args.dataset, per_example, pass_attempts, cost))
-      per_system_examples[name.value] = per_example
-      confusion[name.value] = metrics.routing_confusion(per_example)
+      aggregates.append(
+        metrics.aggregate(
+          system_name,
+          args.dataset,
+          per_example,
+          pass_attempts,
+          cost,
+        )
+      )
+      per_system_examples[system_name.value] = per_example
+      confusion[system_name.value] = metrics.routing_confusion(per_example)
 
-    await store.finalize_run(session, run=run, aggregates=aggregates)
+    await store.finalize_run(
+      session,
+      run=run,
+      aggregates=aggregates,
+    )
     await session.commit()
 
   if args.export:
-    export_reports(Path(args.export), aggregates, per_system_examples, confusion)
+    export_reports(
+      Path(args.export),
+      aggregates,
+      per_system_examples,
+      confusion,
+    )
 
-  for a in aggregates:
+  for aggregate in aggregates:
     print(
-      f"{a.system.value}: P={_fmt(a.precision)} R={_fmt(a.recall)} F1={_fmt(a.f1)} "
-      f"abstain={_fmt(a.no_comment_accuracy)} pass@1={_fmt(a.pass_at_1)} pass@2={_fmt(a.pass_at_2)}"
+      f"{aggregate.system.value}: "
+      f"P={_fmt(aggregate.precision)} "
+      f"R={_fmt(aggregate.recall)} "
+      f"F1={_fmt(aggregate.f1)} "
+      f"abstain={_fmt(aggregate.no_comment_accuracy)} "
+      f"pass@1={_fmt(aggregate.pass_at_1)} "
+      f"pass@2={_fmt(aggregate.pass_at_2)}"
     )
 
 

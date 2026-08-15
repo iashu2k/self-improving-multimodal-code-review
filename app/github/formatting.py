@@ -1,4 +1,5 @@
 import json
+from uuid import UUID
 
 from app.agents.schemas import ReviewComment, ReviewResult
 
@@ -9,19 +10,27 @@ SEVERITY_EMOJI = {
   "low": "🔵",
 }
 
+
 COMMENT_FEEDBACK_PROMPT = "👍 / 👎 on this comment tunes future reviews."
 SUMMARY_FEEDBACK_PROMPT = "👍 / 👎 on this review tunes future reviews."
 
 
-def marker_payload(payload: dict) -> str:
-  """Hidden identity marker. HTML comments survive GitHub's Markdown
-  rendering untouched (front-matter and footnote tricks don't reliably),
-  so this is invisible in the rendered review but parseable via the API."""
-  encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+def marker_payload(payload: dict[str, object]) -> str:
+  """Build an invisible, API-parseable review identity marker."""
+  encoded = json.dumps(
+    payload,
+    separators=(",", ":"),
+    sort_keys=True,
+    default=str,
+  )
   return f"<!-- review-forge {encoded} -->"
 
 
-def format_comment_body(comment: ReviewComment, *, run_id: int | None = None) -> str:
+def format_comment_body(
+  comment: ReviewComment,
+  *,
+  run_id: int | UUID | None = None,
+) -> str:
   emoji = SEVERITY_EMOJI.get(comment.severity.value, "⚪")
   category = comment.category.value.replace("_", " ")
 
@@ -35,13 +44,23 @@ def format_comment_body(comment: ReviewComment, *, run_id: int | None = None) ->
     parts.extend(["", f"**Suggested fix:** {comment.suggested_fix}"])
 
   if run_id is not None:
-    marker = marker_payload({"run_id": run_id, "file": comment.file_path, "line": comment.line})
+    marker = marker_payload(
+      {
+        "run_id": run_id,
+        "file": comment.file_path,
+        "line": comment.line,
+      }
+    )
     parts.extend(["", "---", f"{COMMENT_FEEDBACK_PROMPT} {marker}"])
 
   return "\n".join(parts)
 
 
-def format_review_summary(result: ReviewResult, *, run_id: int | None = None) -> str:
+def format_review_summary(
+  result: ReviewResult,
+  *,
+  run_id: int | UUID | None = None,
+) -> str:
   count = len(result.comments)
   plural = "s" if count != 1 else ""
   parts = [

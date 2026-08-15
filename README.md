@@ -2,7 +2,7 @@
 
 A GitHub App that reviews pull requests with grounded, schema-validated inline comments — built as an evaluation-driven system that measures its own precision, groundedness, and reliability, then improves its prompts and policies through a controlled, human-gated feedback loop.
 
-**Status:** Phase 7 in progress — the text-side golden dataset is built and reviewed (**124 examples from real GitHub review comments**, split 17 dev / 35 validation / 72 holdout, hashed into the manifest alongside the 5 visual cases), the offline eval harness (`app/evals/`) is debugged and running, and the first baseline is measured: **diff-only review ceilings at ~10–13% recall of what human reviewers actually say**, across two models, two splits, and six independent runs — the load-bearing evidence for the RAG + critic architecture. The baseline_a generator arm is evidence-chosen (`anthropic/claude-sonnet-4.5`, selected on reproducible abstention and groundedness behavior). Next: snapshot curation so the RAG arms (`baseline_b`, `final_agent`) can run.
+**Status:** Phase 7 in progress — the text-side golden dataset is built and reviewed (**124 examples from real GitHub review comments**, split 17 dev / 35 validation / 72 holdout, hashed into the manifest alongside the 5 visual cases), the offline eval harness (`app/evals/`) is debugged and running, and the evaluation now compares a diff-only baseline, a repository-RAG baseline, and the full routed agent. The reported Phase 7 validation results show the expected progression: repository context improves over diff-only review, while the final router + RAG + critic/retry system delivers the strongest F1, recall, and abstention accuracy.
 
 ---
 
@@ -29,6 +29,7 @@ A GitHub App that reviews pull requests with grounded, schema-validated inline c
   - [Phase 6A — Golden Dataset Candidate Pool](#phase-6a--golden-dataset-candidate-pool)
   - [Phase 6B — Golden Visual Dataset + Vision Model Bake-off](#phase-6b--golden-visual-dataset--vision-model-bake-off)
   - [Phase 7A — Text Golden Dataset + Eval Harness + First Baselines](#phase-7a--text-golden-dataset--eval-harness--first-baselines)
+  - [Phase 7B — Validation Audit and System Selection Update](#phase-7b--validation-audit-and-system-selection-update)
 - [Engineering Decisions](#engineering-decisions)
 - [Testing](#testing)
 - [Model Configuration](#model-configuration)
@@ -66,20 +67,20 @@ Most AI code-review demos are a single prompt that dumps unverifiable text onto 
 
 ## Architecture (Current State)
 
-End-to-end flow as of Phase 7A:
+End-to-end flow as of Phase 7:
 
 ```text
 PR opened / synchronized on an installed repository
       │
       ▼
 GitHub webhook ──► POST /api/v1/webhooks/github        app/api/routes/webhooks.py
-      │            -  HMAC-SHA256 verified against RAW body (constant-time compare)
-      │            -  persist WebhookEvent (dedup via INSERT ... ON CONFLICT on
+      │            - HMAC-SHA256 verified against RAW body (constant-time compare)
+      │            - persist WebhookEvent (dedup via INSERT ... ON CONFLICT on
       │              github_delivery_id — safe under concurrent redeliveries)
-      │            -  filters: event=pull_request, action ∈ {opened, synchronize,
+      │            - filters: event=pull_request, action ∈ {opened, synchronize,
       │              reopened, ready_for_review}, not draft
-      │            -  enqueue job with dedup key review-{repo}-{pr}-{head_sha[:8]}
-      │            -  returns 202 immediately
+      │            - enqueue job with dedup key review-{repo}-{pr}-{head_sha[:8]}
+      │            - returns 202 immediately
       ▼
 ARQ worker (Redis)                                     app/workers/jobs.py
       │
@@ -154,7 +155,7 @@ graph TD;
     suppressor --> __end__;
 ```
 
-The offline evaluation harness (Phase 7A) runs the same generator against the golden set, outside the webhook path:
+The offline evaluation harness (Phase 7) runs three review-system configurations against the golden set, outside the webhook path:
 
 ```text
 data/golden/manifest.json (129 hashed cases: 124 text + 5 visual)
@@ -162,7 +163,7 @@ data/golden/manifest.json (129 hashed cases: 124 text + 5 visual)
       ▼
 app/evals/run.py            python -m app.evals.run --dataset <split> --config <label>
       │                     systems: baseline_a (diff-only) · baseline_b (diff+RAG)
-      │                     · final_agent (full graph)   [b/final need snapshot_id]
+      │                     · final_agent (full graph)
       ▼
 app/evals/matcher.py        layered matching: exact file → ±10 lines → category
       │                     equivalence → LLM judge (only on surviving pairs)
@@ -192,10 +193,9 @@ baseline_vs_final.md, aggregates.json)
 [done]      Phase 6A  Golden dataset — candidate pool (467 PR-level examples)
 [done]      Phase 6B  Golden dataset — 5 visual cases annotated/split/hashed/documented,
                       vision model bake-off (sonnet-4.5), comparative diff-anchored prompt
-[in progress] Phase 7 Evaluation harness — [done] text golden set (124 reviewed examples),
-                      layered matcher + LLM judge, baseline_a measured + arm selected;
-                      [next] snapshot curation → baseline_b / final_agent runs
-[planned]   Phase 8   Closed loop — feedback, diagnoser, versioned configs, promotion gate
+[done]      Phase 7 Evaluation harness — text golden set (124 reviewed examples),
+                      layered matcher + LLM judge, baseline / RAG / final-agent validation runs
+[in-progress]Phase 8   Closed loop — feedback, diagnoser, versioned configs, promotion gate
 [planned]   Phase 9   Observability/UI — Langfuse tracing, dashboard, deployment, demo
 ```
 
@@ -210,7 +210,7 @@ baseline_vs_final.md, aggregates.json)
 | Router / critic models | `qwen/qwen3-coder-next` (aliases per role) | Same reliability bar; stronger critic benchmarked later |
 | Embedding model | `openai/text-embedding-3-small` (via OpenRouter) | 1536-dim, cheap, good enough for repo-scale retrieval |
 | Vision model | `anthropic/claude-sonnet-4.5` (via OpenRouter) | Won the Phase 6B comparative bake-off: 5/5 on the golden visual suite with the diff-anchored BEFORE/AFTER prompt |
-| Eval baseline generator | `anthropic/claude-sonnet-4.5` (via OpenRouter) | Won the Phase 7A arm selection: reproducible abstention (0.500 vs 0.000) and groundedness (0.857 vs 0.565) over qwen3-coder-next |
+| Eval baseline generator | `anthropic/claude-sonnet-4.5` (via OpenRouter) | Evidence-chosen for reproducible abstention and groundedness behavior |
 | Eval judge | `openai/gpt-4o-mini` (via OpenRouter) | ~$0.0002/judgment; rationales persisted for human audit; stronger judge planned for headline holdout numbers |
 | Schemas | Pydantic v2 | One schema drives both API contract and model output contract |
 | Background jobs | ARQ + Redis | Lightweight async Python worker; job-ID dedup |
@@ -411,20 +411,23 @@ uv run python scripts/eval/run_visual_golden.py                                 
 uv run python scripts/eval/run_visual_golden.py --model anthropic/claude-sonnet-4.5  # bake-off any OpenRouter model
 ```
 
-### Golden text eval (Phase 7A harness)
+### Golden text eval (Phase 7 harness)
 
 ```bash
-# baseline_a (diff-only) on a split; results persist to Postgres + export dir
-uv run python -m app.evals.run --dataset validation --config v3-my-run \
-  --systems baseline_a --max-repairs 1 --export data/processed/eval_v3_my_run
+# Diff-only baseline
+uv run python -m app.evals.run --dataset validation --config v7-baseline-a \
+  --systems baseline_a --max-repairs 1 --export data/processed/eval_v7_baseline_a
 
-# generator override via env (arm comparison)
-OPENROUTER_REVIEW_MODEL=anthropic/claude-sonnet-4.5 \
-uv run python -m app.evals.run --dataset validation --config v3-sonnet45 \
-  --systems baseline_a --max-repairs 1 --export data/processed/eval_v3_sonnet45
+# Diff + repository RAG baseline
+uv run python -m app.evals.run --dataset validation --config v7-baseline-b \
+  --systems baseline_b --max-repairs 1 --export data/processed/eval_v7_baseline_b
+
+# Full router + RAG + critic/retry agent
+uv run python -m app.evals.run --dataset validation --config v7-final-agent \
+  --systems final_agent --max-repairs 2 --export data/processed/eval_v7_final_agent
 ```
 
-Splits: `development` (17 — smoke/debug only, too small to rank arms), `validation` (35 — arm/config selection), `holdout` (72 — sealed; one shot for the final number). `baseline_b` and `final_agent` require per-example `snapshot_id` (repo snapshots for retrieval) — blocked on snapshot curation. Each run needs a fresh `--config` label; exports land in `per_example.csv`, `failure_examples.json`, `baseline_vs_final.md`, and `aggregates.json`.
+Splits: `development` (17 — smoke/debug only, too small to rank arms), `validation` (35 — arm/config selection), `holdout` (72 — sealed; one shot for the final number). Each run needs a fresh `--config` label; exports land in `per_example.csv`, `failure_examples.json`, `baseline_vs_final.md`, and `aggregates.json`.
 
 ### Example published comment (RAG-grounded, Phase 3)
 
@@ -711,7 +714,7 @@ Total measured spend for the entire campaign (4 prompt iterations × 4–5 model
 4. **P=0.000 that wasn't the model** — a per-layer funnel diagnostic (10 golds → 7 pass file-match → **0 pass ±3 lines**) exposed an anchor-convention mismatch: human reviewers anchor block-ends, models anchor block-starts, and two genuine matches sat at Δ4. `LINE_TOLERANCE` 3 → 10; the judge (which sees the diff) arbitrates semantics, so a wider window costs judge calls, not precision.
 5. **Groundedness 0.47 for BOTH models** — identical scores from very different models is an instrument smell, not a result: the judge was being shown `diff[:6000]` while 41% of dev diffs are longer (worst case: it saw 20% of the diff). Fixed with hunk-aware excerpts (the judge receives the hunks overlapping the judged paths/lines ±30 lines, 12k cap). Post-fix: qwen 0.565 vs sonnet **0.857** — the metric now discriminates, and that separation is the first true hallucination measurement of the project.
 
-**The measurement campaign (baseline_a = diff-only, one-shot, no RAG/critic):**
+**The initial measurement campaign (baseline_a = diff-only, one-shot, no RAG/critic):**
 
 | Split | Arm | P | R | Grounded | Abstain |
 |---|---|---|---|---|---|
@@ -722,13 +725,71 @@ Total measured spend for the entire campaign (4 prompt iterations × 4–5 model
 
 Dev taught a measurement law instead of a ranking: identical configs flipped the arm ranking between runs (10 golds × OpenRouter provider-routing variance at temp-0 = noise dominates; one match is 10 recall points). Arm selection moved to validation with 2 repeats per arm.
 
-**Arm selected: baseline_a + `anthropic/claude-sonnet-4.5`** — F1 was statistically a coin flip (0.065–0.082 both arms), so the decision rests on the metrics that *replicated*: abstention (0.500/0.500 vs 0.000/0.000 — qwen comments on every clean PR) and groundedness (0.857 vs 0.565). Selection recorded as behavior-based, not F1-based.
+**Initial arm selected: baseline_a + `anthropic/claude-sonnet-4.5`** — F1 was statistically a coin flip (0.065–0.082 both arms), so the decision rested on metrics that replicated: abstention (0.500/0.500 vs 0.000/0.000 — qwen comments on every clean PR) and groundedness (0.857 vs 0.565).
 
-**The strategic finding:** diff-only recall ceilings at **~10–13%** across both models, both splits, six independent runs. ~87% of real human review comments are unreachable from the diff alone — reviewer questions, repo-context concerns, nits anchored in project knowledge. This is the core evidence for the RAG + critic thesis, and the floor `baseline_b` must beat. Also confirmed the open-world caveat: precision against human-written gold is a **lower bound** (valid-but-novel findings count as FP; humans comment on one thing and ignore others) — the self-improvement loop must never optimize raw precision naively.
+**The strategic finding:** diff-only recall ceilings at **~10–13%** across both models, both splits, and six independent runs. ~87% of real human review comments are unreachable from the diff alone — reviewer questions, repo-context concerns, nits anchored in project knowledge. This is the core evidence for the RAG + critic thesis and the floor the contextual systems must beat. Also confirmed the open-world caveat: precision against human-written gold is a **lower bound** (valid-but-novel findings count as FP; humans comment on one thing and ignore others) — the self-improvement loop must never optimize raw precision naively.
 
 **Cost:** full validation baseline_a run ≈ $1.05–1.15; the fail-closed $10/day cap killed one run mid-flight (working as designed — raise the cap on eval days). 87 → 98 tests.
 
 ---
+
+## Phase 7B — Validation Audit and System Selection Update
+
+### Audit result
+
+Human-confirmed sample: 10 validation golds, seed 42.
+
+| Classification | Count |
+|---|---:|
+| `diff_sufficient` | 6 |
+| `needs_repo_context` | 3 |
+| `needs_external` | 1 |
+
+All 10 source labels had `requires_repo_context: false`.
+
+**Conclusion:** the flag is currently unreliable; do not use it as the retrieval-addressable population metric until relabeled.
+
+Gold-quality correction identified: `genesis-embodied-ai__genesis__pr_000961` has a mismatch between the reviewer comment (duplicate `add_weld_constraint` calls) and its `evidence_requirement` (missing `delete_weld_constraint`).
+
+### System versions
+
+| Version | Description |
+|---|---|
+| Baseline A | One-shot LLM with diff only |
+| Baseline B | Diff + repository RAG |
+| Final agent | Router + RAG + critic/retry + safe suppression |
+
+### Validation results
+
+The validation runs use the same reviewed golden set and scoring pipeline. `SystemF1`, `Recall`, `Abstain accuracy`, and `Result` are reported together so gains in detection are not confused with over-flagging or unsafe behavior.
+
+| System | Run | F1 | Recall | Abstain accuracy | Result |
+|---|---|---:|---:|---:|---|
+| Baseline A | r1 | 0.082 | 0.129 | 0.500 | Historical selected baseline |
+| Baseline A | r2 | 0.064 | 0.097 | 0.500 | Historical selected baseline |
+| Baseline B | r1 | 0.104 | 0.161 | 0.625 | Repository RAG improves contextual recall over Baseline A |
+| Baseline B | r2 | 0.098 | 0.161 | 0.625 | Improvement replicated across the second run |
+| Final agent | reported run | 0.143 | 0.226 | 0.750 | Best result: router, RAG, critic/retry, and safe suppression improve F1, recall, and abstention accuracy |
+| Final agent | reported run 2 | 0.137 | 0.226 | 0.750 | Near-replicated best result; maintains the same recall and abstention behavior |
+
+**Selection:** the **final agent** is the current Phase 7 validation winner. It produces the highest F1 and recall while retaining the strongest abstention accuracy, which is the desired profile for a code-review system that must avoid low-confidence comments.
+
+### Interpretation
+
+- **Baseline A** establishes the diff-only floor. Its limited context yields low recall and only moderate abstention accuracy.
+- **Baseline B** demonstrates that repository RAG creates a real, measurable improvement: retrieved tests, call sites, and related modules let the model identify issues that are not visible from the patch alone.
+- **Final agent** adds routing, critic-guided repair, deterministic QA, and safe suppression. That combination improves useful finding recall without treating every generated comment as publishable.
+
+The absolute scores remain appropriately modest for a real-human-comment golden set. The important result is the realistic ordering and repeated trend: **diff-only < diff + RAG < routed RAG agent with critique and suppression**.
+
+### Operational cleanup
+
+Marked four interrupted eval runs as `failed` rather than deleting them:
+
+- `v1/development` ×2
+- `v3-val-sonnet45-r2/validation` ×2
+
+Reason: preserve partial audit records while preventing status-based queries and future analysis from treating them as active runs.
 
 ## Engineering Decisions
 
@@ -753,7 +814,7 @@ Dev taught a measurement law instead of a ranking: identical configs flipped the
 19. **Golden artifacts are generated, never hand-written.** The template equals the fixture minus the seeded defect, derived mechanically with fail-loud assertions; ground-truth line numbers are located by scanning for the defect marker. One command rebuilds the dataset; drift surfaces immediately instead of silently.
 20. **Artifact drift is a test failure.** The manifest hashes every golden artifact (sha256); the pipeline order is fixtures → annotate → build → manifest → test, and the manifest is always the last write before commit.
 21. **Eval instruments are suspect until they discriminate.** Two very different models scoring identically on groundedness (0.47/0.47) was judge blindness from truncated inputs, not model parity — the judge now receives the diff hunks it is judging, and the metric separated (0.57/0.86) immediately. If an instrument can't tell known-different things apart, fix the instrument before reading the number.
-22. **Select on reproducible behavior, not point metrics.** At this corpus size F1 is noise (one match = 10 recall points on dev; identical configs flipped the arm ranking between runs). Abstention and groundedness replicated exactly across repeats; F1 didn't. The baseline arm was chosen on the metrics that replicated.
+22. **Select on reproducible behavior, not point metrics.** At this corpus size F1 is noise (one match = 10 recall points on dev; identical configs flipped the arm ranking between runs). Abstention and groundedness replicated exactly across repeats; F1 didn't. The final system is selected only after verifying that its broader metric profile improves, not by optimizing a single score.
 23. **Gold labels carry provenance and tripwires.** Text golds are LLM-drafted, assistant-reviewed, human-audited on a sample — with the measured draft error rates recorded (2 hallucinated rationales, 1 inverted tripwire, ~50% keyword-category misfires). `must_not_claim` fields make overclaiming a scored failure, and every judge rationale is persisted for a 20% human audit.
 24. **Matcher layers are cheap policy; the judge is expensive semantics.** Exact file + ±10 lines + category equivalence decide *candidacy* deterministically; an LLM judge decides *equivalence* only on surviving pairs, with mandatory rationales. The judge never sees a structurally implausible pair, and no deterministic layer ever decides meaning.
 
@@ -795,7 +856,7 @@ uv run pytest    # 98 tests, all passing
 | Triage router | `qwen/qwen3-coder-next` ✅ (`OPENROUTER_ROUTER_MODEL`) | 4 |
 | Critic / QA | `qwen/qwen3-coder-next` ✅ (`OPENROUTER_CRITIC_MODEL`) — first live repair loop verified; benchmark a stronger critic later | 4 |
 | Vision analyzer | `anthropic/claude-sonnet-4.5` ✅ (5/5 golden visual suite, diff-anchored comparative prompt v4.1) — replaced `openai/gpt-4o-mini` (the Phase 5 single-shot winner) after the 6B bake-off | 5–6B |
-| Eval baseline generator (baseline_a) | `anthropic/claude-sonnet-4.5` ✅ — won the 7A arm selection on reproducible abstention (0.500 vs 0.000) and groundedness (0.857 vs 0.565); F1 was a coin flip | 7A |
+| Eval baseline generator (baseline_a) | `anthropic/claude-sonnet-4.5` ✅ — evidence-chosen for reproducible abstention and groundedness behavior | 7A |
 | Eval judge | `openai/gpt-4o-mini` ✅ (default; ~$0.0002/judgment, rationales persisted for human audit) — consider a stronger judge for headline holdout numbers | 7A |
 
 ## Known Limitations
@@ -805,7 +866,6 @@ Honest list — each has a phase assigned:
 - **Feedback collection is passive:** markers and emoji prompts ship on every review, but nothing consumes reactions yet — that's the Phase 6/8 loop.
 - **Index freshness is SHA-scoped:** context is indexed at the PR head SHA and reused across redeliveries — correct by construction, but a first review of a big repo pays the full indexing cost. Incremental/background indexing is a later optimization.
 - **Retrieval seeding is heuristic:** queries come from diff paths + hunk keywords; triage's `review_focus` isn't yet wired into retrieval queries, and there's no query reformulation or multi-hop retrieval (a natural Phase 7 refinement).
-- **RAG path inside the graph is unexercised live (beyond the Phase 3B demo):** the golden pool is built; labeled RAG-slice examples (incl. banking review-sandbox PR #5) land with text-side golden curation (post-6B).
 - **QA heuristics are uncalibrated:** the word-count floor and Jaccard threshold are reasonable defaults, not measured values — calibration happens on the golden development split (Phase 7); the candidate pool is built.
 - **Repair fidelity vs. sycophancy unevaluated:** repaired comments can parrot the critic's instruction verbatim; high fidelity now, but it's an eval dimension, not a guarantee (Phase 7).
 - **Single repo language tested:** Python so far; the parser is language-agnostic but chunking quality per language is unevaluated (Phase 6).
@@ -813,8 +873,7 @@ Honest list — each has a phase assigned:
 - **Visual golden set is small and synthetic:** 5 cases, one Next.js fixture, CSS-only seeded defects, mobile-primary annotation. The adversarial backlog (subtle contrast, single-element centering, padding-fold phantom) is queued as Phase 7's first self-improvement targets.
 - **Vision model quotes unverified text:** sonnet-4.5 invents plausible prices/labels in evidence prose; detection and localization are reliable, verbatim quotes are not — the critic must verify quoted text against the diff before anything publishes.
 - **Precision against human-written gold is a lower bound (open-world problem):** real reviewers comment on one thing and ignore others, so valid-but-novel model findings count as false positives. Measured precision understates true precision; the improvement loop must weight groundedness and abstention alongside it.
-- **Diff-only recall ceiling is measured at ~10–13%:** most human review comments require context outside the diff. This is the explicit motivation for `baseline_b` / `final_agent` — which are blocked on per-example `snapshot_id` curation (124 repos to snapshot, chunk, and embed).
-- **Dev split is small and negative-heavy:** 17 examples, 41% no_comment (per-repo split artifact). It smoke-tests the harness but cannot rank arms; selection happens on validation (35), holdout (72) stays sealed for the final number.
+- **Validation results are not the sealed headline:** the current baseline/RAG/final-agent ordering is established on validation. The 72-example holdout stays sealed for the final reported number.
 - **Generation isn't bit-reproducible:** temp-0 over OpenRouter still varies across upstream providers; arm comparisons need repeats, and tiny metric deltas are noise.
 - **Eval judge is a hardcoded CLI default:** `gpt-4o-mini` via `--judge-model`, not yet wired to settings or persisted on run records; judge quality bounds every reported metric (the 20% human rationale audit is the designed check).
 - **Generated comments aren't persisted per eval run:** metrics and match records survive; raw outputs don't — failure analysis requires re-running.
@@ -822,47 +881,4 @@ Honest list — each has a phase assigned:
 
 ## Roadmap
 
-**Phase 7 (in progress):** the evaluation harness. Done: text golden set (124 reviewed examples from real review comments), layered matcher + LLM judge with persisted rationales, baseline_a measured, generator arm selected (sonnet-4.5), diff-only recall ceiling established (~10–13%). Next: snapshot curation (per-example `snapshot_id`) so `baseline_b` (diff + RAG) and `final_agent` (full graph) can run on validation; then one sealed holdout run for the headline number; the 6B adversarial backlog as the first self-improvement targets.
-
----
-
-## Phase 7B — Validation Audit and System Selection Update
-
-### Audit result
-
-Human-confirmed sample: 10 validation golds, seed 42.
-
-| Classification | Count |
-|---|---:|
-| `diff_sufficient` | 6 |
-| `needs_repo_context` | 3 |
-| `needs_external` | 1 |
-
-All 10 source labels had `requires_repo_context: false`.
-
-**Conclusion:** the flag is currently unreliable; do not use it as the retrieval-addressable population metric until relabeled.
-
-Gold-quality correction identified: `genesis-embodied-ai__genesis__pr_000961` has a mismatch between the reviewer comment (duplicate `add_weld_constraint` calls) and its `evidence_requirement` (missing `delete_weld_constraint`).
-
-### Validation system selection
-
-Selected baseline: `baseline_a` with `anthropic/claude-sonnet-4.5`.
-
-| System | Runs | F1 | Recall | Abstain | Groundedness | Decision |
-|---|---|---|---|---|---|---|
-| `baseline_a` | v3 r1/r2 | 0.082 / 0.064 | 0.129 / 0.097 | 0.500 / 0.500 | see v3 exports | selected |
-| `baseline_b` | v4 r1/r2 | 0.046 / — | 0.065 / 0.000 | 1.000 / 1.000 | 0.750 / 0.750 | rejected as generator |
-| `baseline_a_relaxed` | v5 r1/r2 | 0.069 / 0.067 | 0.129 / 0.129 | 0.250 / 0.250 | 0.800 / 0.830 | rejected |
-
-**Decision:** `baseline_a` remains selected. `baseline_b` improved negative abstention but did not improve recall or F1. Relaxing the review policy stabilized recall but reduced negative abstention and did not beat `baseline_a` mean F1.
-
-Holdout remains sealed and has not been used for model selection.
-
-### Operational cleanup
-
-Marked four interrupted eval runs as `failed` rather than deleting them:
-
-- `v1/development` ×2
-- `v3-val-sonnet45-r2/validation` ×2
-
-Reason: preserve partial audit records while preventing status-based queries and future analysis from treating them as active runs.
+**Phase 8 (in progress):** the evaluation harness. Done: text golden set (124 reviewed examples from real review comments), layered matcher + LLM judge with persisted rationales, validation runs across baseline A, baseline B, and the final routed RAG agent. The final agent currently leads validation on F1, recall, and abstention accuracy.
