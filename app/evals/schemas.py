@@ -40,6 +40,7 @@ SEVERITY_LADDER: list[Severity] = [
 
 class SystemName(StrEnum):
   BASELINE_A = "baseline_a"  # one-shot LLM, diff only
+  BASELINE_A_RELAXED = "baseline_a_relaxed"  # diff-only, relaxed eval prompt
   BASELINE_B = "baseline_b"  # diff + repository RAG
   FINAL_AGENT = "final_agent"  # router + RAG + critic/retry + safe suppression
   FINAL_MULTIMODAL = "final_multimodal"  # final agent + screenshot analysis

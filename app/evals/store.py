@@ -43,6 +43,7 @@ async def record_example_result(
   *,
   run_id: uuid.UUID,
   metrics: ExampleMetrics,
+  generated_comments: Sequence[dict],
   cost_usd: float,
 ) -> EvalExampleResult:
   row = EvalExampleResult(
@@ -71,6 +72,7 @@ async def record_example_result(
     expected_empty=metrics.expected_empty,
     predicted_empty=metrics.predicted_empty,
     cost_usd=cost_usd,
+    generated_comments=list(generated_comments),
   )
   session.add(row)
   await session.flush()

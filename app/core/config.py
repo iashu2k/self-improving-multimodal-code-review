@@ -26,7 +26,7 @@ class Settings(BaseSettings):
   openrouter_base_url: str = "https://openrouter.ai/api/v1"
   openrouter_site_url: str = "http://localhost:8000"
   openrouter_app_name: str = "self-improving-multimodal-code-review"
-  openrouter_daily_cost_cap_usd: float = 20.0  # OPENROUTER_DAILY_COST_CAP_USD
+  openrouter_daily_cost_cap_usd: float = 30.0  # OPENROUTER_DAILY_COST_CAP_USD
 
   openrouter_review_model: str | None = None
   openrouter_critic_model: str | None = None

@@ -77,3 +77,7 @@ def test_routing_confusion():
   assert c.true_abstain == 1
   assert c.false_comment == 1
   assert c.false_abstain == 1
+
+
+def test_relaxed_baseline_is_an_explicit_system_arm() -> None:
+  assert SystemName.BASELINE_A_RELAXED.value == "baseline_a_relaxed"

@@ -51,6 +51,12 @@ class EvalExampleResult(Base):
   expected_empty: Mapped[bool] = mapped_column(Boolean, default=False)
   predicted_empty: Mapped[bool] = mapped_column(Boolean, default=False)
   cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+  # Raw comments generated for this attempt, including unmatched findings.
+  # Nullable only for historical rows written before Phase 7 persistence.
+  generated_comments: Mapped[list[dict] | None] = mapped_column(
+    JSONBVariant,
+    nullable=True,
+  )
 
 
 class EvalMatch(Base):

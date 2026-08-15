@@ -31,6 +31,23 @@ Review policy (QA suppresses violations before anything is posted):
 9. Apply the severity definitions exactly as given.
 10. One issue per comment; never bundle unrelated findings."""
 
+EVAL_RELAXED_GENERATOR_POLICY = """\
+Review policy for this evaluation:
+1. Every comment must cite its exact changed line.
+2. Explain the concrete failure mode or maintenance cost: what becomes harder,
+   more error-prone, less clear, or more expensive to change.
+3. Use retrieved context only when the diff alone is insufficient — and cite it.
+4. Never invent runtime behavior not visible in the diff or context.
+5. Concrete maintainability findings are allowed: duplication, misleading naming,
+   dead code, unused parameters, brittle structure, and actionable clarity issues.
+6. Do not make purely subjective style comments.
+7. Return an empty comment list only when no specific, actionable concern is
+   supported by the evidence.
+8. Do not repeat an observation already made about the same line.
+9. Apply the severity definitions exactly as given.
+10. One issue per comment; never bundle unrelated findings.
+"""
+
 
 @dataclass
 class GeneratedReview:
@@ -79,6 +96,8 @@ async def generate_comments(
   contexts: list[RetrievedContext] | None = None,
   feedback: str | None = None,
   review_focus: list[str] | None = None,
+  system_prompt: str = SYSTEM_PROMPT,
+  generator_policy: str = GENERATOR_POLICY,
 ) -> tuple[ReviewResult, list[ReviewComment]]:
   """Prompt + LLM + schema validation. NO deterministic validation here —
   in the graph, placement and content QA are the critic_qa node's job.
@@ -113,7 +132,7 @@ async def generate_comments(
     )
 
   messages = [
-    {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n{GENERATOR_POLICY}"},
+    {"role": "system", "content": f"{system_prompt}\n\n{generator_policy}"},
     {
       "role": "user",
       "content": (

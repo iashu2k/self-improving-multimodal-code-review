@@ -29,7 +29,8 @@ from app.ingestion.retriever import (
   build_context_query,
   hybrid_retrieve,
 )
-from app.llm.reviewer import generate_comments
+from app.llm.prompts.review import EVAL_RELAXED_SYSTEM_PROMPT
+from app.llm.reviewer import EVAL_RELAXED_GENERATOR_POLICY, generate_comments
 
 GOLDEN_ROOT = Path("data/golden")
 
@@ -102,6 +103,26 @@ async def baseline_a_review(example, *, max_repairs: int = 0):
     model=settings.openrouter_review_model,
   )
   return SystemOutput(system=SystemName.BASELINE_A, comments=comments, attempts=1)
+
+
+async def baseline_a_relaxed_review(example, *, max_repairs: int = 0):
+  from app.llm.openrouter_client import OpenRouterClient
+
+  client = OpenRouterClient()
+  result, comments = await generate_comments(
+    files=example["_changed_files"],
+    pr_title=example["pr_metadata"]["title"],
+    pr_body=example["pr_metadata"].get("description", ""),
+    client=client,
+    model=settings.openrouter_review_model,
+    system_prompt=EVAL_RELAXED_SYSTEM_PROMPT,
+    generator_policy=EVAL_RELAXED_GENERATOR_POLICY,
+  )
+  return SystemOutput(
+    system=SystemName.BASELINE_A_RELAXED,
+    comments=comments,
+    attempts=1,
+  )
 
 
 async def baseline_b_review(example, *, session, max_repairs: int = 0):
@@ -185,6 +206,8 @@ async def evaluate_system(
     for attempt in range(1, max_repairs + 1):
       if system_name == SystemName.BASELINE_A:
         output = await baseline_a_review(example)
+      elif system_name == SystemName.BASELINE_A_RELAXED:
+        output = await baseline_a_relaxed_review(example)
       elif system_name == SystemName.BASELINE_B:
         output = await baseline_b_review(example, session=session)
       else:
@@ -214,7 +237,13 @@ async def evaluate_system(
         line_valid_flags,
         attempt=attempt,
       )
-      row = await store.record_example_result(session, run_id=run_id, metrics=scored, cost_usd=0.0)
+      row = await store.record_example_result(
+        session,
+        run_id=run_id,
+        metrics=scored,
+        generated_comments=[comment.model_dump(mode="json") for comment in generated],
+        cost_usd=0.0,
+      )
       await store.record_matches(session, run_id=run_id, example_result_id=row.id, matches=matches)
       await session.commit()
       acceptable = scored.fn == 0 and scored.fp == 0
