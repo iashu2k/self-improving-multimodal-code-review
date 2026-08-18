@@ -8,9 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.config import ReviewConfiguration
 from app.db.session import get_db
+from app.diagnosis.proposal import propose_configuration_candidate
+from app.diagnosis.report import build_diagnosis_report
 from app.services.configurations import (
   ConfigurationConflictError,
   create_configuration_candidate,
+  record_configuration_evaluation,
 )
 from app.services.promotion import (
   approve_configuration,
@@ -48,6 +51,24 @@ class RollbackRequest(BaseModel):
   reason: str = Field(min_length=1)
 
 
+class ProposeCandidateRequest(BaseModel):
+  new_version: str = Field(min_length=1, max_length=64)
+
+
+class EvaluationRecordRequest(BaseModel):
+  dataset_split: str = Field(min_length=1, max_length=32)
+  system: str = Field(min_length=1, max_length=64)
+  repeat_number: int = Field(ge=1)
+  precision: float | None = None
+  recall: float | None = None
+  f1: float | None = None
+  groundedness: float | None = None
+  abstention_accuracy: float | None = None
+  no_comment_accuracy: float | None = None
+  safety_policy_failures: int = Field(default=0, ge=0)
+  metrics: dict = Field(default_factory=dict)
+
+
 class PromotionRequest(BaseModel):
   system: str = Field(default="final_agent", min_length=1, max_length=64)
 
@@ -83,6 +104,49 @@ class ConfigurationPage(BaseModel):
   limit: int
   offset: int
   total: int
+
+
+class DiagnosisExampleResponse(BaseModel):
+  source: str
+  category: str
+  agent_node: str
+  run_id: int | None
+  stored_comment_id: int | None
+  example_id: str | None
+  free_text: str | None
+  judge_rationale: str | None
+
+
+class DiagnosisClusterResponse(BaseModel):
+  category: str
+  agent_node: str
+  count: int
+  sources: list[str]
+  examples: list[DiagnosisExampleResponse]
+
+
+class DiagnosisReportResponse(BaseModel):
+  configuration_id: str
+  config_version: str
+  total_failures: int
+  clusters: list[DiagnosisClusterResponse]
+
+
+class EvaluationRecordResponse(BaseModel):
+  id: str
+  configuration_id: str
+  dataset_split: str
+  system: str
+  repeat_number: int
+  precision: float | None
+  recall: float | None
+  f1: float | None
+  groundedness: float | None
+  abstention_accuracy: float | None
+  no_comment_accuracy: float | None
+  safety_policy_failures: int
+  metrics: dict
+  created_at: str
 
 
 def serialize_configuration(config: ReviewConfiguration) -> ConfigurationResponse:
@@ -173,6 +237,152 @@ async def list_configurations(
     limit=limit,
     offset=offset,
     total=total or 0,
+  )
+
+
+@router.get("/{configuration_id}/diagnosis", response_model=DiagnosisReportResponse)
+async def diagnose_configuration(
+  configuration_id: uuid.UUID,
+  db: Annotated[AsyncSession, Depends(get_db)],
+) -> DiagnosisReportResponse:
+  try:
+    report = await build_diagnosis_report(
+      db,
+      configuration_id=configuration_id,
+    )
+  except ValueError as exc:
+    raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+  return DiagnosisReportResponse(
+    configuration_id=report.configuration_id,
+    config_version=report.config_version,
+    total_failures=report.total_failures,
+    clusters=[
+      DiagnosisClusterResponse(
+        category=cluster.category,
+        agent_node=cluster.agent_node,
+        count=cluster.count,
+        sources=cluster.sources,
+        examples=[
+          DiagnosisExampleResponse(
+            source=example.source,
+            category=example.category,
+            agent_node=example.agent_node,
+            run_id=example.run_id,
+            stored_comment_id=example.stored_comment_id,
+            example_id=example.example_id,
+            free_text=example.free_text,
+            judge_rationale=example.judge_rationale,
+          )
+          for example in cluster.examples
+        ],
+      )
+      for cluster in report.clusters
+    ],
+  )
+
+
+@router.post(
+  "/{configuration_id}/propose-candidate",
+  response_model=ConfigurationResponse,
+  status_code=201,
+)
+async def propose_candidate_route(
+  configuration_id: uuid.UUID,
+  request: ProposeCandidateRequest,
+  db: Annotated[AsyncSession, Depends(get_db)],
+) -> ConfigurationResponse:
+  source = await db.get(ReviewConfiguration, configuration_id)
+  if source is None:
+    raise HTTPException(status_code=404, detail="configuration does not exist")
+
+  report = await build_diagnosis_report(db, configuration_id=configuration_id)
+  proposal = propose_configuration_candidate(
+    source,
+    report=report,
+    new_version=request.new_version,
+  )
+
+  if proposal is None:
+    raise HTTPException(
+      status_code=400,
+      detail="No failure clusters found; nothing to propose.",
+    )
+
+  try:
+    candidate = await create_configuration_candidate(
+      db,
+      config_version=proposal.config_version,
+      parent_version=proposal.parent_version,
+      change_reason=proposal.change_reason,
+      generator_prompt_version=proposal.generator_prompt_version,
+      critic_prompt_version=proposal.critic_prompt_version,
+      router_rules=proposal.router_rules,
+      thresholds=proposal.thresholds,
+      model_versions=proposal.model_versions,
+      retrieval_config=proposal.retrieval_config,
+      repair_policy=proposal.repair_policy,
+      created_by="diagnoser",
+    )
+    await db.commit()
+  except ConfigurationConflictError as exc:
+    await db.rollback()
+    raise HTTPException(status_code=409, detail=str(exc)) from exc
+  except ValueError as exc:
+    await db.rollback()
+    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+  return serialize_configuration(candidate)
+
+
+@router.post(
+  "/{configuration_id}/evaluations",
+  response_model=EvaluationRecordResponse,
+  status_code=201,
+)
+async def record_evaluation_route(
+  configuration_id: uuid.UUID,
+  request: EvaluationRecordRequest,
+  db: Annotated[AsyncSession, Depends(get_db)],
+) -> EvaluationRecordResponse:
+  try:
+    evaluation = await record_configuration_evaluation(
+      db,
+      configuration_id=configuration_id,
+      dataset_split=request.dataset_split,
+      system=request.system,
+      repeat_number=request.repeat_number,
+      precision=request.precision,
+      recall=request.recall,
+      f1=request.f1,
+      groundedness=request.groundedness,
+      abstention_accuracy=request.abstention_accuracy,
+      no_comment_accuracy=request.no_comment_accuracy,
+      safety_policy_failures=request.safety_policy_failures,
+      metrics=request.metrics,
+    )
+    await db.commit()
+  except ValueError as exc:
+    await db.rollback()
+    if "does not exist" in str(exc):
+      raise HTTPException(status_code=404, detail=str(exc)) from exc
+    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+  return EvaluationRecordResponse(
+    id=str(evaluation.id),
+    configuration_id=str(evaluation.configuration_id),
+    dataset_split=evaluation.dataset_split,
+    system=evaluation.system,
+    repeat_number=evaluation.repeat_number,
+    precision=evaluation.precision,
+    recall=evaluation.recall,
+    f1=evaluation.f1,
+    groundedness=evaluation.groundedness,
+    abstention_accuracy=evaluation.abstention_accuracy,
+    no_comment_accuracy=evaluation.no_comment_accuracy,
+    safety_policy_failures=evaluation.safety_policy_failures,
+    metrics=evaluation.metrics,
+    created_at=evaluation.created_at.isoformat(),
   )
 
 
