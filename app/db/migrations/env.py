@@ -12,6 +12,8 @@ from app.db.base import Base
 # Import all models so autogenerate sees them.
 from app.db.models import (  # noqa: F401
   CommentFeedback,
+  ConfigurationEvaluation,
+  ReviewConfiguration,
   ReviewRun,
   StoredReviewComment,
   WebhookEvent,

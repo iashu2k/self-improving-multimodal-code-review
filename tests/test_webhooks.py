@@ -535,3 +535,53 @@ async def test_unattributable_feedback_command_is_ignored(
   assert response.json()["status"] == "ignored"
   assert response.json()["reason"] == "feedback_not_attributable"
   assert len(feedback_rows) == 0
+
+
+@pytest.mark.asyncio
+async def test_feedback_command_redelivery_is_deduplicated_before_parent_fetch(
+  client: AsyncClient,
+  db_session,
+  fake_feedback_github: FakeFeedbackGitHub,
+) -> None:
+  run = await seed_feedback_target(db_session)
+  fake_feedback_github.parent_comment = {
+    "id": 600,
+    "pull_request_review_id": run.github_review_id,
+    "path": "src/client.py",
+    "line": 24,
+    "body": (
+      "Bot review finding.\n\n"
+      f'<!-- review-forge {{"file":"src/client.py","line":24,"run_id":{run.id}}} -->'
+    ),
+  }
+
+  payload = make_feedback_payload()
+  body = json.dumps(payload).encode()
+  headers = make_headers(
+    body,
+    github_event="pull_request_review_comment",
+    delivery_id="feedback-delivery-redelivery-001",
+  )
+
+  async with client:
+    first = await client.post(
+      "/api/v1/webhooks/github",
+      content=body,
+      headers=headers,
+    )
+    second = await client.post(
+      "/api/v1/webhooks/github",
+      content=body,
+      headers=headers,
+    )
+
+  feedback_rows = (await db_session.scalars(select(CommentFeedback))).all()
+
+  assert first.status_code == 202
+  assert first.json()["status"] == "feedback_recorded"
+
+  assert second.status_code == 202
+  assert second.json()["status"] == "duplicate"
+
+  assert len(feedback_rows) == 1
+  assert fake_feedback_github.requests == [("owner", "repo", 600)]

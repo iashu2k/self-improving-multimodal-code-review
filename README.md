@@ -3,6 +3,18 @@
 A GitHub App that reviews pull requests with grounded, schema-validated inline comments — built as an evaluation-driven system that measures its own precision, groundedness, and reliability, then improves its prompts and policies through a controlled, human-gated feedback loop.
 
 **Status:** Phase 7 in progress — the text-side golden dataset is built and reviewed (**124 examples from real GitHub review comments**, split 17 dev / 35 validation / 72 holdout, hashed into the manifest alongside the 5 visual cases), the offline eval harness (`app/evals/`) is debugged and running, and the evaluation now compares a diff-only baseline, a repository-RAG baseline, and the full routed agent. The reported Phase 7 validation results show the expected progression: repository context improves over diff-only review, while the final router + RAG + critic/retry system delivers the strongest F1, recall, and abstention accuracy.
+___
+
+## Architecture
+
+<p align="center">
+  <img
+    src="./assets/architecture-diagram.png"
+    alt="DeepFile Agentic GraphRAG architecture showing offline ingestion, graph and hybrid retrieval, LangGraph orchestration, self-correction, RAGAS evaluation, and Langfuse observability"
+    width="1400"
+  />
+</p>
+
 
 ---
 

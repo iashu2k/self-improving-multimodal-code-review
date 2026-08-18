@@ -1,5 +1,6 @@
 # app/db/models/__init__.py
 from app.db.base import Base
+from app.db.models.config import ConfigurationEvaluation, ReviewConfiguration
 from app.db.models.eval import EvalExampleResult, EvalMatch, EvalRun
 from app.db.models.feedback import CommentFeedback
 from app.db.models.repo_index import CodeChunk, RepoSnapshot
@@ -17,4 +18,6 @@ __all__ = [
   "EvalExampleResult",
   "EvalMatch",
   "CommentFeedback",
+  "ReviewConfiguration",
+  "ConfigurationEvaluation",
 ]
