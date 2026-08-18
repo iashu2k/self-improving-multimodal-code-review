@@ -2,8 +2,9 @@
 
 A GitHub App that reviews pull requests with grounded, schema-validated inline comments — built as an evaluation-driven system that measures its own precision, groundedness, and reliability, then improves its prompts and policies through a controlled, human-gated feedback loop.
 
-**Status:** Phase 7 in progress — the text-side golden dataset is built and reviewed (**124 examples from real GitHub review comments**, split 17 dev / 35 validation / 72 holdout, hashed into the manifest alongside the 5 visual cases), the offline eval harness (`app/evals/`) is debugged and running, and the evaluation now compares a diff-only baseline, a repository-RAG baseline, and the full routed agent. The reported Phase 7 validation results show the expected progression: repository context improves over diff-only review, while the final router + RAG + critic/retry system delivers the strongest F1, recall, and abstention accuracy.
-___
+**Status:** Phase 8 complete — the self-improvement loop is now closed end to end. Review feedback and evaluation failures are persisted with run/comment attribution, grouped by a diagnoser into typed failure clusters, and turned into **versioned candidate configurations**. Candidates are evaluated on the validation split (holdout stays sealed), and a **deterministic promotion gate** — candidate-vs-active validation aggregates **plus mandatory human approval** — controls what becomes active. The previous active configuration is preserved as the automatic rollback target, and one command restores it. Phase 9 (observability/UI) is next.
+
+---
 
 ## Architecture
 
@@ -14,7 +15,6 @@ ___
     width="1400"
   />
 </p>
-
 
 ---
 
@@ -42,6 +42,7 @@ ___
   - [Phase 6B — Golden Visual Dataset + Vision Model Bake-off](#phase-6b--golden-visual-dataset--vision-model-bake-off)
   - [Phase 7A — Text Golden Dataset + Eval Harness + First Baselines](#phase-7a--text-golden-dataset--eval-harness--first-baselines)
   - [Phase 7B — Validation Audit and System Selection Update](#phase-7b--validation-audit-and-system-selection-update)
+  - [Phase 8 — Closed Loop: Feedback, Diagnosis, Versioned Configs, Promotion Gate](#phase-8--closed-loop-feedback-diagnosis-versioned-configs-promotion-gate)
 - [Engineering Decisions](#engineering-decisions)
 - [Testing](#testing)
 - [Model Configuration](#model-configuration)
@@ -57,7 +58,7 @@ Most AI code-review demos are a single prompt that dumps unverifiable text onto 
 2. **Abstention is a feature.** If there is nothing worth flagging, the system posts nothing. Correct silence is measured and rewarded, just like correct detection.
 3. **Evidence beyond the diff.** Retrieval pulls the tests, call sites, and related modules that a human reviewer would open — and the model cites them. (Phase 3B)
 4. **Bounded self-correction.** A critic loop (Phase 4) may repair a comment at most twice; failure means suppression, never posting uncertain content.
-5. **Self-improvement with a gate.** Prompt and policy changes are versioned configurations that must beat the active config on a human-labeled golden PR set before promotion. No autonomous production prompt mutation.
+5. **Self-improvement with a gate.** Prompt and policy changes are versioned configurations that must beat the active config on a human-labeled golden PR set before promotion. No autonomous production prompt mutation. (Phase 8 — implemented)
 6. **Multimodal where it matters.** Frontend PRs are visually verified with rendered screenshots from a sandboxed UI; vision findings must be grounded back to changed code lines before they become comments. (Phase 5)
 
 ## What Makes This Different
@@ -72,14 +73,14 @@ Most AI code-review demos are a single prompt that dumps unverifiable text onto 
 | "Self-correction" as a prompt instruction | Repair bound enforced **structurally** in graph routing — no model behavior can loop past 2 attempts |
 | Webhook handler does LLM calls inline | 202-ack + ARQ background jobs with commit-scoped dedup keys |
 | Fire-and-forget | Full Postgres audit trail: webhook events, review runs, every node transition, every comment AND every suppression with reasons; idempotent run upsert keyed on (repo, PR, head SHA) |
-| Feedback is an afterthought | Every posted artifact carries 👍/👎 prompts + hidden identity markers from day one — feedback is attributable to a specific run/comment/config |
-| "Self-improving" = changes its prompt | Versioned configs promoted only by passing a promotion gate on a held-out benchmark (Phase 8) |
+| Feedback is an afterthought | Every posted artifact carries 👍/👎 prompts + hidden identity markers from day one — feedback is attributable to a specific run/comment/config, and is now persisted and consumed by the Phase 8 diagnoser |
+| "Self-improving" = changes its prompt | Versioned configs promoted only by a deterministic promotion gate — validation evidence vs. the active config **plus human approval** — with reject/rollback lifecycle (Phase 8) |
 | Text only | Optional vision analysis of rendered UI for frontend PRs (Phase 5), model chosen by a golden-set bake-off (Phase 6B) |
 | Evals on synthetic bugs | Golden text set built from **real human review comments** on real PRs, with overclaim tripwires (`must_not_claim`) and an LLM judge whose every rationale is persisted for human audit (Phase 7A) |
 
 ## Architecture (Current State)
 
-End-to-end flow as of Phase 7:
+End-to-end flow (webhook path, Phases 0–5):
 
 ```text
 PR opened / synchronized on an installed repository
@@ -167,7 +168,7 @@ graph TD;
     suppressor --> __end__;
 ```
 
-The offline evaluation harness (Phase 7) runs three review-system configurations against the golden set, outside the webhook path:
+The offline evaluation harness (Phase 7) runs review-system configurations against the golden set, outside the webhook path:
 
 ```text
 data/golden/manifest.json (129 hashed cases: 124 text + 5 visual)
@@ -186,8 +187,44 @@ app/evals/judge.py          semantic equivalence + groundedness, hunk-aware exce
 app/evals/metrics.py        P/R/F1 · groundedness · severity agreement (±1) ·
       │                     abstention accuracy · pass@k
       ▼
-Postgres (run/example/match rows) + export dir (per_example.csv, failure_examples.json,
-baseline_vs_final.md, aggregates.json)
+Postgres (run/example/match rows + generated comments) + export dir
+(per_example.csv, failure_examples.json, baseline_vs_final.md, aggregates.json)
+```
+
+The Phase 8 closed loop turns that instrumentation into controlled self-improvement:
+
+```text
+Posted-review feedback + eval failures (persisted, run/comment-attributed)
+      │
+      ▼
+app/diagnosis/report.py            build_diagnosis_report
+      │                            typed failure clusters (category × agent_node),
+      │                            each with attributable examples
+      ▼
+app/diagnosis/proposal.py          propose_configuration_candidate
+      │                            → DRAFT ReviewConfiguration (parent_version set)
+      ▼
+POST /api/v1/configurations/{id}/evaluations
+      │                            record validation-split metrics per config /
+      │                            system / repeat — holdout split rejected (400)
+      ▼
+POST /api/v1/configurations/{id}/approve       human sign-off (approved_by/at)
+      │
+      ▼
+POST /api/v1/configurations/{id}/promote       app/services/promotion.py
+      │   deterministic gate, decision object {eligible, failed_conditions}:
+      │   - candidate + active must both have complete validation aggregates
+      │     (missing → 400, promotion is impossible without evidence)
+      │   - candidate must not regress vs. active on the gated metrics
+      │   - manual_approval must be present (else failed_conditions:
+      │     ["manual_approval_missing"])
+      ▼
+eligible ⇒ candidate → ACTIVE, previous active → ROLLED_BACK
+           ("Superseded by <version>") — preserved as the rollback target
+      │
+      ▼
+POST /api/v1/configurations/rollback           restores the rolled-back config
+                                               (safety reversal, not a promotion)
 ```
 
 ## Full System Roadmap
@@ -205,10 +242,13 @@ baseline_vs_final.md, aggregates.json)
 [done]      Phase 6A  Golden dataset — candidate pool (467 PR-level examples)
 [done]      Phase 6B  Golden dataset — 5 visual cases annotated/split/hashed/documented,
                       vision model bake-off (sonnet-4.5), comparative diff-anchored prompt
-[done]      Phase 7 Evaluation harness — text golden set (124 reviewed examples),
-                      layered matcher + LLM judge, baseline / RAG / final-agent validation runs
-[in-progress]Phase 8   Closed loop — feedback, diagnoser, versioned configs, promotion gate
-[planned]   Phase 9   Observability/UI — Langfuse tracing, dashboard, deployment, demo
+[done]      Phase 7   Evaluation harness — text golden set (124 reviewed examples),
+                      layered matcher + LLM judge, baseline / RAG / final-agent validation
+                      runs; final agent selected on validation
+[done]      Phase 8   Closed loop — feedback persistence, diagnoser, versioned configs,
+                      evaluation recording, deterministic promotion gate + human approval,
+                      reject/rollback lifecycle, end-to-end demo
+[next]      Phase 9   Observability/UI — Langfuse tracing, dashboard, deployment, demo
 ```
 
 ## Tech Stack
@@ -228,7 +268,7 @@ baseline_vs_final.md, aggregates.json)
 | Background jobs | ARQ + Redis | Lightweight async Python worker; job-ID dedup |
 | GitHub integration | GitHub App (JWT + installation tokens) | Least-privilege auth, bot identity on reviews |
 | Tunnel (dev) | ngrok reserved domain | Stable webhook URL across restarts |
-| Persistence | PostgreSQL 16 + pgvector | Review runs, events, node transitions, comments, embeddings, FTS, eval runs/matches in one store |
+| Persistence | PostgreSQL 16 + pgvector | Review runs, events, node transitions, comments, embeddings, FTS, eval runs/matches, feedback, and versioned configurations in one store |
 | ORM / migrations | SQLAlchemy 2 (async) + Alembic | Async end-to-end; versioned schema |
 | Retrieval | pgvector cosine + Postgres FTS, RRF fusion | Semantic + lexical recall without a second datastore |
 | Agent orchestration | LangGraph | Conditional edges, structurally bounded loops, testable nodes |
@@ -247,16 +287,25 @@ self-improving-multimodal-code-review/
 │   │   ├── dependencies.py           # lazy ARQ pool on app.state (test-injectable)
 │   │   └── routes/
 │   │       ├── health.py             # GET /api/v1/health
-│   │       └── webhooks.py           # POST /api/v1/webhooks/github (HMAC + persist + enqueue)
+│   │       ├── webhooks.py           # POST /api/v1/webhooks/github (HMAC + persist + enqueue)
+│   │       └── configurations.py     # Phase 8: CRUD + diagnosis + propose-candidate +
+│   │                                 # evaluations + approve/promote/reject/rollback
 │   ├── core/
 │   │   ├── config.py                 # pydantic-settings; env-driven, validated
 │   │   ├── logging.py                # structlog JSON logging
 │   │   └── redis.py                  # per-event-loop Redis factory
 │   ├── db/
 │   │   ├── models/                   # WebhookEvent, ReviewRun, StoredReviewComment,
-│   │   │                             # RepoContextFile, ReviewRunEvent, eval tables
+│   │   │                             # RepoContextFile, ReviewRunEvent, eval tables,
+│   │   │                             # CommentFeedback, ReviewConfiguration + evaluations
 │   │   ├── session.py                # async engine/sessionmaker
 │   │   └── types.py                  # pgvector column type (imported by migrations)
+│   ├── diagnosis/                    # Phase 8
+│   │   ├── report.py                 # build_diagnosis_report — typed failure clusters
+│   │   └── proposal.py               # propose_configuration_candidate → DRAFT config
+│   ├── services/                     # Phase 8
+│   │   ├── configurations.py         # configuration lifecycle + record_configuration_evaluation
+│   │   └── promotion.py              # the deterministic promotion gate
 │   ├── github/
 │   │   ├── app_auth.py               # App JWT (RS256) + cached installation tokens
 │   │   ├── client.py                 # diff fetch, head-SHA fetch, tree fetch, review publishing
@@ -294,7 +343,7 @@ self-improving-multimodal-code-review/
 │   │   ├── judge.py                  # LLM equivalence + groundedness, hunk-aware excerpts
 │   │   ├── metrics.py                # P/R/F1, groundedness, severity ±1, abstention, pass@k
 │   │   ├── schemas.py                # CATEGORY_EQUIVALENTS, SEVERITY_LADDER, MatchRecord, …
-│   │   └── store.py                  # eval run/example/match persistence (Postgres)
+│   │   └── store.py                  # eval run/example/match + generated-comment persistence
 │   ├── llm/
 │   │   ├── openrouter_client.py      # async client, structured outputs, smart retries,
 │   │   │                             # schema-dialect normalization (strictify + key stripping)
@@ -315,6 +364,7 @@ self-improving-multimodal-code-review/
 │   └── golden/                       # generated: defect-free template + 5 case overlays (6B)
 ├── scripts/
 │   ├── review_local.py               # CLI: git diff → review.json
+│   ├── demo_phase8_promotion.py      # Phase 8: end-to-end promotion-gate walkthrough
 │   ├── golden/                       # dataset tooling
 │   │   ├── harvest_candidates.py     # (6A) HF triplets → candidate pool (funnel-audited filters)
 │   │   ├── fetch_pr_context.py       # (6A) candidates → PR-level examples via GitHub API
@@ -333,7 +383,7 @@ self-improving-multimodal-code-review/
 │   │   └── build_manifest.py         # (6B/7A) sha256 manifest + generator versions + review-stamp guard
 │   └── eval/
 │       └── run_visual_golden.py      # (6B/7) golden visual eval + model bake-off rig
-├── tests/                            # 98 tests, all passing
+├── tests/                            # full suite passing (uv run pytest -q)
 ├── data/
 │   ├── raw/                          # ignored
 │   ├── processed/                    # ignored review + eval artifacts
@@ -403,7 +453,7 @@ ngrok http --url=<your-reserved-domain>.ngrok-free.dev 8000 # 4. tunnel
 
 Open or update a PR on any repository where the App is installed. Within ~10 seconds the bot posts a review: a summary plus inline comments anchored to changed lines — triaged, grounded in retrieved context when the route calls for it, and judged by the critic — or nothing at all, if every candidate comment fails QA (abstention). Every run, node transition, comment, and suppression is persisted for audit.
 
-Posted reviews include a 👍/👎 prompt on the summary and each inline comment. Reactions are the raw feedback signal for the tuning loop (Phase 6+); hidden metadata markers on each comment make them attributable to a specific run.
+Posted reviews include a 👍/👎 prompt on the summary and each inline comment. Reactions are the raw feedback signal for the tuning loop; hidden metadata markers on each comment make them attributable to a specific run, and Phase 8 persists the normalized feedback records.
 
 ### Local review CLI (no GitHub needed)
 
@@ -440,6 +490,39 @@ uv run python -m app.evals.run --dataset validation --config v7-final-agent \
 ```
 
 Splits: `development` (17 — smoke/debug only, too small to rank arms), `validation` (35 — arm/config selection), `holdout` (72 — sealed; one shot for the final number). Each run needs a fresh `--config` label; exports land in `per_example.csv`, `failure_examples.json`, `baseline_vs_final.md`, and `aggregates.json`.
+
+### Phase 8 closed-loop demo (promotion gate walkthrough)
+
+```bash
+uv run python scripts/demo_phase8_promotion.py
+```
+
+Self-contained and re-runnable against the dev database. The walkthrough:
+
+1. Rejects stale demo candidates from previous runs (rejected, never deleted — audit preserved).
+2. Seeds `v1.1` (active) and a fresh `v1.2-demo-*` draft candidate.
+3. **Promote with no metrics → 400** (`candidate has no complete validation evaluation aggregate`) — unproven promotion is impossible.
+4. Records 3 validation repeats for baseline and candidate via `POST /configurations/{id}/evaluations`.
+5. **Promote without approval → 200 `{eligible: false, failed_conditions: ["manual_approval_missing"]}`** — the gate names exactly what is missing, and persists the decision into the candidate's `evaluation_summary`.
+6. Human approval via `POST /configurations/{id}/approve` (`{"approved_by": "..."}`).
+7. **Promote → `{eligible: true}`** — candidate becomes `active`; `v1.1` becomes `rolled_back` ("Superseded by …"), preserved as the rollback target.
+8. `POST /configurations/rollback` restores `v1.1`, returning the demo to its start state.
+
+### Phase 8 configuration API
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/configurations` | Create a versioned configuration (starts as `draft`) |
+| `GET /api/v1/configurations` | Paginated list of configurations and lifecycle states |
+| `GET /api/v1/configurations/{id}/diagnosis` | Diagnosis report: typed failure clusters from feedback + eval failures |
+| `POST /api/v1/configurations/propose-candidate` | Diagnosis-driven candidate proposal → persisted `draft` |
+| `POST /api/v1/configurations/{id}/evaluations` | Record validation metrics for a config (201; `holdout` split → 400) |
+| `POST /api/v1/configurations/{id}/approve` | Human sign-off (`{"approved_by": "..."}`) — records approval, does **not** promote |
+| `POST /api/v1/configurations/{id}/promote` | Run the deterministic gate → `{eligible, failed_conditions}`; on success activates the candidate and rolls the previous active into `rolled_back` |
+| `POST /api/v1/configurations/{id}/reject` | Reject a candidate with a reason (terminal, auditable) |
+| `POST /api/v1/configurations/rollback` | Restore the most recent rolled-back configuration to `active` |
+
+Configuration lifecycle: `draft → (approve) → pending → (promote, gate-passed) → active`, with `rejected` and `rolled_back` as terminal-but-queryable states. Approval and promotion are deliberately separate: neither human sign-off alone nor passing metrics alone can activate a configuration.
 
 ### Example published comment (RAG-grounded, Phase 3)
 
@@ -546,7 +629,7 @@ The actual engineering journey — failures included, because that's where the d
 
 **Design constraint:** markers must survive GitHub's Markdown rendering untouched (HTML comments do; front-matter and footnote tricks don't reliably) and must not pollute the visible review — reviewers should never see the instrumentation.
 
-**Verified live (Phase 4):** markers confirmed present via the API and invisible in rendered reviews — e.g. `<!-- review-forge {\"file\":\"calc.py\",\"line\":2,\"run_id\":8} -->` on review-sandbox PR #5.
+**Verified live (Phase 4):** markers confirmed present via the API and invisible in rendered reviews — e.g. `<!-- review-forge {"file":"calc.py","line":2,"run_id":8} -->` on review-sandbox PR #5.
 
 ### Phase 3A — PostgreSQL Persistence & Audit Trail
 
@@ -803,6 +886,44 @@ Marked four interrupted eval runs as `failed` rather than deleting them:
 
 Reason: preserve partial audit records while preventing status-based queries and future analysis from treating them as active runs.
 
+---
+
+## Phase 8 — Closed Loop: Feedback, Diagnosis, Versioned Configs, Promotion Gate
+
+**Goal:** turn the instrumentation shipped since Phase 2C (feedback markers, persisted suppressions, eval runs with judge rationales) into a controlled, human-gated improvement system: feedback → diagnosis → candidate proposal → recorded evidence → deterministic promotion gate → rollback.
+
+**Built:**
+
+- **Feedback persistence** (`CommentFeedback` model + migration) — normalized feedback records for inline comments and review summaries: typed labels (`false_positive`, `helpful`, …), actor type + **hashed** actor login, source (`github_reaction` / `manual_review`), source artifact IDs, attribution confidence (`exact_marker`, …), and dedup on `source_event_id` (replayed reactions can't double-count).
+- **Failure taxonomy + diagnoser** (`app/diagnosis/report.py`) — `build_diagnosis_report` groups feedback records and persisted eval failures into typed clusters (category × responsible agent node), each cluster carrying its attributable examples (run/comment/example IDs, free text, judge rationales). Served at `GET /api/v1/configurations/{id}/diagnosis`. Model-assisted diagnosis stays reviewable — it never mutates policy.
+- **Versioned configuration registry** (`ReviewConfiguration` + `app/services/configurations.py`) — prompt, router, critic, retrieval, threshold, model, and repair settings as explicit immutable-once-evaluated versions, with a full lifecycle: `draft → pending → active`, plus `rejected` and `rolled_back`. Approval fields (`approved_by`/`approved_at`), promotion/rejection/rollback timestamps and reasons, and an `evaluation_summary` JSONB that accumulates gate decisions. Routes: create, paginated list, approve, promote, reject, rollback.
+- **Candidate proposal** (`app/diagnosis/proposal.py`) — `propose_configuration_candidate` turns a diagnosis into a persisted **draft** candidate with `parent_version` set, via `POST /api/v1/configurations/propose-candidate`. Proposals are drafts, never live changes.
+- **Evaluation recording** — `POST /api/v1/configurations/{id}/evaluations` persists validation metrics (P/R/F1, groundedness, abstention, no-comment accuracy, safety failures) per configuration × system × repeat. The `holdout` split is rejected with 400 — the sealed holdout can never leak into a promotion decision.
+- **The promotion gate** (`app/services/promotion.py`) — deterministic, and deliberately separate from approval:
+  - Candidate **and** active config must both have complete validation aggregates for the system being promoted; missing evidence → 400 (`candidate has no complete validation evaluation aggregate`). **Promotion without evidence is impossible.**
+  - The gate evaluates candidate-vs-active aggregates plus `manual_approval` and returns a **decision object** `{eligible, failed_conditions}` — ineligibility is data (e.g. `["manual_approval_missing"]`), persisted into the candidate's `evaluation_summary`, not just an error.
+  - On success: candidate → `active` (`promoted_at` set); previous active → `rolled_back` with reason `"Superseded by <version>"` — that row **is** the rollback target.
+- **Rollback** — `POST /api/v1/configurations/rollback` restores the most recent rolled-back configuration to `active`. Rollback is a safety reversal, not a promotion: it intentionally does not re-run the gate (the restored config already passed it once), and it comes back with `approval_status: pending_approval`.
+- **End-to-end demo** (`scripts/demo_phase8_promotion.py`) — self-cleaning, re-runnable walkthrough of the whole loop against the dev database (see Usage).
+
+**Issues hit:**
+
+1. **Feedback model PK had no default generator (SQLite tests)** — `CommentFeedback.id` declared neither a Python-side default nor autoincrement, so every insert failed with `NOT NULL constraint failed: commentfeedback.id` under SQLite, while Postgres would have silently relied on a server default. Fixed with an explicit client-side UUID default. **Lesson:** declare key generation in the model, not the migration — tests build schema from the models.
+2. **The demo assumed approval *was* the gate** — the first walkthrough asserted that approving without metrics should fail. The API disagreed: `approve` returned 200 with `status: pending`, `approval_status: approved`, `promoted_at: null`. The lifecycle deliberately separates **human sign-off** from the **deterministic gate** (`promote`). The demo — not the API — was wrong; running it against the real routes is what surfaced the actual contract. **Lesson:** exercise new lifecycle APIs end-to-end before writing their documentation.
+3. **Demo state pollution across runs** — early runs left orphaned drafts, an approved-pending candidate, and eventually a *promoted* demo candidate as the active config. Rather than deleting rows, the demo now cleans up through the real lifecycle (`reject` stale candidates, `rollback` when a demo candidate is active) — audit trail intact, and the demo doubles as a reject/rollback test.
+4. **ORM enum vs. string in the demo's state table** — ORM-loaded rows returned `status` as a plain string, crashing a `.value` format call. Cosmetic, but a reminder that SQLite/Postgres and flush states disagree on enum materialization; `getattr(status, "value", status)` handles both.
+
+**Verified gate behavior (live demo output):**
+
+| Step | Result |
+|---|---|
+| Promote with no recorded metrics | `400 — candidate has no complete validation evaluation aggregate` |
+| Promote with metrics, no approval | `200 {eligible: false, failed_conditions: ["manual_approval_missing"]}` |
+| Approve → promote | `200 {eligible: true}` — candidate `active`, v1.1 `rolled_back` |
+| Rollback | v1.1 `active` again; demo returns to start state |
+
+**Result:** the self-improvement loop is closed and human-gated end to end — feedback is attributable and persisted, failures are diagnosed into typed clusters, candidates are versioned drafts, evidence is recorded on the validation split only, and neither metrics alone nor approval alone can activate a configuration. Full suite passing (`uv run pytest -q`).
+
 ## Engineering Decisions
 
 1. **Modular monolith, not microservices.** All phases live in one deployable FastAPI app; complexity is earned, not assumed.
@@ -829,11 +950,15 @@ Reason: preserve partial audit records while preventing status-based queries and
 22. **Select on reproducible behavior, not point metrics.** At this corpus size F1 is noise (one match = 10 recall points on dev; identical configs flipped the arm ranking between runs). Abstention and groundedness replicated exactly across repeats; F1 didn't. The final system is selected only after verifying that its broader metric profile improves, not by optimizing a single score.
 23. **Gold labels carry provenance and tripwires.** Text golds are LLM-drafted, assistant-reviewed, human-audited on a sample — with the measured draft error rates recorded (2 hallucinated rationales, 1 inverted tripwire, ~50% keyword-category misfires). `must_not_claim` fields make overclaiming a scored failure, and every judge rationale is persisted for a 20% human audit.
 24. **Matcher layers are cheap policy; the judge is expensive semantics.** Exact file + ±10 lines + category equivalence decide *candidacy* deterministically; an LLM judge decides *equivalence* only on surviving pairs, with mandatory rationales. The judge never sees a structurally implausible pair, and no deterministic layer ever decides meaning.
+25. **Approval is not promotion.** Human sign-off (`approve`) and the deterministic evidence gate (`promote`) are separate routes and separate states. Neither metrics alone nor approval alone can activate a configuration — the system requires both, by construction.
+26. **Gates return decisions, not just errors.** Promotion ineligibility is a persisted decision object (`{eligible, failed_conditions}` written into the candidate's `evaluation_summary`), so a rejection is auditable data, not a lost 4xx. (Same philosophy as persisted suppression reasons, applied to configuration lifecycle.)
+27. **Rollback is a safety reversal, not a promotion.** Restoring the previous configuration deliberately bypasses the gate — it already passed once — and returns with `pending_approval`. The previous active is always preserved as `rolled_back` ("Superseded by …"), never deleted.
+28. **Reject, don't delete.** Stale and rejected candidates keep their rows, recorded evaluations, and reasons. Status lifecycle carries the history; deletion would destroy the audit trail the loop depends on.
 
 ## Testing
 
 ```bash
-uv run pytest    # 98 tests, all passing
+uv run pytest -q    # full suite, all passing
 ```
 
 | Suite | Coverage |
@@ -857,6 +982,9 @@ uv run pytest    # 98 tests, all passing
 | `test_run_graph.py` | `run_review_graph` wrapper: state plumbing and output mapping on both terminal paths |
 | `test_jobs.py` | Worker at the graph seam: published payload passthrough, idempotent run upsert, event persistence, abstention with suppressions |
 | `test_golden_manifest.py` | Golden dataset integrity (6B/7A): artifact existence, sha256 drift detection, split validity, annotation schema validation, gold-line defect-marker grounding |
+| `test_feedback_models.py` | (8) CommentFeedback persistence: inline-comment + summary feedback, hashed actor identity, duplicate `source_event_id` rejection |
+| `test_propose_candidate_route.py` | (8) Diagnosis-driven candidate proposal → persisted draft with `parent_version`; error paths |
+| `test_evaluation_recording_route.py` | (8) Evaluation recording: metric persistence per config/system/repeat, `holdout` split rejected (400), unknown config 404 |
 | `test_health.py` | API smoke tests |
 
 ## Model Configuration
@@ -875,22 +1003,22 @@ uv run pytest    # 98 tests, all passing
 
 Honest list — each has a phase assigned:
 
-- **Feedback collection is passive:** markers and emoji prompts ship on every review, but nothing consumes reactions yet — that's the Phase 6/8 loop.
+- **Feedback loop is closed but not yet automated end-to-end:** feedback persists and the diagnoser clusters it, but candidate proposal is human-triggered via the API — nothing auto-opens a candidate from a failure cluster yet (a deliberate Phase 8 non-goal: no autonomous prompt mutation).
+- **Promotion gate compares aggregates, not statistics:** the gate requires complete validation aggregates for candidate and active plus human approval; repeat-count minimums and significance testing are policy tuning for later, on real candidate volume.
 - **Index freshness is SHA-scoped:** context is indexed at the PR head SHA and reused across redeliveries — correct by construction, but a first review of a big repo pays the full indexing cost. Incremental/background indexing is a later optimization.
-- **Retrieval seeding is heuristic:** queries come from diff paths + hunk keywords; triage's `review_focus` isn't yet wired into retrieval queries, and there's no query reformulation or multi-hop retrieval (a natural Phase 7 refinement).
+- **Retrieval seeding is heuristic:** queries come from diff paths + hunk keywords; triage's `review_focus` isn't yet wired into retrieval queries, and there's no query reformulation or multi-hop retrieval.
 - **QA heuristics are uncalibrated:** the word-count floor and Jaccard threshold are reasonable defaults, not measured values — calibration happens on the golden development split (Phase 7); the candidate pool is built.
 - **Repair fidelity vs. sycophancy unevaluated:** repaired comments can parrot the critic's instruction verbatim; high fidelity now, but it's an eval dimension, not a guarantee (Phase 7).
 - **Single repo language tested:** Python so far; the parser is language-agnostic but chunking quality per language is unevaluated (Phase 6).
 - **Golden pool skews:** dataset-derived positives are Python-only and older (HF corpus era); self-built negatives skew recent (2024–2026). Documented in `data/golden/DATASET_CARD.md`.
-- **Visual golden set is small and synthetic:** 5 cases, one Next.js fixture, CSS-only seeded defects, mobile-primary annotation. The adversarial backlog (subtle contrast, single-element centering, padding-fold phantom) is queued as Phase 7's first self-improvement targets.
+- **Visual golden set is small and synthetic:** 5 cases, one Next.js fixture, CSS-only seeded defects, mobile-primary annotation. The adversarial backlog (subtle contrast, single-element centering, padding-fold phantom) is queued as the first self-improvement targets.
 - **Vision model quotes unverified text:** sonnet-4.5 invents plausible prices/labels in evidence prose; detection and localization are reliable, verbatim quotes are not — the critic must verify quoted text against the diff before anything publishes.
-- **Precision against human-written gold is a lower bound (open-world problem):** real reviewers comment on one thing and ignore others, so valid-but-novel model findings count as false positives. Measured precision understates true precision; the improvement loop must weight groundedness and abstention alongside it.
-- **Validation results are not the sealed headline:** the current baseline/RAG/final-agent ordering is established on validation. The 72-example holdout stays sealed for the final reported number.
+- **Precision against human-written gold is a lower bound (open-world problem):** real reviewers comment on one thing and ignore others, so valid-but-novel model findings count as false positives. Measured precision understates true precision; the improvement loop weights groundedness and abstention alongside it.
+- **Validation results are not the sealed headline:** the baseline/RAG/final-agent ordering is established on validation. The 72-example holdout stays sealed for the final reported number — and the Phase 8 evaluation-recording route rejects the holdout split outright.
 - **Generation isn't bit-reproducible:** temp-0 over OpenRouter still varies across upstream providers; arm comparisons need repeats, and tiny metric deltas are noise.
 - **Eval judge is a hardcoded CLI default:** `gpt-4o-mini` via `--judge-model`, not yet wired to settings or persisted on run records; judge quality bounds every reported metric (the 20% human rationale audit is the designed check).
-- **Generated comments aren't persisted per eval run:** metrics and match records survive; raw outputs don't — failure analysis requires re-running.
 - **Dev-only hosting:** ngrok + local worker; deployment topology comes in Phase 9.
 
 ## Roadmap
 
-**Phase 8 (in progress):** the evaluation harness. Done: text golden set (124 reviewed examples from real review comments), layered matcher + LLM judge with persisted rationales, validation runs across baseline A, baseline B, and the final routed RAG agent. The final agent currently leads validation on F1, recall, and abstention accuracy.
+**Phase 9 (next):** observability and UI — Langfuse tracing across the agent graph and the Phase 8 loop, a dashboard over configurations/promotions/feedback, deployment topology, and the final demo. The sealed-holdout protocol (frozen config, single pre-specified run, judge-rationale audit plan) is executed only after Phase 9 instrumentation is in place — the holdout result is a report card, not a development signal.
