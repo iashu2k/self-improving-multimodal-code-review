@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn
+from pydantic import Field, PostgresDsn, RedisDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +21,7 @@ class Settings(BaseSettings):
   config_version: str = "v1.0"
 
   secret_key: str = Field(min_length=32)
+  feedback_hash_secret: str | None = Field(default=None, min_length=32)
 
   openrouter_api_key: str | None = None
   openrouter_base_url: str = "https://openrouter.ai/api/v1"
@@ -60,6 +61,16 @@ class Settings(BaseSettings):
   preview_timeout_seconds: int = 240
   preview_mem_limit: str = "1g"
   preview_nano_cpus: int = 1_000_000_000  # 1 CPU
+
+  @model_validator(mode="after")
+  def validate_feedback_hash_secret(self) -> "Settings":
+    if self.app_env == "production" and not self.feedback_hash_secret:
+      raise ValueError("FEEDBACK_HASH_SECRET must be configured in production")
+    return self
+
+  @property
+  def feedback_actor_hash_secret(self) -> str:
+    return self.feedback_hash_secret or self.secret_key
 
 
 @lru_cache

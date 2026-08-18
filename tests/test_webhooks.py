@@ -1,11 +1,16 @@
 import hashlib
 import hmac
 import json
+from datetime import UTC, datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 
+import app.api.routes.webhooks as webhook_routes
 from app.core.config import settings
+from app.db.models.feedback import CommentFeedback, FeedbackLabel
+from app.db.models.review import CommentStatus, ReviewRun, RunStatus, StoredReviewComment
 from app.db.session import get_db
 from app.main import app
 
@@ -35,12 +40,13 @@ def make_pr_payload(action: str = "opened") -> dict:
 def make_headers(
   body: bytes,
   *,
+  github_event: str = "pull_request",
   secret: str = TEST_SECRET,
   delivery_id: str = "test-delivery-1",
   include_signature: bool = True,
 ) -> dict[str, str]:
   headers = {
-    "X-GitHub-Event": "pull_request",
+    "X-GitHub-Event": github_event,
     "X-GitHub-Delivery": delivery_id,
     "Content-Type": "application/json",
   }
@@ -318,3 +324,214 @@ async def test_redelivery_after_publish_is_duplicate(
   assert first.json()["status"] == "accepted"
   assert second.json()["status"] == "duplicate"
   assert len(fake_arq_pool.jobs) == 1
+
+
+class FakeFeedbackGitHub:
+  def __init__(self) -> None:
+    self.parent_comment: dict | None = None
+    self.requests: list[tuple[str, str, int]] = []
+
+  async def get_pr_review_comment(
+    self,
+    owner: str,
+    repo: str,
+    comment_id: int,
+  ) -> dict:
+    self.requests.append((owner, repo, comment_id))
+    assert self.parent_comment is not None
+    return self.parent_comment
+
+  async def aclose(self) -> None:
+    return None
+
+
+@pytest.fixture
+def fake_feedback_github(monkeypatch: pytest.MonkeyPatch) -> FakeFeedbackGitHub:
+  client = FakeFeedbackGitHub()
+
+  async def fake_get_installation_token(installation_id: int) -> str:
+    assert installation_id == 42
+    return "feedback-test-token"
+
+  monkeypatch.setattr(
+    webhook_routes,
+    "get_installation_token",
+    fake_get_installation_token,
+  )
+  monkeypatch.setattr(
+    webhook_routes,
+    "GitHubClient",
+    lambda token: client,
+  )
+
+  return client
+
+
+def make_feedback_payload(body: str = "/review-ai false-positive Already guarded.") -> dict:
+  return {
+    "action": "created",
+    "repository": {"full_name": "owner/repo"},
+    "installation": {"id": 42},
+    "pull_request": {"number": 99},
+    "comment": {
+      "id": 700,
+      "in_reply_to_id": 600,
+      "body": body,
+      "created_at": "2026-08-17T23:20:00Z",
+      "author_association": "MEMBER",
+    },
+    "sender": {
+      "login": "maintainer-user",
+      "type": "User",
+      "site_admin": False,
+    },
+  }
+
+
+async def seed_feedback_target(db_session) -> ReviewRun:
+  run = ReviewRun(
+    repo_owner="owner",
+    repo_name="repo",
+    pr_number=99,
+    head_sha="a" * 40,
+    config_version=settings.config_version,
+    status=RunStatus.PUBLISHED,
+    github_review_id=333,
+  )
+  db_session.add(run)
+  await db_session.flush()
+
+  db_session.add(
+    StoredReviewComment(
+      run_id=run.id,
+      file_path="src/client.py",
+      line=24,
+      severity="high",
+      category="bug_risk",
+      title="Missing null guard",
+      body="The client can receive a missing token.",
+      suggested_fix="Return before invoking the client when token is missing.",
+      confidence=0.91,
+      status=CommentStatus.POSTED,
+    )
+  )
+  await db_session.commit()
+
+  return run
+
+
+@pytest.mark.asyncio
+async def test_feedback_command_reply_is_persisted(
+  client: AsyncClient,
+  db_session,
+  fake_feedback_github: FakeFeedbackGitHub,
+) -> None:
+  run = await seed_feedback_target(db_session)
+  fake_feedback_github.parent_comment = {
+    "id": 600,
+    "pull_request_review_id": run.github_review_id,
+    "path": "src/client.py",
+    "line": 24,
+    "body": (
+      "Bot review finding.\n\n"
+      f'<!-- review-forge {{"file":"src/client.py","line":24,"run_id":{run.id}}} -->'
+    ),
+  }
+
+  payload = make_feedback_payload()
+  body = json.dumps(payload).encode()
+
+  async with client:
+    response = await client.post(
+      "/api/v1/webhooks/github",
+      content=body,
+      headers=make_headers(
+        body,
+        github_event="pull_request_review_comment",
+        delivery_id="feedback-delivery-001",
+      ),
+    )
+
+  feedback_rows = (
+    await db_session.scalars(select(CommentFeedback).order_by(CommentFeedback.created_at))
+  ).all()
+
+  assert response.status_code == 202
+  assert response.json()["status"] == "feedback_recorded"
+  assert fake_feedback_github.requests == [("owner", "repo", 600)]
+  assert len(feedback_rows) == 1
+  assert feedback_rows[0].run_id == run.id
+  assert feedback_rows[0].label == FeedbackLabel.FALSE_POSITIVE
+  assert feedback_rows[0].created_at.replace(tzinfo=UTC) == datetime(
+    2026,
+    8,
+    17,
+    23,
+    20,
+    tzinfo=UTC,
+  )
+
+
+@pytest.mark.asyncio
+async def test_non_command_review_comment_is_ignored(
+  client: AsyncClient,
+  fake_feedback_github: FakeFeedbackGitHub,
+) -> None:
+  payload = make_feedback_payload("This looks like a false positive.")
+  body = json.dumps(payload).encode()
+
+  async with client:
+    response = await client.post(
+      "/api/v1/webhooks/github",
+      content=body,
+      headers=make_headers(
+        body,
+        github_event="pull_request_review_comment",
+        delivery_id="feedback-delivery-002",
+      ),
+    )
+
+  assert response.status_code == 202
+  assert response.json()["status"] == "ignored"
+  assert response.json()["reason"] == "not_feedback_command"
+  assert fake_feedback_github.requests == []
+
+
+@pytest.mark.asyncio
+async def test_unattributable_feedback_command_is_ignored(
+  client: AsyncClient,
+  db_session,
+  fake_feedback_github: FakeFeedbackGitHub,
+) -> None:
+  run = await seed_feedback_target(db_session)
+  fake_feedback_github.parent_comment = {
+    "id": 600,
+    "pull_request_review_id": run.github_review_id,
+    "path": "src/other.py",
+    "line": 24,
+    "body": (
+      "Copied marker.\n\n"
+      f'<!-- review-forge {{"file":"src/client.py","line":24,"run_id":{run.id}}} -->'
+    ),
+  }
+
+  payload = make_feedback_payload()
+  body = json.dumps(payload).encode()
+
+  async with client:
+    response = await client.post(
+      "/api/v1/webhooks/github",
+      content=body,
+      headers=make_headers(
+        body,
+        github_event="pull_request_review_comment",
+        delivery_id="feedback-delivery-003",
+      ),
+    )
+
+  feedback_rows = (await db_session.scalars(select(CommentFeedback))).all()
+
+  assert response.status_code == 202
+  assert response.json()["status"] == "ignored"
+  assert response.json()["reason"] == "feedback_not_attributable"
+  assert len(feedback_rows) == 0

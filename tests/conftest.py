@@ -2,7 +2,12 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.base import Base
-from app.db.models import ReviewRun, StoredReviewComment, WebhookEvent  # noqa: F401
+from app.db.models import (  # noqa: F401
+  CommentFeedback,
+  ReviewRun,
+  StoredReviewComment,
+  WebhookEvent,
+)
 
 
 class FakeStructuredClient:

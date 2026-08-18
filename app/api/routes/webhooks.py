@@ -12,6 +12,12 @@ from app.core.config import settings
 from app.db.models.review import ReviewRun, RunStatus
 from app.db.models.webhook import WebhookEvent
 from app.db.session import get_db
+from app.feedback.github_events import extract_feedback_command_candidate
+from app.feedback.identity import classify_github_actor, hash_github_actor_login
+from app.feedback.resolver import resolve_feedback_target
+from app.feedback.store import persist_github_command_feedback
+from app.github.app_auth import get_installation_token
+from app.github.client import GitHubAPIError, GitHubClient
 from app.github.webhook_verifier import WebhookVerificationError, verify_signature
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -50,6 +56,97 @@ async def _enqueue_review(
     head_sha=head_sha,
     _job_id=job_id,
   )
+
+
+async def _ingest_feedback_command(
+  *,
+  db: AsyncSession,
+  github_event: str,
+  payload: dict,
+  delivery_id: str,
+) -> str:
+  candidate = extract_feedback_command_candidate(github_event, payload)
+  if candidate is None:
+    return "not_feedback_command"
+
+  try:
+    token = await get_installation_token(candidate.installation_id)
+    github = GitHubClient(token)
+  except Exception:
+    logger.exception(
+      "feedback_github_client_initialization_failed",
+      delivery_id=delivery_id,
+      repository=f"{candidate.repository_owner}/{candidate.repository_name}",
+      pr_number=candidate.pr_number,
+    )
+    return "feedback_parent_unavailable"
+
+  try:
+    parent_comment = await github.get_pr_review_comment(
+      candidate.repository_owner,
+      candidate.repository_name,
+      candidate.parent_comment_id,
+    )
+  except GitHubAPIError as exc:
+    logger.warning(
+      "feedback_parent_comment_fetch_failed",
+      delivery_id=delivery_id,
+      repository=f"{candidate.repository_owner}/{candidate.repository_name}",
+      pr_number=candidate.pr_number,
+      parent_comment_id=candidate.parent_comment_id,
+      error=str(exc),
+    )
+    return "feedback_parent_unavailable"
+  finally:
+    await github.aclose()
+
+  target = await resolve_feedback_target(
+    db,
+    candidate=candidate,
+    parent_comment=parent_comment,
+  )
+  if target is None:
+    logger.info(
+      "feedback_command_not_attributable",
+      delivery_id=delivery_id,
+      repository=f"{candidate.repository_owner}/{candidate.repository_name}",
+      pr_number=candidate.pr_number,
+      parent_comment_id=candidate.parent_comment_id,
+    )
+    return "feedback_not_attributable"
+
+  actor_type = classify_github_actor(
+    candidate.actor_association,
+    site_admin=candidate.actor_site_admin,
+  )
+  actor_login_hash = hash_github_actor_login(
+    candidate.actor_login,
+    secret=settings.feedback_actor_hash_secret,
+  )
+
+  persisted = await persist_github_command_feedback(
+    db,
+    candidate=candidate,
+    target=target,
+    actor_type=actor_type,
+    actor_login_hash=actor_login_hash,
+    delivery_id=delivery_id,
+  )
+  await db.commit()
+
+  logger.info(
+    "feedback_command_persisted",
+    delivery_id=delivery_id,
+    feedback_id=str(persisted.feedback.id),
+    run_id=target.run.id,
+    stored_comment_id=target.stored_comment.id,
+    label=candidate.label,
+    created=persisted.created,
+  )
+
+  if persisted.created:
+    return "feedback_recorded"
+  return "feedback_duplicate"
 
 
 @router.post("/github", status_code=202)
@@ -160,6 +257,32 @@ async def github_webhook(
 
     logger.info("webhook_duplicate_delivery", delivery_id=x_github_delivery)
     return {"status": "duplicate", "delivery_id": x_github_delivery}
+
+  if x_github_event == "pull_request_review_comment":
+    feedback_status = await _ingest_feedback_command(
+      db=db,
+      github_event=x_github_event,
+      payload=payload,
+      delivery_id=x_github_delivery,
+    )
+
+    if feedback_status == "feedback_recorded":
+      return {
+        "status": "feedback_recorded",
+        "delivery_id": x_github_delivery,
+      }
+
+    if feedback_status == "feedback_duplicate":
+      return {
+        "status": "feedback_duplicate",
+        "delivery_id": x_github_delivery,
+      }
+
+    return {
+      "status": "ignored",
+      "reason": feedback_status,
+      "delivery_id": x_github_delivery,
+    }
 
   if x_github_event != "pull_request":
     return {"status": "ignored", "reason": "not_a_pull_request_event"}

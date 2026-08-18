@@ -59,6 +59,22 @@ class GitHubClient:
     response.raise_for_status()
     return response.json()["head"]["sha"]
 
+  async def get_pr_review_comment(
+    self,
+    owner: str,
+    repo: str,
+    comment_id: int,
+  ) -> dict:
+    """Fetch one pull-request review comment by GitHub comment ID."""
+    response = await self._client.get(f"/repos/{owner}/{repo}/pulls/comments/{comment_id}")
+
+    if response.status_code >= 400:
+      raise GitHubAPIError(
+        f"GitHub review comment fetch failed with {response.status_code}: {response.text}"
+      )
+
+    return response.json()
+
   async def create_review(
     self,
     owner: str,
