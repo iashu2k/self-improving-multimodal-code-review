@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Review dashboard{% endblock %}</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #0d1117; color: #c9d1d9; }
+    nav { display: flex; gap: 1.25rem; padding: 0.75rem 1.25rem; background: #161b22; border-bottom: 1px solid #30363d; }
+    nav a { color: #8b949e; text-decoration: none; font-size: 0.9rem; }
+    nav a:hover { color: #58a6ff; }
+    main { padding: 1.25rem; max-width: 1280px; margin: 0 auto; }
+    h1 { font-size: 1.15rem; margin: 1.25rem 0 0.75rem; }
+    h1:first-child { margin-top: 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+    th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #21262d; vertical-align: top; }
+    th { color: #8b949e; font-weight: 600; white-space: nowrap; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .badge { display: inline-block; padding: 0.08rem 0.5rem; border-radius: 1rem; font-size: 0.72rem; border: 1px solid #30363d; margin: 0.1rem 0.15rem 0.1rem 0; }
+    .b-published, .b-active, .b-eligible, .b-helpful, .b-completed { color: #3fb950; border-color: #238636; }
+    .b-failed, .b-rejected, .b-ineligible, .b-false_positive { color: #f85149; border-color: #da3633; }
+    .b-abstained, .b-rolled_back, .b-pending, .b-wrong_severity, .b-not_actionable { color: #d29922; border-color: #9e6a03; }
+    .b-running, .b-draft, .b-duplicate, .b-missing_context { color: #8b949e; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 0.5rem; padding: 0.9rem 1rem; margin-bottom: 0.9rem; }
+    pre { background: #0d1117; border: 1px solid #21262d; border-radius: 0.35rem; padding: 0.6rem; overflow-x: auto; font-size: 0.76rem; margin: 0.5rem 0 0; }
+    .muted { color: #8b949e; }
+    form.filter { margin: 0 0 1rem; display: flex; gap: 0.6rem; align-items: center; }
+    select, button, input { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 0.35rem; padding: 0.32rem 0.6rem; font: inherit; font-size: 0.83rem; }
+    button { cursor: pointer; }
+    button:hover { border-color: #58a6ff; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/dashboard/configurations">Configurations</a>
+    <a href="/dashboard/runs">Runs</a>
+    <a href="/dashboard/evaluation">Evaluation</a>
+    <a href="/dashboard/feedback">Feedback</a>
+  </nav>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

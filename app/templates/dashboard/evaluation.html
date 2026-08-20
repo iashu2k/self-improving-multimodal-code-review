@@ -1,0 +1,69 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Evaluation · Review dashboard{% endblock %}
+{% block content %}
+{% macro fmt(v) -%}
+{%- if v is none -%}-{%- else -%}{{ "%.3f" | format(v) }}{%- endif -%}
+{%- endmacro %}
+<h1>Evaluation runs</h1>
+<form class="filter" method="get" action="/dashboard/evaluation">
+  <label class="muted" for="config_version">config</label>
+  <input id="config_version" name="config_version" value="{{ config_version }}" placeholder="v1.1">
+  <button type="submit">filter</button>
+</form>
+{% for run in data.eval_runs %}
+<div class="card">
+  <div>
+    <strong>{{ run.config_version }}</strong> · {{ run.dataset_split }} ·
+    <span class="badge b-{{ run.status }}">{{ run.status }}</span>
+    <span class="muted">{{ run.started_at.strftime("%m-%d %H:%M") }} · ${{ "%.2f" | format(run.total_cost_usd) }}</span>
+    {% if run.langfuse_trace_url %} · <a href="{{ run.langfuse_trace_url }}">trace</a>{% endif %}
+  </div>
+  {% if run.aggregate_metrics %}
+  <table>
+    <thead><tr><th>System</th><th>P</th><th>R</th><th>F1</th><th>Grounded</th><th>Line-valid</th><th>Severity</th><th>Abstain</th><th>pass@1</th><th>pass@2</th></tr></thead>
+    <tbody>
+      {% for m in run.aggregate_metrics %}
+      <tr>
+        <td>{{ m.system }}</td>
+        <td>{{ fmt(m.precision) }}</td>
+        <td>{{ fmt(m.recall) }}</td>
+        <td>{{ fmt(m.f1) }}</td>
+        <td>{{ fmt(m.groundedness_rate) }}</td>
+        <td>{{ fmt(m.line_validity_rate) }}</td>
+        <td>{{ fmt(m.severity_agreement_rate) }}</td>
+        <td>{{ fmt(m.no_comment_accuracy) }}</td>
+        <td>{{ fmt(m.pass_at_1) }}</td>
+        <td>{{ fmt(m.pass_at_2) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% else %}
+<p class="muted">No evaluation runs yet.</p>
+{% endfor %}
+
+<h1>Configuration metrics</h1>
+<table>
+  <thead><tr><th>Config</th><th>Split</th><th>System</th><th>Repeat</th><th>P</th><th>R</th><th>F1</th><th>Grounded</th><th>Abstain</th><th>Recorded</th></tr></thead>
+  <tbody>
+    {% for m in data.configuration_metrics %}
+    <tr>
+      <td>{{ m.config_version }}</td>
+      <td>{{ m.dataset_split }}</td>
+      <td>{{ m.system }}</td>
+      <td>{{ m.repeat_number }}</td>
+      <td>{{ fmt(m.precision) }}</td>
+      <td>{{ fmt(m.recall) }}</td>
+      <td>{{ fmt(m.f1) }}</td>
+      <td>{{ fmt(m.groundedness) }}</td>
+      <td>{{ fmt(m.no_comment_accuracy) }}</td>
+      <td class="muted">{{ m.created_at.strftime("%m-%d %H:%M") }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="10" class="muted">No recorded configuration metrics.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

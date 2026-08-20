@@ -11,6 +11,7 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 from app.core.config import settings
 from app.core.redis import get_redis
 from app.llm.cost_guard import CostGuard
+from app.observability import llm_generation
 
 logger = structlog.get_logger(__name__)
 
@@ -60,6 +61,7 @@ def raise_for_status_with_body(response: httpx.Response) -> None:
   """Like raise_for_status, but the exception carries the response body.
 
 
+
   OpenRouter's 4xx bodies name the exact problem (unsupported parameter,
   missing modality, payment) — discarding them makes every failure a
   guessing game. Retry semantics unchanged: still an HTTPStatusError, so
@@ -80,12 +82,14 @@ def strictify_schema(schema: dict[str, Any]) -> dict[str, Any]:
 
 
 
+
   OpenAI's strict mode rejects a schema unless every object node sets
   additionalProperties: false and lists every property in `required`.
   Pydantic emits neither by default: fields with defaults (e.g.
   observations/uncertainties = []) are omitted from `required`, and
   additionalProperties is left unset. First seen live: gpt-4o-mini 400,
   "'additionalProperties' is required to be supplied and to be false".
+
 
 
 
@@ -97,9 +101,11 @@ def strictify_schema(schema: dict[str, Any]) -> dict[str, Any]:
 
 
 
+
   Lenient providers (Gemini, Qwen, Gemma) accept the same additions —
   both are standard JSON Schema — so the shim applies unconditionally:
   one request code path, no per-provider branching.
+
 
 
 
@@ -164,8 +170,9 @@ class OpenRouterClient:
     prompt_tokens: int,
     completion_tokens: int,
     cost_key: str = "chat",
-  ) -> None:
+  ) -> float | None:
     """Best-effort spend recording.
+
 
 
     The HTTP call has already succeeded when this runs — the money is
@@ -174,12 +181,18 @@ class OpenRouterClient:
     cap is undercounting. (The pre-call check stays fail-closed.)
 
 
+
     cost_key tags the call type ("chat" | "embedding") in the
     openrouter_cost event, so eval runs can separate indexing spend from
     generation spend (Phase 7 cost logging).
+
+
+
+    Returns the recorded cost in USD so callers can attach it to a
+    Langfuse generation, or None when recording was skipped or failed.
     """
     if self._cost_guard is None:
-      return
+      return None
     try:
       cost = await self._cost_guard.record(
         model=model,
@@ -193,8 +206,10 @@ class OpenRouterClient:
         cost_usd=round(cost, 6),
         spent_today_usd=round(await self._cost_guard.spent_today(), 4),
       )
+      return cost
     except Exception as exc:
       logger.warning("openrouter_cost_record_failed", error=str(exc)[:200])
+      return None
 
   @retry(
     retry=retry_if_exception(is_retryable_exception),
@@ -212,6 +227,8 @@ class OpenRouterClient:
     messages: list[dict[str, Any]],
     temperature: float = 0.0,
     max_tokens: int = 1500,
+    trace_name: str | None = None,
+    prompt_version: str | None = None,
   ) -> StructuredResponse:
     if self._cost_guard is not None:
       await self._cost_guard.check()
@@ -234,61 +251,87 @@ class OpenRouterClient:
       },
     }
 
-    response = await self._client.post("/chat/completions", json=payload)
-    raise_for_status_with_body(response)
+    # One generation per attempt: the tenacity decorator re-enters this
+    # method on retry, so retried calls show up as repeated generations
+    # with failed attempts marked ERROR. That is the trace's retry count.
+    async with llm_generation(
+      trace_name or f"openrouter.{schema_name}",
+      model=model,
+      input=messages,
+      prompt_version=prompt_version,
+      metadata={
+        "schema_name": schema_name,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+      },
+    ) as generation:
+      response = await self._client.post("/chat/completions", json=payload)
+      raise_for_status_with_body(response)
 
-    data = response.json()
-    choices = data.get("choices", [])
+      data = response.json()
+      choices = data.get("choices", [])
 
-    if not choices:
-      raise StructuredOutputError(
-        f"OpenRouter returned no choices. Response keys: {list(data.keys())}"
+      if not choices:
+        raise StructuredOutputError(
+          f"OpenRouter returned no choices. Response keys: {list(data.keys())}"
+        )
+
+      raw_content = choices[0].get("message", {}).get("content")
+
+      if not isinstance(raw_content, str) or not raw_content.strip():
+        message = choices[0].get("message", {})
+        finish_reason = choices[0].get("finish_reason")
+        reasoning = message.get("reasoning")
+        raise StructuredOutputError(
+          "OpenRouter returned empty or non-string message content. "
+          f"model={model!r}, finish_reason={finish_reason!r}, "
+          f"has_reasoning={bool(reasoning)}, usage={data.get('usage', {})!r}"
+        )
+
+      try:
+        parsed_content = json.loads(raw_content)
+      except json.JSONDecodeError as exc:
+        preview = raw_content[:500].replace("\n", "\\n")
+        raise StructuredOutputError(
+          f"Invalid JSON from model={model}; content preview={preview!r}"
+        ) from exc
+
+      if not isinstance(parsed_content, dict):
+        raise StructuredOutputError(
+          f"Expected a JSON object from model={model}, got {type(parsed_content).__name__}."
+        )
+
+      try:
+        usage = Usage.model_validate(data.get("usage", {}))
+      except ValidationError as exc:
+        raise StructuredOutputError(f"Invalid usage object from model={model}.") from exc
+
+      result = StructuredResponse(
+        content=parsed_content,
+        usage=usage,
+        model=data.get("model", model),
       )
 
-    raw_content = choices[0].get("message", {}).get("content")
-
-    if not isinstance(raw_content, str) or not raw_content.strip():
-      message = choices[0].get("message", {})
-      finish_reason = choices[0].get("finish_reason")
-      reasoning = message.get("reasoning")
-      raise StructuredOutputError(
-        "OpenRouter returned empty or non-string message content. "
-        f"model={model!r}, finish_reason={finish_reason!r}, "
-        f"has_reasoning={bool(reasoning)}, usage={data.get('usage', {})!r}"
+      # Bill the provider-REPORTED model, not the requested one — an
+      # OpenRouter reroute bills differently than the request implies.
+      cost = await self._record_cost(
+        model=result.model,
+        prompt_tokens=result.usage.prompt_tokens,
+        completion_tokens=result.usage.completion_tokens,
       )
-
-    try:
-      parsed_content = json.loads(raw_content)
-    except json.JSONDecodeError as exc:
-      preview = raw_content[:500].replace("\n", "\\n")
-      raise StructuredOutputError(
-        f"Invalid JSON from model={model}; content preview={preview!r}"
-      ) from exc
-
-    if not isinstance(parsed_content, dict):
-      raise StructuredOutputError(
-        f"Expected a JSON object from model={model}, got {type(parsed_content).__name__}."
+      generation.update(
+        output=result.content,
+        model=result.model,
+        usage_details={
+          "input": result.usage.prompt_tokens,
+          "output": result.usage.completion_tokens,
+          "total": result.usage.total_tokens
+          or result.usage.prompt_tokens + result.usage.completion_tokens,
+        },
+        cost_details={"total": cost} if cost is not None else None,
+        metadata={"requested_model": model},
       )
-
-    try:
-      usage = Usage.model_validate(data.get("usage", {}))
-    except ValidationError as exc:
-      raise StructuredOutputError(f"Invalid usage object from model={model}.") from exc
-
-    result = StructuredResponse(
-      content=parsed_content,
-      usage=usage,
-      model=data.get("model", model),
-    )
-
-    # Bill the provider-REPORTED model, not the requested one — an
-    # OpenRouter reroute bills differently than the request implies.
-    await self._record_cost(
-      model=result.model,
-      prompt_tokens=result.usage.prompt_tokens,
-      completion_tokens=result.usage.completion_tokens,
-    )
-    return result
+      return result
 
   @retry(
     retry=retry_if_exception(is_retryable_exception),
@@ -307,20 +350,34 @@ class OpenRouterClient:
       "encoding_format": "float",
     }
 
-    response = await self._client.post("/embeddings", json=payload)
-    raise_for_status_with_body(response)
-    data = response.json()
-
-    # Embeddings have no completions: prompt_tokens IS the whole usage
-    # (total_tokens is the fallback for providers that only report it).
-    # Passing total as completion_tokens is wrong under any pricing table
-    # with a nonzero output rate — e.g. the unknown-model fallback.
-    usage = data.get("usage", {})
-    await self._record_cost(
+    # Raw texts stay out of the trace input (they can be whole files);
+    # the count is enough to debug indexing cost.
+    async with llm_generation(
+      "openrouter.embed",
       model=model,
-      prompt_tokens=usage.get("prompt_tokens", 0) or usage.get("total_tokens", 0),
-      completion_tokens=0,
-      cost_key="embedding",
-    )
+      input={"text_count": len(texts)},
+      metadata={"cost_key": "embedding"},
+    ) as generation:
+      response = await self._client.post("/embeddings", json=payload)
+      raise_for_status_with_body(response)
+      data = response.json()
 
-    return [item["embedding"] for item in data["data"]]
+      # Embeddings have no completions: prompt_tokens IS the whole usage
+      # (total_tokens is the fallback for providers that only report it).
+      # Passing total as completion_tokens is wrong under any pricing table
+      # with a nonzero output rate — e.g. the unknown-model fallback.
+      usage = data.get("usage", {})
+      prompt_tokens = usage.get("prompt_tokens", 0) or usage.get("total_tokens", 0)
+      cost = await self._record_cost(
+        model=model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=0,
+        cost_key="embedding",
+      )
+      generation.update(
+        output={"embedding_count": len(data["data"])},
+        usage_details={"input": prompt_tokens, "output": 0, "total": prompt_tokens},
+        cost_details={"total": cost} if cost is not None else None,
+      )
+
+      return [item["embedding"] for item in data["data"]]

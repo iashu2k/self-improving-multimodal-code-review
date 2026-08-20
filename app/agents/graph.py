@@ -1,5 +1,6 @@
 """Phase 4 agent graph.
 
+
     triage_router ──abstain──> suppressor ──> END
           │proceed
           ▼
@@ -9,8 +10,10 @@
                                      ├── repair + retry<2 ──> repair_generator ──> critic_qa
                                      └── reject / retry==2 ──> suppressor ──> END
 
+
 Bounded retry is structural: critic_qa is the only node that routes into
 repair_generator, and route_after_qa refuses once retry_count hits the cap.
+
 
 NOTE: generate_comments, the validator (via qa.py), hybrid_retrieve, and
 decide_route are imported lazily inside nodes on purpose — tests monkeypatch
@@ -32,6 +35,7 @@ from app.agents.qa_schemas import (
 )
 from app.agents.schemas import ReviewComment
 from app.agents.state import GraphEvent, ReviewGraphState
+from app.observability import langgraph_handler
 
 MAX_RETRY_COUNT = 2
 
@@ -370,6 +374,11 @@ async def run_review_graph(
   critic_model: str,
   embedding_model: str,
 ) -> GraphRunOutput:
+  # Langfuse node spans come from the LangChain callback handler; when a
+  # review_run_trace is active in the worker, the graph trace nests under
+  # it. Handler is None when observability is disabled: config stays empty.
+  handler = langgraph_handler()
+  config: dict[str, Any] = {"callbacks": [handler]} if handler else {}
   final = await build_graph().ainvoke(
     {
       "run_id": run_id,
@@ -394,7 +403,8 @@ async def run_review_graph(
       "suppressed_comments": [],
       "errors": [],
       "events": [],
-    }
+    },
+    config=config,
   )
   return GraphRunOutput(
     accepted=final.get("accepted_comments", []),

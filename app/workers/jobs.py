@@ -19,6 +19,7 @@ from app.github.client import GitHubClient
 from app.github.diff_parser import ChangedFile, parse_unified_diff
 from app.ingestion.indexer import get_or_create_snapshot, index_snapshot
 from app.llm.openrouter_client import OpenRouterClient
+from app.observability import flush, node_span, redacted_pr_metadata, review_run_trace
 from app.vision.analyzer import analyze_pr_visual
 from app.vision.review_bridge import build_visual_review_comments
 
@@ -70,6 +71,7 @@ async def run_pr_review(
   pr_title: str,
   pr_body: str,
   head_sha: str,
+  github_delivery_id: str | None = None,
 ) -> dict:
   log = logger.bind(
     repo=f"{repository_owner}/{repository_name}",
@@ -117,194 +119,252 @@ async def run_pr_review(
     await session.commit()
     await session.refresh(run)
 
+    # Phase 9: one Langfuse trace per review run. The trace ID is seeded
+    # by run.id, so ARQ retries of the same run merge into a single trace
+    # and the dashboard can deep-link to it without storing anything.
+    # Fail-open: with Langfuse disabled or down, every helper here no-ops.
     try:
-      token = await get_installation_token(installation_id)
-      github = GitHubClient(token)
-      llm = OpenRouterClient()
-
-      try:
-        diff_text = await github.get_pr_diff(repository_owner, repository_name, pr_number)
-        files = parse_unified_diff(diff_text)
-        reviewable = [f for f in files if is_reviewable(f)]
-
-        log.info(
-          "diff_fetched",
-          total_files=len(files),
-          reviewable_files=len(reviewable),
-        )
-
-        if not reviewable:
-          run.status = RunStatus.ABSTAINED
-          run.abstain_reason = "no_reviewable_files"
-          run.completed_at = datetime.now(UTC)
-          await session.commit()
-          return {"status": "abstained", "reason": "no_reviewable_files"}
-
-        if not settings.openrouter_review_model:
-          raise RuntimeError("OPENROUTER_REVIEW_MODEL is not configured")
-
-        # --- index repo at head SHA (unchanged) ---
-        snapshot = await get_or_create_snapshot(
-          session,
-          owner=repository_owner,
-          repo=repository_name,
-          sha=head_sha,
-        )
-        await index_snapshot(session, snapshot=snapshot, github=github, llm=llm)
-        await session.commit()
-
-        # --- Phase 5: visual analyzer (sandbox + capture + vision) ---
-        # Adjust snapshot_root if your snapshots live elsewhere.
-        repo_root = Path(__file__).resolve().parent.parent.parent  # adjust if needed
-
-        visual_analysis = await analyze_pr_visual(
-          repo_root=repo_root,
-          pr_title=pr_title,
-          diff_text=diff_text,
-          routes=["/checkout"],
-        )
-
-        visual_comments = []
-        if visual_analysis.sandbox.ok and visual_analysis.grounded_observations:
-          visual_comments = build_visual_review_comments(visual_analysis.grounded_observations)
-          log.info(
-            "visual_analysis_completed",
-            viewport_results=list(visual_analysis.per_viewport.keys()),
-            grounded_count=len(visual_analysis.grounded_observations),
-          )
-        elif not visual_analysis.sandbox.ok:
-          log.warning(
-            "visual_sandbox_failed",
-            stage_failed=visual_analysis.sandbox.stage_failed,
-            error=visual_analysis.sandbox.error,
-          )
-
-        # --- Phase 4: agent graph -------------------------------
-        output = await run_review_graph(
-          session=session,
-          llm=llm,
-          snapshot_id=snapshot.id,
-          run_id=run.id,
+      async with review_run_trace(
+        review_run_id=run.id,
+        github_delivery_id=github_delivery_id,
+        pr_metadata=redacted_pr_metadata(
+          repo=f"{repository_owner}/{repository_name}",
           pr_number=pr_number,
-          commit_sha=head_sha,
-          pr_title=pr_title,
-          pr_body=pr_body,
-          diff=diff_text,
-          changed_files=reviewable,
-          config_version=settings.config_version,
-          router_model=settings.openrouter_router_model or settings.openrouter_review_model,
-          review_model=settings.openrouter_review_model,
-          critic_model=settings.openrouter_critic_model or settings.openrouter_review_model,
-          embedding_model=settings.openrouter_embedding_model,
-        )
+          head_sha=head_sha,
+        ),
+        config_version=settings.config_version,
+      ) as trace:
+        try:
+          token = await get_installation_token(installation_id)
+          github = GitHubClient(token)
+          llm = OpenRouterClient()
 
-        # Merge visual comments into the final review payload.
-        if visual_comments:
-          from app.github.formatting import format_comment_body
+          try:
+            diff_text = await github.get_pr_diff(repository_owner, repository_name, pr_number)
+            files = parse_unified_diff(diff_text)
+            reviewable = [f for f in files if is_reviewable(f)]
 
-          for vc in visual_comments:
-            output.accepted.append(vc)
-            output.review_comments.append(
-              {
-                "path": vc.file_path,
-                "line": vc.line,
-                "side": vc.side,
-                "body": format_comment_body(vc, run_id=run.id),
+            log.info(
+              "diff_fetched",
+              total_files=len(files),
+              reviewable_files=len(reviewable),
+            )
+            trace.update(
+              metadata={
+                "total_files": len(files),
+                "reviewable_files": len(reviewable),
               }
             )
 
-        for event in output.events:
-          session.add(
-            ReviewRunEvent(
-              run_id=run.id,
-              node=event["node"],
-              detail=event["detail"],
-            )
-          )
+            if not reviewable:
+              run.status = RunStatus.ABSTAINED
+              run.abstain_reason = "no_reviewable_files"
+              run.completed_at = datetime.now(UTC)
+              await session.commit()
+              trace.update(output={"status": "abstained", "reason": "no_reviewable_files"})
+              return {"status": "abstained", "reason": "no_reviewable_files"}
 
-        for s in output.suppressed:
-          session.add(
-            StoredReviewComment(
-              run_id=run.id,
-              file_path=s.comment.file_path,
-              line=s.comment.line,
-              severity=s.comment.severity.value,
-              category=s.comment.category.value,
-              title=s.comment.title,
-              body=s.comment.body,
-              suggested_fix=s.comment.suggested_fix,
-              confidence=s.comment.confidence,
-              status=CommentStatus.SUPPRESSED,
-              suppression_reason=s.reason,
-            )
-          )
+            if not settings.openrouter_review_model:
+              raise RuntimeError("OPENROUTER_REVIEW_MODEL is not configured")
 
-        if not output.should_publish:
-          run.status = RunStatus.ABSTAINED
-          run.abstain_reason = output.abstain_reason
+            # --- index repo at head SHA (unchanged) ---
+            snapshot = await get_or_create_snapshot(
+              session,
+              owner=repository_owner,
+              repo=repository_name,
+              sha=head_sha,
+            )
+            # Groups the embedding generations from index_snapshot under
+            # one span instead of directly under the trace root.
+            async with node_span(
+              "repo_indexer",
+              input={"snapshot_id": snapshot.id, "head_sha": head_sha[:8]},
+            ):
+              await index_snapshot(session, snapshot=snapshot, github=github, llm=llm)
+              await session.commit()
+
+            # --- Phase 5: visual analyzer (sandbox + capture + vision) ---
+            # Adjust snapshot_root if your snapshots live elsewhere.
+            repo_root = Path(__file__).resolve().parent.parent.parent  # adjust if needed
+
+            # Runs outside the LangGraph callback path, so it needs an
+            # explicit span to appear in the trace.
+            async with node_span("vision_analyzer", input={"routes": ["/checkout"]}) as vision_span:
+              visual_analysis = await analyze_pr_visual(
+                repo_root=repo_root,
+                pr_title=pr_title,
+                diff_text=diff_text,
+                routes=["/checkout"],
+              )
+              vision_span.update(
+                output={
+                  "sandbox_ok": visual_analysis.sandbox.ok,
+                  "grounded_count": len(visual_analysis.grounded_observations),
+                }
+              )
+
+            visual_comments = []
+            if visual_analysis.sandbox.ok and visual_analysis.grounded_observations:
+              visual_comments = build_visual_review_comments(visual_analysis.grounded_observations)
+              log.info(
+                "visual_analysis_completed",
+                viewport_results=list(visual_analysis.per_viewport.keys()),
+                grounded_count=len(visual_analysis.grounded_observations),
+              )
+            elif not visual_analysis.sandbox.ok:
+              log.warning(
+                "visual_sandbox_failed",
+                stage_failed=visual_analysis.sandbox.stage_failed,
+                error=visual_analysis.sandbox.error,
+              )
+
+            # --- Phase 4: agent graph -------------------------------
+            output = await run_review_graph(
+              session=session,
+              llm=llm,
+              snapshot_id=snapshot.id,
+              run_id=run.id,
+              pr_number=pr_number,
+              commit_sha=head_sha,
+              pr_title=pr_title,
+              pr_body=pr_body,
+              diff=diff_text,
+              changed_files=reviewable,
+              config_version=settings.config_version,
+              router_model=settings.openrouter_router_model or settings.openrouter_review_model,
+              review_model=settings.openrouter_review_model,
+              critic_model=settings.openrouter_critic_model or settings.openrouter_review_model,
+              embedding_model=settings.openrouter_embedding_model,
+            )
+
+            # Merge visual comments into the final review payload.
+            if visual_comments:
+              from app.github.formatting import format_comment_body
+
+              for vc in visual_comments:
+                output.accepted.append(vc)
+                output.review_comments.append(
+                  {
+                    "path": vc.file_path,
+                    "line": vc.line,
+                    "side": vc.side,
+                    "body": format_comment_body(vc, run_id=run.id),
+                  }
+                )
+
+            for event in output.events:
+              session.add(
+                ReviewRunEvent(
+                  run_id=run.id,
+                  node=event["node"],
+                  detail=event["detail"],
+                )
+              )
+
+            for s in output.suppressed:
+              session.add(
+                StoredReviewComment(
+                  run_id=run.id,
+                  file_path=s.comment.file_path,
+                  line=s.comment.line,
+                  severity=s.comment.severity.value,
+                  category=s.comment.category.value,
+                  title=s.comment.title,
+                  body=s.comment.body,
+                  suggested_fix=s.comment.suggested_fix,
+                  confidence=s.comment.confidence,
+                  status=CommentStatus.SUPPRESSED,
+                  suppression_reason=s.reason,
+                )
+              )
+
+            if not output.should_publish:
+              run.status = RunStatus.ABSTAINED
+              run.abstain_reason = output.abstain_reason
+              run.completed_at = datetime.now(UTC)
+              await session.commit()
+              log.info("review_abstained", reason=run.abstain_reason)
+              trace.update(
+                output={
+                  "status": "abstained",
+                  "reason": run.abstain_reason,
+                  "comments_suppressed": len(output.suppressed),
+                  "retry_count": output.retry_count,
+                }
+              )
+              return {"status": "abstained", "reason": run.abstain_reason}
+
+            current_head_sha = await github.get_pr_head_sha(
+              repository_owner, repository_name, pr_number
+            )
+
+            log.info(
+              "review_submitting",
+              commit_id=current_head_sha,
+              comments=[{"path": c["path"], "line": c["line"]} for c in output.review_comments],
+            )
+
+            review_response = await github.create_review(
+              repository_owner,
+              repository_name,
+              pr_number,
+              commit_id=current_head_sha,
+              body=output.review_body,
+              comments=output.review_comments,
+            )
+
+            for c in output.accepted:
+              session.add(
+                StoredReviewComment(
+                  run_id=run.id,
+                  file_path=c.file_path,
+                  line=c.line,
+                  severity=c.severity.value,
+                  category=c.category.value,
+                  title=c.title,
+                  body=c.body,
+                  suggested_fix=c.suggested_fix,
+                  confidence=c.confidence,
+                  status=CommentStatus.POSTED,
+                )
+              )
+
+            run.status = RunStatus.PUBLISHED
+            run.github_review_id = review_response.get("id")
+            run.completed_at = datetime.now(UTC)
+            await session.commit()
+
+            log.info(
+              "review_published",
+              review_id=run.github_review_id,
+              comment_count=len(output.review_comments),
+              retry_count=output.retry_count,
+            )
+            trace.update(
+              output={
+                "status": "published",
+                "github_review_id": run.github_review_id,
+                "comments_posted": len(output.review_comments),
+                "comments_suppressed": len(output.suppressed),
+                "retry_count": output.retry_count,
+              }
+            )
+            return {
+              "status": "published",
+              "comments": len(output.review_comments),
+            }
+
+          finally:
+            await github.aclose()
+            await llm.aclose()
+
+        except Exception as exc:
+          run.status = RunStatus.FAILED
+          run.error = f"{type(exc).__name__}: {exc}"[:2000]
           run.completed_at = datetime.now(UTC)
           await session.commit()
-          log.info("review_abstained", reason=run.abstain_reason)
-          return {"status": "abstained", "reason": run.abstain_reason}
-
-        current_head_sha = await github.get_pr_head_sha(
-          repository_owner, repository_name, pr_number
-        )
-
-        log.info(
-          "review_submitting",
-          commit_id=current_head_sha,
-          comments=[{"path": c["path"], "line": c["line"]} for c in output.review_comments],
-        )
-
-        review_response = await github.create_review(
-          repository_owner,
-          repository_name,
-          pr_number,
-          commit_id=current_head_sha,
-          body=output.review_body,
-          comments=output.review_comments,
-        )
-
-        for c in output.accepted:
-          session.add(
-            StoredReviewComment(
-              run_id=run.id,
-              file_path=c.file_path,
-              line=c.line,
-              severity=c.severity.value,
-              category=c.category.value,
-              title=c.title,
-              body=c.body,
-              suggested_fix=c.suggested_fix,
-              confidence=c.confidence,
-              status=CommentStatus.POSTED,
-            )
-          )
-
-        run.status = RunStatus.PUBLISHED
-        run.github_review_id = review_response.get("id")
-        run.completed_at = datetime.now(UTC)
-        await session.commit()
-
-        log.info(
-          "review_published",
-          review_id=run.github_review_id,
-          comment_count=len(output.review_comments),
-          retry_count=output.retry_count,
-        )
-        return {
-          "status": "published",
-          "comments": len(output.review_comments),
-        }
-
-      finally:
-        await github.aclose()
-        await llm.aclose()
-
-    except Exception as exc:
-      run.status = RunStatus.FAILED
-      run.error = f"{type(exc).__name__}: {exc}"[:2000]
-      run.completed_at = datetime.now(UTC)
-      await session.commit()
-      raise
+          raise
+    finally:
+      # ARQ jobs are discrete units: flush buffered spans on every exit
+      # path (published, abstained, failed) or they never ship.
+      flush()

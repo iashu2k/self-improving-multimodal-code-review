@@ -54,6 +54,7 @@ async def _enqueue_review(
     pr_title=pr.get("title") or "",
     pr_body=pr.get("body") or "",
     head_sha=head_sha,
+    github_delivery_id=delivery_id,
     _job_id=job_id,
   )
 

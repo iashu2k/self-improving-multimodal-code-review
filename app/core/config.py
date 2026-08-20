@@ -45,9 +45,11 @@ class Settings(BaseSettings):
   # read-only PAT for public repo data; never used by the app
   github_dataset_token: str = ""
 
+  langfuse_enabled: bool = False
   langfuse_public_key: str | None = None
   langfuse_secret_key: str | None = None
   langfuse_host: str = "https://cloud.langfuse.com"
+  langfuse_project_id: str | None = None
 
   review_max_files: int = Field(default=30, alias="REVIEW_MAX_FILES")
   review_max_added_lines: int = Field(default=1500, alias="REVIEW_MAX_ADDED_LINES")

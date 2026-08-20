@@ -2,7 +2,14 @@
 
 A GitHub App that reviews pull requests with grounded, schema-validated inline comments — built as an evaluation-driven system that measures its own precision, groundedness, and reliability, then improves its prompts and policies through a controlled, human-gated feedback loop.
 
-**Status:** Phase 8 complete — the self-improvement loop is now closed end to end. Review feedback and evaluation failures are persisted with run/comment attribution, grouped by a diagnoser into typed failure clusters, and turned into **versioned candidate configurations**. Candidates are evaluated on the validation split (holdout stays sealed), and a **deterministic promotion gate** — candidate-vs-active validation aggregates **plus mandatory human approval** — controls what becomes active. The previous active configuration is preserved as the automatic rollback target, and one command restores it. Phase 9 (observability/UI) is next.
+### Pull Request Demos
+
+These live pull requests demonstrate the system reviewing beyond a one-shot diff prompt:
+- [Repository-aware review with hybrid RAG](https://github.com/iashu2k/review-sandbox/pull/5) — the reviewer retrieves relevant repository context, such as tests and call sites outside the patch, then produces a diff-anchored comment grounded in that evidence.
+
+- [Multimodal frontend review with vision](https://github.com/iashu2k/review-sandbox-ui/pull/5) — the reviewer renders the changed UI in a sandboxed browser, analyzes mobile and desktop screenshots with a vision model, and grounds detected regressions back to the changed CSS/TSX lines.
+
+**Status:** Phase 9 complete — review runs, eval runs, and promotion decisions are traceable through fail-open Langfuse instrumentation. A read-only dashboard API and server-rendered UI let a human gatekeeper inspect the configuration lifecycle without touching SQL, while the sealed-holdout protocol is frozen ahead of execution.
 
 ---
 
@@ -43,6 +50,7 @@ A GitHub App that reviews pull requests with grounded, schema-validated inline c
   - [Phase 7A — Text Golden Dataset + Eval Harness + First Baselines](#phase-7a--text-golden-dataset--eval-harness--first-baselines)
   - [Phase 7B — Validation Audit and System Selection Update](#phase-7b--validation-audit-and-system-selection-update)
   - [Phase 8 — Closed Loop: Feedback, Diagnosis, Versioned Configs, Promotion Gate](#phase-8--closed-loop-feedback-diagnosis-versioned-configs-promotion-gate)
+  - [Phase 9 — Observability and Dashboard](#phase-9--observability-and-dashboard)
 - [Engineering Decisions](#engineering-decisions)
 - [Testing](#testing)
 - [Model Configuration](#model-configuration)
@@ -248,7 +256,9 @@ POST /api/v1/configurations/rollback           restores the rolled-back config
 [done]      Phase 8   Closed loop — feedback persistence, diagnoser, versioned configs,
                       evaluation recording, deterministic promotion gate + human approval,
                       reject/rollback lifecycle, end-to-end demo
-[next]      Phase 9   Observability/UI — Langfuse tracing, dashboard, deployment, demo
+[done]      Phase 9   Observability + UI: Langfuse tracing (review runs, eval runs,
+                      promotion decisions), read-only dashboard API + server-rendered UI,
+                      sealed-holdout protocol frozen, demo assets
 ```
 
 ## Tech Stack
@@ -273,7 +283,7 @@ POST /api/v1/configurations/rollback           restores the rolled-back config
 | Retrieval | pgvector cosine + Postgres FTS, RRF fusion | Semantic + lexical recall without a second datastore |
 | Agent orchestration | LangGraph | Conditional edges, structurally bounded loops, testable nodes |
 | Browser automation | Playwright in Docker | Deterministic, viewport-true UI rendering for vision analysis |
-| Observability | Langfuse (Phase 9) | Traces, prompt versions, cost/latency, evals |
+| Observability | Langfuse (Phase 9) | Fail-open traces, prompt versions, cost/latency, evals |
 | Package management | uv (package mode) | Fast, reproducible, editable-install imports everywhere |
 | Quality gates | Ruff, mypy strict, pytest, pre-commit | Enforced on every commit |
 
@@ -282,14 +292,16 @@ POST /api/v1/configurations/rollback           restores the rolled-back config
 ```text
 self-improving-multimodal-code-review/
 ├── app/
+│   ├── observability/                # Phase 9: fail-open Langfuse traces, spans, generations, scores
 │   ├── api/
 │   │   ├── router.py                 # API route aggregation
 │   │   ├── dependencies.py           # lazy ARQ pool on app.state (test-injectable)
 │   │   └── routes/
 │   │       ├── health.py             # GET /api/v1/health
 │   │       ├── webhooks.py           # POST /api/v1/webhooks/github (HMAC + persist + enqueue)
-│   │       └── configurations.py     # Phase 8: CRUD + diagnosis + propose-candidate +
-│   │                                 # evaluations + approve/promote/reject/rollback
+│   │       ├── configurations.py     # Phase 8: CRUD + diagnosis + propose-candidate +
+│   │       │                         # evaluations + approve/promote/reject/rollback
+│   │       └── dashboard.py          # Phase 9: read-only dashboard API + server-rendered UI
 │   ├── core/
 │   │   ├── config.py                 # pydantic-settings; env-driven, validated
 │   │   ├── logging.py                # structlog JSON logging
@@ -396,6 +408,7 @@ self-improving-multimodal-code-review/
 ├── pyproject.toml                    # uv package mode, ruff/mypy/pytest config
 ├── .env.example
 └── docs/
+    └── holdout_protocol.md           # Phase 9: frozen sealed-holdout protocol
 ```
 
 ## Setup
@@ -430,6 +443,9 @@ uv run alembic upgrade head
 | `GITHUB_DATASET_TOKEN` | Read-only PAT for public repo data — Phase 6A/7A scripts only, never used by the app | GitHub → Developer settings → Fine-grained tokens → Public repositories (read-only) |
 | `DATABASE_URL` | Async Postgres DSN | `postgresql+asyncpg://postgres:postgres@localhost:5432/code_review` |
 | `REDIS_URL` | Job queue | `redis://localhost:6379/0` (docker-compose) |
+| `LANGFUSE_PUBLIC_KEY` | Langfuse project public key | Langfuse project settings |
+| `LANGFUSE_SECRET_KEY` | Langfuse project secret key | Langfuse project settings |
+| `LANGFUSE_HOST` | Langfuse endpoint | `https://us.cloud.langfuse.com` for US-hosted projects; EU default is `https://cloud.langfuse.com` |
 
 ### GitHub App configuration
 
@@ -924,6 +940,28 @@ Reason: preserve partial audit records while preventing status-based queries and
 
 **Result:** the self-improvement loop is closed and human-gated end to end — feedback is attributable and persisted, failures are diagnosed into typed clusters, candidates are versioned drafts, evidence is recorded on the validation split only, and neither metrics alone nor approval alone can activate a configuration. Full suite passing (`uv run pytest -q`).
 
+### Phase 9 — Observability and Dashboard
+
+**Goal:** every review run, eval run, and promotion decision is traceable, and a human gatekeeper can inspect the configuration lifecycle without touching SQL.
+
+**Built:**
+
+- **`app/observability/` package** — fail-open Langfuse v4 client, `root_trace` with deterministic seed-derived trace IDs, `review_run_trace`, `node_span`, `llm_generation`, and `score_trace`. Deterministic IDs let the dashboard deep-link to traces without storing a mapping.
+- **LangGraph and LLM instrumentation** — LangGraph node spans use the LangChain `CallbackHandler`; OpenRouter calls are wrapped as generations with usage and cost because the callback handler cannot inspect raw HTTP.
+- **Traced evaluation harness** — one `eval_run` trace per run, plus `eval_system` and `eval_example` spans; aggregate metrics attach as Langfuse scores.
+- **Traced Phase 8 lifecycle events** — `promotion_decision` (including `eligible` and `failed_conditions`), `configuration_rollback`, and `diagnosis_report`.
+- **Read-only dashboard API** — `/api/v1/dashboard/...` serves runs, run detail, evaluation, feedback, and configurations. It introduces no new write paths.
+- **Server-rendered UI** — `/dashboard/...` uses Jinja templates, no build step, and one inline stylesheet. Its rollback control calls the existing gated API.
+- **Frozen holdout protocol** — `docs/holdout_protocol.md` was frozen before any holdout execution.
+
+**Issues hit:**
+
+1. **`propagate_attributes` moved across Langfuse releases** — it landed differently in v4: module-level rather than a client method. Fixed by pinning `langfuse>=4,<5` and importing it at module level behind a guard.
+2. **Langfuse Cloud keys are region-locked** — `cloud.langfuse.com` is EU, while US projects return 401 on export until `LANGFUSE_HOST=https://us.cloud.langfuse.com` is set.
+3. **Dashboard route tests reached real Postgres** — `get_db` now overrides to the per-test SQLite session, matching the existing route-test convention.
+
+**Result:** observability is non-blocking, lifecycle decisions are inspectable in the dashboard, and the holdout protocol is locked before the final report-card run.
+
 ## Engineering Decisions
 
 1. **Modular monolith, not microservices.** All phases live in one deployable FastAPI app; complexity is earned, not assumed.
@@ -954,12 +992,12 @@ Reason: preserve partial audit records while preventing status-based queries and
 26. **Gates return decisions, not just errors.** Promotion ineligibility is a persisted decision object (`{eligible, failed_conditions}` written into the candidate's `evaluation_summary`), so a rejection is auditable data, not a lost 4xx. (Same philosophy as persisted suppression reasons, applied to configuration lifecycle.)
 27. **Rollback is a safety reversal, not a promotion.** Restoring the previous configuration deliberately bypasses the gate — it already passed once — and returns with `pending_approval`. The previous active is always preserved as `rolled_back` ("Superseded by …"), never deleted.
 28. **Reject, don't delete.** Stale and rejected candidates keep their rows, recorded evaluations, and reasons. Status lifecycle carries the history; deletion would destroy the audit trail the loop depends on.
+29. **Observability is fail-open and never on the review critical path.**
+30. **Langfuse references prompt versions; `ReviewConfiguration` remains the source of truth.**
+31. **The dashboard is read-only over existing tables; mutations stay on the Phase 8 API.**
+32. **Trace IDs are deterministic seeds** (`review_run` by run ID, `eval-run-<id>`, `promotion-<config id>`), so deep links need no stored mapping.
 
 ## Testing
-
-```bash
-uv run pytest -q    # full suite, all passing
-```
 
 | Suite | Coverage |
 |---|---|
@@ -985,6 +1023,8 @@ uv run pytest -q    # full suite, all passing
 | `test_feedback_models.py` | (8) CommentFeedback persistence: inline-comment + summary feedback, hashed actor identity, duplicate `source_event_id` rejection |
 | `test_propose_candidate_route.py` | (8) Diagnosis-driven candidate proposal → persisted draft with `parent_version`; error paths |
 | `test_evaluation_recording_route.py` | (8) Evaluation recording: metric persistence per config/system/repeat, `holdout` split rejected (400), unknown config 404 |
+| `test_dashboard_routes.py` | (9) Read-only dashboard runs, detail, evaluations, feedback, and configuration views; SQLite `get_db` override |
+| `test_observability.py` | (9) Fail-open Langfuse guards, deterministic trace IDs, review/eval/lifecycle trace helpers |
 | `test_health.py` | API smoke tests |
 
 ## Model Configuration
@@ -1017,8 +1057,8 @@ Honest list — each has a phase assigned:
 - **Validation results are not the sealed headline:** the baseline/RAG/final-agent ordering is established on validation. The 72-example holdout stays sealed for the final reported number — and the Phase 8 evaluation-recording route rejects the holdout split outright.
 - **Generation isn't bit-reproducible:** temp-0 over OpenRouter still varies across upstream providers; arm comparisons need repeats, and tiny metric deltas are noise.
 - **Eval judge is a hardcoded CLI default:** `gpt-4o-mini` via `--judge-model`, not yet wired to settings or persisted on run records; judge quality bounds every reported metric (the 20% human rationale audit is the designed check).
-- **Dev-only hosting:** ngrok + local worker; deployment topology comes in Phase 9.
+- **Dev-only hosting:** ngrok + local worker; production deployment topology remains future work.
 
 ## Roadmap
 
-**Phase 9 (next):** observability and UI — Langfuse tracing across the agent graph and the Phase 8 loop, a dashboard over configurations/promotions/feedback, deployment topology, and the final demo. The sealed-holdout protocol (frozen config, single pre-specified run, judge-rationale audit plan) is executed only after Phase 9 instrumentation is in place — the holdout result is a report card, not a development signal.
+**Phase 9 (complete):** observability and UI — Langfuse tracing across review runs, eval runs, and the Phase 8 configuration lifecycle; a read-only dashboard API and server-rendered UI; frozen sealed-holdout protocol; and demo assets. The holdout result remains a report card, not a development signal.

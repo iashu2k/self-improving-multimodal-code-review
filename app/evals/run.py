@@ -1,9 +1,11 @@
 """Phase 7 offline evaluation harness entrypoint.
 
+
 Usage:
   python -m app.evals.run --dataset holdout --config v1
   python -m app.evals.run --dataset holdout --config v1 --systems baseline_a,final_agent
   python -m app.evals.run --dataset holdout --config v1 --export data/processed/eval_v1
+
 
 Requires golden examples to have snapshot_id populated (Phase 7.2 curation).
 """
@@ -31,6 +33,7 @@ from app.ingestion.retriever import (
 )
 from app.llm.prompts.review import EVAL_RELAXED_SYSTEM_PROMPT
 from app.llm.reviewer import EVAL_RELAXED_GENERATOR_POLICY, generate_comments
+from app.observability import flush, node_span, root_trace, score_trace
 
 GOLDEN_ROOT = Path("data/golden")
 
@@ -259,86 +262,105 @@ async def evaluate_system(
 
   for example in examples:
     example_id = example["example_id"]
-    gold_comments = example.get("gold_comments", [])
-    diff_text = example["_diff_text"]
-    attempt_passes: list[bool] = []
 
-    for attempt in range(1, max_repairs + 1):
-      if system_name == SystemName.BASELINE_A:
-        output = await baseline_a_review(example)
-      elif system_name == SystemName.BASELINE_A_RELAXED:
-        output = await baseline_a_relaxed_review(example)
-      elif system_name == SystemName.BASELINE_B:
-        output = await baseline_b_review(example, session=session)
-      else:
-        output = await final_agent_review(
-          example,
-          session=session,
-          run_id=run_id,
-          max_repairs=max_repairs,
+    # One span per example per system. Review and judge LLM generations
+    # nest under it automatically via the active eval_run trace.
+    async with node_span(
+      "eval_example",
+      input={"example_id": example_id, "system": system_name.value},
+    ) as example_span:
+      gold_comments = example.get("gold_comments", [])
+      diff_text = example["_diff_text"]
+      attempt_passes: list[bool] = []
+
+      for attempt in range(1, max_repairs + 1):
+        if system_name == SystemName.BASELINE_A:
+          output = await baseline_a_review(example)
+        elif system_name == SystemName.BASELINE_A_RELAXED:
+          output = await baseline_a_relaxed_review(example)
+        elif system_name == SystemName.BASELINE_B:
+          output = await baseline_b_review(example, session=session)
+        else:
+          output = await final_agent_review(
+            example,
+            session=session,
+            run_id=run_id,
+            max_repairs=max_repairs,
+          )
+
+        generated = output.comments
+
+        pairs = matcher.deterministic_candidates(gold_comments, generated)
+        decisions = await judge.judge_equivalence(
+          judge_client,
+          example_id,
+          pairs,
+          gold_comments,
+          generated,
+          diff_text,
+        )
+        matches = matcher.resolve_matches(
+          example_id,
+          len(gold_comments),
+          len(generated),
+          pairs,
+          decisions,
         )
 
-      generated = output.comments
+        grounded = await judge.judge_groundedness(
+          judge_client,
+          generated,
+          diff_text,
+          output.retrieved_context,
+        )
+        grounded_flags = [result.grounded for result in grounded]
+        line_valid_flags = [True] * len(generated)
 
-      pairs = matcher.deterministic_candidates(gold_comments, generated)
-      decisions = await judge.judge_equivalence(
-        judge_client,
-        example_id,
-        pairs,
-        gold_comments,
-        generated,
-        diff_text,
+        scored = metrics.score_example(
+          example_id,
+          system_name,
+          gold_comments,
+          generated,
+          matches,
+          grounded_flags,
+          line_valid_flags,
+          attempt=attempt,
+        )
+
+        row = await store.record_example_result(
+          session,
+          run_id=run_id,
+          metrics=scored,
+          generated_comments=[comment.model_dump(mode="json") for comment in generated],
+          cost_usd=0.0,
+        )
+        await store.record_matches(
+          session,
+          run_id=run_id,
+          example_result_id=row.id,
+          matches=matches,
+        )
+        await session.commit()
+
+        acceptable = scored.fn == 0 and scored.fp == 0
+        attempt_passes.append(acceptable)
+
+        if attempt == 1:
+          per_example.append(scored)
+
+      pass_attempts[example_id] = attempt_passes
+      first_attempt = per_example[-1]
+      example_span.update(
+        output={
+          "tp": first_attempt.tp,
+          "fp": first_attempt.fp,
+          "fn": first_attempt.fn,
+          "precision": first_attempt.precision,
+          "recall": first_attempt.recall,
+          "f1": first_attempt.f1,
+          "attempt_passes": attempt_passes,
+        }
       )
-      matches = matcher.resolve_matches(
-        example_id,
-        len(gold_comments),
-        len(generated),
-        pairs,
-        decisions,
-      )
-
-      grounded = await judge.judge_groundedness(
-        judge_client,
-        generated,
-        diff_text,
-        output.retrieved_context,
-      )
-      grounded_flags = [result.grounded for result in grounded]
-      line_valid_flags = [True] * len(generated)
-
-      scored = metrics.score_example(
-        example_id,
-        system_name,
-        gold_comments,
-        generated,
-        matches,
-        grounded_flags,
-        line_valid_flags,
-        attempt=attempt,
-      )
-
-      row = await store.record_example_result(
-        session,
-        run_id=run_id,
-        metrics=scored,
-        generated_comments=[comment.model_dump(mode="json") for comment in generated],
-        cost_usd=0.0,
-      )
-      await store.record_matches(
-        session,
-        run_id=run_id,
-        example_result_id=row.id,
-        matches=matches,
-      )
-      await session.commit()
-
-      acceptable = scored.fn == 0 and scored.fp == 0
-      attempt_passes.append(acceptable)
-
-      if attempt == 1:
-        per_example.append(scored)
-
-    pass_attempts[example_id] = attempt_passes
 
   return per_example, pass_attempts, total_cost
 
@@ -501,63 +523,133 @@ async def main() -> None:
   judge_client = OpenRouterJudgeClient(args.judge_model)
   session_maker = get_session_maker()
 
-  async with session_maker() as session:
-    run = await store.create_run(
-      session,
-      config_version=args.config,
-      dataset_split=args.dataset,
-      systems=selected,
-    )
-    aggregates: list[AggregateMetrics] = []
-    per_system_examples: dict[str, list[ExampleMetrics]] = {}
-    confusion: dict[str, RoutingConfusion] = {}
-
-    for system_name in selected:
-      per_example, pass_attempts, cost = await evaluate_system(
-        system_name,
-        examples,
-        judge_client,
+  try:
+    async with session_maker() as session:
+      run = await store.create_run(
         session,
-        run.id,
-        max_repairs=args.max_repairs,
+        config_version=args.config,
+        dataset_split=args.dataset,
+        systems=selected,
       )
-      aggregates.append(
-        metrics.aggregate(
-          system_name,
-          args.dataset,
-          per_example,
-          pass_attempts,
-          cost,
+      aggregates: list[AggregateMetrics] = []
+      per_system_examples: dict[str, list[ExampleMetrics]] = {}
+      confusion: dict[str, RoutingConfusion] = {}
+
+      # One trace per eval run. The seed is namespaced (eval-run-<id>)
+      # so it can never collide with a review-run trace ID, and the
+      # eval_run_id metadata links the trace back to the DB row.
+      async with root_trace(
+        "eval_run",
+        trace_seed=f"eval-run-{run.id}",
+        metadata={
+          "eval_run_id": run.id,
+          "config_version": args.config,
+          "dataset_split": args.dataset,
+          "systems": [system.value for system in selected],
+          "judge_model": args.judge_model,
+          "max_repairs": args.max_repairs,
+        },
+        version=args.config,
+        tags=["eval", args.dataset, args.config],
+      ) as trace:
+        for system_name in selected:
+          async with node_span(
+            "eval_system",
+            input={"system": system_name.value},
+          ) as system_span:
+            per_example, pass_attempts, cost = await evaluate_system(
+              system_name,
+              examples,
+              judge_client,
+              session,
+              run.id,
+              max_repairs=args.max_repairs,
+            )
+            aggregate = metrics.aggregate(
+              system_name,
+              args.dataset,
+              per_example,
+              pass_attempts,
+              cost,
+            )
+            aggregates.append(aggregate)
+            per_system_examples[system_name.value] = per_example
+            confusion[system_name.value] = metrics.routing_confusion(per_example)
+            system_span.update(
+              output={
+                "precision": aggregate.precision,
+                "recall": aggregate.recall,
+                "f1": aggregate.f1,
+                "groundedness_rate": aggregate.groundedness_rate,
+                "no_comment_accuracy": aggregate.no_comment_accuracy,
+                "pass_at_1": aggregate.pass_at_1,
+                "pass_at_2": aggregate.pass_at_2,
+              }
+            )
+
+        await store.finalize_run(
+          session,
+          run=run,
+          aggregates=aggregates,
         )
+        await session.commit()
+
+        # Metric scores make runs comparable inside Langfuse and satisfy
+        # the spec's evaluation-score field without a new table.
+        for aggregate in aggregates:
+          for metric_name in (
+            "precision",
+            "recall",
+            "f1",
+            "groundedness_rate",
+            "no_comment_accuracy",
+            "pass_at_1",
+            "pass_at_2",
+          ):
+            value = getattr(aggregate, metric_name)
+            if value is None:
+              continue
+            score_trace(
+              trace_id=trace.trace_id,
+              name=f"{aggregate.system.value}.{metric_name}",
+              value=value,
+              comment=f"{args.dataset} split, config {args.config}",
+            )
+
+        trace.update(
+          output={
+            aggregate.system.value: {
+              "precision": aggregate.precision,
+              "recall": aggregate.recall,
+              "f1": aggregate.f1,
+              "pass_at_2": aggregate.pass_at_2,
+            }
+            for aggregate in aggregates
+          }
+        )
+
+    if args.export:
+      export_reports(
+        Path(args.export),
+        aggregates,
+        per_system_examples,
+        confusion,
       )
-      per_system_examples[system_name.value] = per_example
-      confusion[system_name.value] = metrics.routing_confusion(per_example)
 
-    await store.finalize_run(
-      session,
-      run=run,
-      aggregates=aggregates,
-    )
-    await session.commit()
-
-  if args.export:
-    export_reports(
-      Path(args.export),
-      aggregates,
-      per_system_examples,
-      confusion,
-    )
-
-  for aggregate in aggregates:
-    print(
-      f"{aggregate.system.value}: "
-      f"P={_fmt(aggregate.precision)} "
-      f"R={_fmt(aggregate.recall)} "
-      f"F1={_fmt(aggregate.f1)} "
-      f"abstain={_fmt(aggregate.no_comment_accuracy)} "
-      f"pass@1={_fmt(aggregate.pass_at_1)} "
-      f"pass@2={_fmt(aggregate.pass_at_2)}"
-    )
+    for aggregate in aggregates:
+      print(
+        f"{aggregate.system.value}: "
+        f"P={_fmt(aggregate.precision)} "
+        f"R={_fmt(aggregate.recall)} "
+        f"F1={_fmt(aggregate.f1)} "
+        f"abstain={_fmt(aggregate.no_comment_accuracy)} "
+        f"pass@1={_fmt(aggregate.pass_at_1)} "
+        f"pass@2={_fmt(aggregate.pass_at_2)}"
+      )
+  finally:
+    # Short-lived script: without an explicit flush, buffered spans and
+    # scores never leave the process.
+    flush()
 
 
 if __name__ == "__main__":

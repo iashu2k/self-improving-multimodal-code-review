@@ -1,0 +1,62 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Run #{{ data.run.id }} · Review dashboard{% endblock %}
+{% block content %}
+<h1>Run #{{ data.run.id }} <span class="badge b-{{ data.run.status }}">{{ data.run.status }}</span></h1>
+<div class="card">
+  <div>{{ data.run.repo }}#{{ data.run.pr_number }} · config {{ data.run.config_version }} · sha {{ data.run.head_sha }}</div>
+  <div class="muted">
+    posted {{ data.run.comments_posted }} · suppressed {{ data.run.comments_suppressed }}
+    {% if data.run.duration_ms is not none %} · {{ (data.run.duration_ms / 1000) | round(1) }}s{% endif %}
+  </div>
+  {% if data.run.abstain_reason %}<div class="muted">abstain reason: {{ data.run.abstain_reason }}</div>{% endif %}
+  {% if data.run.error %}<div class="muted">error: {{ data.run.error }}</div>{% endif %}
+  {% if data.run.langfuse_trace_url %}<div><a href="{{ data.run.langfuse_trace_url }}">Open trace in Langfuse</a></div>{% endif %}
+</div>
+
+<h1>Node events</h1>
+{% for event in data.events %}
+<div class="card">
+  <div><strong>{{ event.node }}</strong> <span class="muted">{{ event.created_at.strftime("%H:%M:%S") }}</span></div>
+  <pre>{{ event.detail | tojson(indent=2) }}</pre>
+</div>
+{% else %}
+<p class="muted">No node events recorded.</p>
+{% endfor %}
+
+<h1>Comments</h1>
+<table>
+  <thead><tr><th>Status</th><th>Location</th><th>Severity</th><th>Category</th><th>Title</th><th>Suppression reason</th></tr></thead>
+  <tbody>
+    {% for c in data.comments %}
+    <tr>
+      <td><span class="badge b-{{ c.status }}">{{ c.status }}</span></td>
+      <td>{{ c.file_path }}:{{ c.line }}</td>
+      <td>{{ c.severity }}</td>
+      <td>{{ c.category }}</td>
+      <td>{{ c.title }}</td>
+      <td class="muted">{{ c.suppression_reason or "" }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">No comments recorded.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h1>Feedback</h1>
+<table>
+  <thead><tr><th>Label</th><th>Target</th><th>Source</th><th>Text</th><th>When</th></tr></thead>
+  <tbody>
+    {% for f in data.feedback %}
+    <tr>
+      <td><span class="badge b-{{ f.label }}">{{ f.label }}</span></td>
+      <td>{{ f.target_type }}</td>
+      <td>{{ f.source }}</td>
+      <td class="muted">{{ f.free_text or "" }}</td>
+      <td class="muted">{{ f.created_at.strftime("%m-%d %H:%M") }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">No feedback recorded.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Runs · Review dashboard{% endblock %}
+{% block content %}
+<h1>Review runs</h1>
+<form class="filter" method="get" action="/dashboard/runs">
+  <label class="muted" for="status">status</label>
+  <select id="status" name="status" onchange="this.form.submit()">
+    <option value="">all</option>
+    {% for s in ["published", "abstained", "failed", "running"] %}
+    <option value="{{ s }}" {% if s == status %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+</form>
+<table>
+  <thead>
+    <tr><th>Run</th><th>PR</th><th>Status</th><th>Config</th><th>Duration</th><th>Posted</th><th>Suppressed</th><th>Created</th><th>Trace</th></tr>
+  </thead>
+  <tbody>
+    {% for run in data.runs %}
+    <tr>
+      <td><a href="/dashboard/runs/{{ run.id }}">#{{ run.id }}</a></td>
+      <td>{{ run.repo }}#{{ run.pr_number }}</td>
+      <td><span class="badge b-{{ run.status }}">{{ run.status }}</span></td>
+      <td>{{ run.config_version }}</td>
+      <td>{% if run.duration_ms is not none %}{{ (run.duration_ms / 1000) | round(1) }}s{% else %}<span class="muted">-</span>{% endif %}</td>
+      <td>{{ run.comments_posted }}</td>
+      <td>{{ run.comments_suppressed }}</td>
+      <td class="muted">{{ run.created_at.strftime("%m-%d %H:%M") }}</td>
+      <td>{% if run.langfuse_trace_url %}<a href="{{ run.langfuse_trace_url }}">trace</a>{% else %}<span class="muted">-</span>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" class="muted">No runs yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="muted">{{ data.total }} runs total · page {{ page }}{% if page > 1 %} · <a href="/dashboard/runs?status={{ status }}&page={{ page - 1 }}">prev</a>{% endif %}{% if data.runs | length == 50 %} · <a href="/dashboard/runs?status={{ status }}&page={{ page + 1 }}">next</a>{% endif %}</p>
+{% endblock %}

@@ -4,6 +4,7 @@ import structlog
 from fastapi import FastAPI
 
 from app.api.router import api_router
+from app.api.routes.dashboard_ui import router as dashboard_ui_router
 from app.core.config import settings
 from app.core.logging import configure_logging
 
@@ -35,6 +36,7 @@ app = FastAPI(
 )
 
 app.include_router(api_router, prefix=settings.api_prefix)
+app.include_router(dashboard_ui_router)
 
 
 @app.get("/", tags=["root"])
@@ -43,4 +45,5 @@ async def root() -> dict[str, str]:
     "service": settings.app_name,
     "docs": "/docs",
     "health": f"{settings.api_prefix}/health",
+    "dashboard": "/dashboard/configurations",
   }

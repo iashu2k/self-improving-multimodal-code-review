@@ -1,0 +1,51 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Feedback · Review dashboard{% endblock %}
+{% block content %}
+<h1>Feedback, last {{ data.days }} days</h1>
+<form class="filter" method="get" action="/dashboard/feedback">
+  <label class="muted" for="days">window</label>
+  <select id="days" name="days" onchange="this.form.submit()">
+    {% for d in [7, 30, 90] %}
+    <option value="{{ d }}" {% if d == days %}selected{% endif %}>{{ d }} days</option>
+    {% endfor %}
+  </select>
+</form>
+<div class="card">
+  {% for item in data.by_label %}
+  <span class="badge b-{{ item.label }}">{{ item.label }}: {{ item.count }}</span>
+  {% else %}
+  <span class="muted">No feedback in this window.</span>
+  {% endfor %}
+</div>
+
+<h1>Daily trend</h1>
+<table>
+  <thead><tr><th>Day</th><th>Label</th><th>Count</th></tr></thead>
+  <tbody>
+    {% for p in data.trend %}
+    <tr><td>{{ p.day }}</td><td><span class="badge b-{{ p.label }}">{{ p.label }}</span></td><td>{{ p.count }}</td></tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">No trend data.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h1>Recent feedback</h1>
+<table>
+  <thead><tr><th>Label</th><th>Target</th><th>Source</th><th>Run</th><th>Text</th><th>When</th></tr></thead>
+  <tbody>
+    {% for f in data.recent %}
+    <tr>
+      <td><span class="badge b-{{ f.label }}">{{ f.label }}</span></td>
+      <td>{{ f.target_type }}</td>
+      <td>{{ f.source }}</td>
+      <td class="muted">{{ f.stored_comment_id or "" }}</td>
+      <td class="muted">{{ f.free_text or "" }}</td>
+      <td class="muted">{{ f.created_at.strftime("%m-%d %H:%M") }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">No feedback recorded.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

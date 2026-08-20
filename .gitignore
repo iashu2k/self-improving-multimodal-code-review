@@ -36,6 +36,7 @@ data/processed/*
 data/golden_prs/pool/
 data/golden_prs/candidates/
 paste*.txt
+project*.txt
 
 # Node, added later for dashboard
 node_modules/
